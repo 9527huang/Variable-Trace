@@ -1,0 +1,51 @@
+build/*
+build_test/*
+build_dbg/*
+.cache/*
+src/gitversion.hpp
+
+# local tooling caches
+.codegraph/
+.workbuddy/
+
+**/[Dd]ebug/
+**/[Rr]elease/
+
+test/MCUViewer_test/.settings/
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.dylib
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.lib
+
+# Executables
+*.out
+*.app
+
+# Log files
+*.csv
+
+# upstream GitHub Actions release pipeline, kept out of this fork:
+# it targets ubuntu-20.04 (retired by GitHub), the upstream author's build
+# container and the upstream /__w/MCUViewer workspace paths.
+.github/workflows/build.yaml

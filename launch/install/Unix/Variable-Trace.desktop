@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Encoding=UTF-8
+Type=Application
+Name=Variable-Trace
+Path=/usr/local/Variable-Trace
+Icon=/usr/local/Variable-Trace/icon.png
+Exec=/usr/local/Variable-Trace/Variable-Trace
+Categories=Development;
