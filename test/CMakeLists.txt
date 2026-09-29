@@ -1,3 +1,7 @@
+# googletest release-1.11.0 declares a cmake_minimum_required below 3.5,
+# which CMake 4.x refuses outright, so the policy floor has to be lowered here
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 include(FetchContent)
 
 project(Variable-Trace_test)
