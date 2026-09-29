@@ -17,6 +17,7 @@ class StlinkTraceProbe : public ITraceProbe
 
 	std::string getTargetName() override { return std::string(); }
 	std::vector<std::string> getConnectedDevices() override;
+	std::string getLastErrorMsg() const override;
 
    private:
 	stlink_t* sl = nullptr;

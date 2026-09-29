@@ -20,6 +20,7 @@ class TraceProbeMock : public ITraceProbe
 	MOCK_METHOD(int32_t, readTraceBuffer, (uint8_t * buffer, uint32_t size), (override));
 	MOCK_METHOD(std::string, getTargetName, (), (override));
 	MOCK_METHOD(std::vector<std::string>, getConnectedDevices, (), (override));
+	MOCK_METHOD(std::string, getLastErrorMsg, (), (const, override));
 };
 
 class TraceReaderTest : public ::testing::Test
@@ -66,6 +67,39 @@ class TraceReaderTest : public ::testing::Test
 TEST_F(TraceReaderTest, startTest)
 {
 	ASSERT_EQ(traceReader->startAcqusition(probeSettings, activeChannels), true);
+}
+
+TEST_F(TraceReaderTest, probeFailureReasonReachesReader)
+{
+	const std::string probeReason = "Could not connect to the target! Check the Target name.";
+
+	EXPECT_CALL(*TraceProbe, startTrace(_, _, _, _, _)).WillOnce(Return(false));
+	EXPECT_CALL(*TraceProbe, getLastErrorMsg()).WillOnce(Return(probeReason));
+
+	ASSERT_EQ(traceReader->startAcqusition(probeSettings, activeChannels), false);
+	ASSERT_EQ(traceReader->getLastErrorMsg(), probeReason);
+}
+
+TEST_F(TraceReaderTest, probeFailureWithoutReasonFallsBackToGenericText)
+{
+	EXPECT_CALL(*TraceProbe, startTrace(_, _, _, _, _)).WillOnce(Return(false));
+	EXPECT_CALL(*TraceProbe, getLastErrorMsg()).WillOnce(Return(std::string()));
+
+	ASSERT_EQ(traceReader->startAcqusition(probeSettings, activeChannels), false);
+	ASSERT_EQ(traceReader->getLastErrorMsg(), std::string("Trace probe not found!"));
+}
+
+TEST_F(TraceReaderTest, successfulStartClearsPreviousFailureReason)
+{
+	const std::string probeReason = "Target name is empty!";
+
+	EXPECT_CALL(*TraceProbe, startTrace(_, _, _, _, _)).WillOnce(Return(false)).WillOnce(Return(true));
+	EXPECT_CALL(*TraceProbe, getLastErrorMsg()).WillOnce(Return(probeReason));
+	ASSERT_EQ(traceReader->startAcqusition(probeSettings, activeChannels), false);
+	ASSERT_EQ(traceReader->getLastErrorMsg(), probeReason);
+
+	ASSERT_EQ(traceReader->startAcqusition(probeSettings, activeChannels), true);
+	ASSERT_EQ(traceReader->getLastErrorMsg(), std::string());
 }
 
 TEST_F(TraceReaderTest, testChannelsAndTimestamp)

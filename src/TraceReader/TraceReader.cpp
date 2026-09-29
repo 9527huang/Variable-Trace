@@ -47,7 +47,12 @@ bool TraceReader::startAcqusition(const ITraceProbe::TraceProbeSettings& probeSe
 		readerHandle = std::thread(&TraceReader::readerThread, this);
 		return true;
 	}
-	lastErrorMsg = "Trace probe not found!";
+
+	/* carry the probe's own reason up to the UI, the generic text is only a fallback */
+	lastErrorMsg = TraceProbe->getLastErrorMsg();
+	if (lastErrorMsg.empty())
+		lastErrorMsg = "Trace probe not found!";
+
 	stopAcqusition();
 	return false;
 }

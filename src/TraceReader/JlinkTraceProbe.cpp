@@ -25,7 +25,7 @@ bool JlinkTraceProbe::stopTrace()
 bool JlinkTraceProbe::startTrace(const TraceProbeSettings& probeSettings, uint32_t coreFrequency, uint32_t tracePrescaler, uint32_t activeChannelMask, bool shouldReset)
 {
 	int32_t serialNumberInt = std::atoi(probeSettings.serialNumber.c_str());
-	std::string lastErrorMsg = "";
+	lastErrorMsg = "";
 
 	/* without a device name the J-Link rejects every connect attempt */
 	if (probeSettings.device.empty())
@@ -65,8 +65,9 @@ bool JlinkTraceProbe::startTrace(const TraceProbeSettings& probeSettings, uint32
 	/* try to connect to target */
 	if (JLINKARM_Connect() < 0)
 	{
-		lastErrorMsg = "Could not connect to the target!";
+		lastErrorMsg = "Could not connect to the target! Check the Target name.";
 		logger->error(lastErrorMsg);
+		logger->error("Check 'Target name' in Options -> Acquisition settings while the TRACE VIEWER tab is active. Use the base J-Link device name without the package suffix, e.g. STM32F103C8.");
 		JLINKARM_Close();
 		return false;
 	}
@@ -84,8 +85,10 @@ bool JlinkTraceProbe::startTrace(const TraceProbeSettings& probeSettings, uint32
 		return true;
 	}
 
-	logger->info("Error starting Jlink reader thread! Error code {}", result);
-	return true;
+	lastErrorMsg = "Could not enable SWO on the target! Error code " + std::to_string(result);
+	logger->error(lastErrorMsg);
+	JLINKARM_Close();
+	return false;
 }
 
 int32_t JlinkTraceProbe::readTraceBuffer(uint8_t* buffer, uint32_t size)
@@ -94,6 +97,11 @@ int32_t JlinkTraceProbe::readTraceBuffer(uint8_t* buffer, uint32_t size)
 	JLINKARM_SWO_Read(buffer, 0, &size);
 	JLINKARM_SWO_Control(JLINKARM_SWO_CMD_FLUSH, &size);
 	return size;
+}
+
+std::string JlinkTraceProbe::getLastErrorMsg() const
+{
+	return lastErrorMsg;
 }
 
 std::string JlinkTraceProbe::getTargetName()

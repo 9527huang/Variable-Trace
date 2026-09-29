@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include <string>
 #include <vector>
 
 class ITraceProbe
@@ -24,6 +25,12 @@ class ITraceProbe
 
 	virtual std::string getTargetName() = 0;
 	virtual std::vector<std::string> getConnectedDevices() = 0;
+
+	/* reason why the last startTrace() failed, empty when the last attempt succeeded */
+	virtual std::string getLastErrorMsg() const = 0;
+
+   protected:
+	std::string lastErrorMsg = "";
 };
 
 #endif

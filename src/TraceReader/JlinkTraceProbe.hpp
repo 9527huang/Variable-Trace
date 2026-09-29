@@ -17,6 +17,7 @@ class JlinkTraceProbe : public ITraceProbe
 
 	std::string getTargetName() override;
 	std::vector<std::string> getConnectedDevices() override;
+	std::string getLastErrorMsg() const override;
 
    private:
 	static constexpr uint32_t maxSpeedkHz = 50000;

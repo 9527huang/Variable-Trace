@@ -26,11 +26,14 @@ bool StlinkTraceProbe::stopTrace()
 
 bool StlinkTraceProbe::startTrace(const TraceProbeSettings& probeSettings, uint32_t coreFrequency, uint32_t tracePrescaler, uint32_t activeChannelMask, bool shouldReset)
 {
+	lastErrorMsg = "";
+
 	sl = stlink_open_usb(UINFO, CONNECT_HOT_PLUG, NULL, probeSettings.speedkHz);
 
 	if (sl == nullptr)
 	{
-		logger->error("Stlink not found!");
+		lastErrorMsg = "Stlink not found!";
+		logger->error(lastErrorMsg);
 		return false;
 	}
 
@@ -55,7 +58,8 @@ bool StlinkTraceProbe::startTrace(const TraceProbeSettings& probeSettings, uint3
 
 	if (stlink_trace_enable(sl, traceFrequency))
 	{
-		logger->error("Unable to turn on tracing in stlink");
+		lastErrorMsg = "Unable to turn on tracing in stlink";
+		logger->error(lastErrorMsg);
 		return false;
 	}
 
@@ -71,7 +75,8 @@ bool StlinkTraceProbe::startTrace(const TraceProbeSettings& probeSettings, uint3
 
 	if (stlink_run(sl, RUN_NORMAL))
 	{
-		logger->error("Unable to run target device");
+		lastErrorMsg = "Unable to run target device";
+		logger->error(lastErrorMsg);
 		return false;
 	}
 
@@ -86,6 +91,11 @@ int32_t StlinkTraceProbe::readTraceBuffer(uint8_t* buffer, uint32_t size)
 		return -1;
 
 	return stlink_trace_read(sl, buffer, size);
+}
+
+std::string StlinkTraceProbe::getLastErrorMsg() const
+{
+	return lastErrorMsg;
 }
 
 std::vector<std::string> StlinkTraceProbe::getConnectedDevices()
