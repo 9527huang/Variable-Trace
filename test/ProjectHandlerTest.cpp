@@ -422,6 +422,70 @@ TEST_F(ProjectHandlerTest, roundTripRebuildsVariablesPlotsAndGroups)
 	EXPECT_FALSE(loadedGroups.getGroup("group a")->getVisibility("main"));
 }
 
+TEST_F(ProjectHandlerTest, roundTripKeepsPlotAxisLabels)
+{
+	VariableHandler variableHandler;
+	PlotHandler plotHandler;
+	PlotGroupHandler plotGroupHandler;
+	ProjectHandler handler(&variableHandler, &plotHandler, &plotGroupHandler, logger.get());
+
+	auto labelled = plotHandler.addPlot("labelled");
+	labelled->setXAxisLabel("elapsed [ms]");
+	labelled->setYAxisLabel("angle [deg]");
+
+	/* The usual state by far: nothing typed in, so each axis keeps the name
+	   its kind gives it. That has to survive a save as well, which it does by
+	   staying empty. */
+	auto plain = plotHandler.addPlot("plain");
+
+	ProjectData data;
+	const std::string file = path("labels.mcvproj");
+	ASSERT_TRUE(handler.save(file, data));
+
+	VariableHandler loadedVariables;
+	PlotHandler loadedPlots;
+	PlotGroupHandler loadedGroups;
+	ProjectHandler reader(&loadedVariables, &loadedPlots, &loadedGroups, logger.get());
+
+	ProjectData loaded;
+	ASSERT_EQ(reader.open(file, loaded), ProjectHandler::OpenResult::Ok);
+
+	ASSERT_TRUE(loadedPlots.checkIfPlotExists("labelled"));
+	EXPECT_EQ(loadedPlots.getPlot("labelled")->getXAxisLabel(), "elapsed [ms]");
+	EXPECT_EQ(loadedPlots.getPlot("labelled")->getYAxisLabel(), "angle [deg]");
+	EXPECT_EQ(loadedPlots.getPlot("labelled")->getEffectiveXAxisLabel(), "elapsed [ms]");
+
+	ASSERT_TRUE(loadedPlots.checkIfPlotExists("plain"));
+	EXPECT_EQ(loadedPlots.getPlot("plain")->getXAxisLabel(), "");
+	EXPECT_EQ(loadedPlots.getPlot("plain")->getYAxisLabel(), "");
+	EXPECT_EQ(loadedPlots.getPlot("plain")->getEffectiveXAxisLabel(), "time[s]");
+}
+
+TEST_F(ProjectHandlerTest, aPlotWrittenBeforeLabelsExistedKeepsTheAutomaticOnes)
+{
+	/* Version 3 files carry no label keys at all. A missing label has to read
+	   back as an empty one, which stands for "no label of its own", or every
+	   project saved before the labels were added would open with both axes
+	   unnamed. */
+	writeFile(path("no-labels.mcvproj"),
+			  R"({"formatVersion": 3, "plots": [)"
+			  R"({"name": "old", "type": 0, "series": []})"
+			  R"(]})");
+
+	VariableHandler variables;
+	PlotHandler plots;
+	PlotGroupHandler groups;
+	ProjectHandler reader(&variables, &plots, &groups, logger.get());
+
+	ProjectData loaded;
+	ASSERT_EQ(reader.open(path("no-labels.mcvproj"), loaded), ProjectHandler::OpenResult::Ok);
+
+	ASSERT_TRUE(plots.checkIfPlotExists("old"));
+	EXPECT_EQ(plots.getPlot("old")->getXAxisLabel(), "");
+	EXPECT_EQ(plots.getPlot("old")->getYAxisLabel(), "");
+	EXPECT_EQ(plots.getPlot("old")->getEffectiveXAxisLabel(), "time[s]");
+}
+
 TEST_F(ProjectHandlerTest, fractionalVariableKeepsItsBaseReference)
 {
 	VariableHandler variableHandler;
