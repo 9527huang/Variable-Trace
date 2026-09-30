@@ -54,7 +54,7 @@ class ImportVariablesWindow
 			else
 			{
 				if (refreshThread.valid() && !refreshThread.get())
-					acqusitionErrorPopup.show("Error!", "Update error. Please check the *.elf file path!", 2.0f);
+					acqusitionErrorPopup.show("Error!", "Update error. Please check the *.elf/*.axf file path!", 2.0f);
 				snprintf(buttonText, 30, "Refresh");
 			}
 
@@ -69,7 +69,7 @@ class ImportVariablesWindow
 			ImGui::SameLine();
 			ImGui::InputText("##search", &search, 0, NULL, NULL);
 			ImGui::SameLine();
-			ImGui::HelpMarker("Import feature is still in Beta. If you're unable to find your variable on the list please open an issue on GitHub (remember to attach your *.elf file).");
+			ImGui::HelpMarker("Import feature is still in Beta. If you're unable to find your variable on the list please open an issue on GitHub (remember to attach your *.elf/*.axf file).");
 
 			drawImportVariablesTable(parser->getParsedData(), selection, search);
 

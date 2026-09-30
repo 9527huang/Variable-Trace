@@ -418,7 +418,7 @@ namespace recorder
 	{
 		if (!hasSymbols())
 		{
-			error = "Neither ____recorder nor ____recorderSettings was found in the symbol file, so there is nothing to detect. Import the variables from an *.elf built with the recorder sources.";
+			error = "Neither ____recorder nor ____recorderSettings was found in the symbol file, so there is nothing to detect. Import the variables from an *.elf/*.axf built with the recorder sources.";
 			return false;
 		}
 

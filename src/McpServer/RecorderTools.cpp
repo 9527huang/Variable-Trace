@@ -143,7 +143,7 @@ namespace mcp
 			};
 
 			if (!handler.hasSymbols())
-				return zeroes("The symbol file has no ____recorderSettings in it. Import the variables from an *.elf built with the recorder sources.");
+				return zeroes("The symbol file has no ____recorderSettings in it. Import the variables from an *.elf/*.axf built with the recorder sources.");
 
 			if (context.viewerDataHandler == nullptr || context.viewerDataHandler->getDebugProbe() == nullptr)
 				return zeroes("No debug probe is selected.");

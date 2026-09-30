@@ -73,7 +73,7 @@ class VariableTableWindow
 		ImGui::Dummy(ImVec2(-1, 5));
 		GuiHelper::drawCenteredText("Variables");
 		ImGui::SameLine();
-		ImGui::HelpMarker("Select your *.elf file in the Options->Acqusition Settings to import or update the variables.");
+		ImGui::HelpMarker("Select your *.elf/*.axf file in the Options->Acqusition Settings to import or update the variables.");
 		ImGui::Separator();
 
 		drawAddVariableButton();
@@ -194,7 +194,7 @@ class VariableTableWindow
 
 		ImGui::BeginDisabled(projectElfPath->empty());
 
-		if (ImGui::Button("Import variables from *.elf", ImVec2(-1, 25 * GuiHelper::contentScale)))
+		if (ImGui::Button("Import variables from *.elf/*.axf", ImVec2(-1, 25 * GuiHelper::contentScale)))
 			importVariablesWindow->setShowImportVariablesWindow(true);
 
 		ImGui::EndDisabled();
@@ -213,7 +213,7 @@ class VariableTableWindow
 		{
 			snprintf(buttonText, textSize, "Update variable addresses");
 			if (refreshThread.valid() && !refreshThread.get())
-				popup.show("Error!", "Update error. Please check the *.elf file path!", 2.0f);
+				popup.show("Error!", "Update error. Please check the *.elf/*.axf file path!", 2.0f);
 		}
 
 		ImGui::BeginDisabled(projectElfPath->empty());
@@ -225,7 +225,7 @@ class VariableTableWindow
 		if (elfChanged)
 		{
 			ImVec4 color = ImColor::HSV(0.1f, 0.97f, 0.72f);
-			snprintf(buttonText, textSize, "Click to reload *.elf changes!");
+			snprintf(buttonText, textSize, "Click to reload *.elf/*.axf changes!");
 			ImGui::PushStyleColor(ImGuiCol_Button, color);
 			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, color);
 			ImGui::PushStyleColor(ImGuiCol_ButtonActive, color);

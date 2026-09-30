@@ -220,7 +220,7 @@ void Gui::drawRecorderWindow()
 		errorMessage.clear();
 
 		if (!syncRecorderSymbols())
-			fail("The symbol table has no ____recorderSettings or ____recorder. Import the variables from an *.elf built with the recorder sources.");
+			fail("The symbol table has no ____recorderSettings or ____recorder. Import the variables from an *.elf/*.axf built with the recorder sources.");
 		else
 		{
 			std::string error;
@@ -438,7 +438,7 @@ void Gui::drawRecorderWindow()
 		errorMessage.clear();
 
 		if (!syncRecorderSymbols())
-			fail("The symbol table has no ____recorderSettings or ____recorder. Import the variables from an *.elf built with the recorder sources.");
+			fail("The symbol table has no ____recorderSettings or ____recorder. Import the variables from an *.elf/*.axf built with the recorder sources.");
 		else
 		{
 			std::string error;

@@ -23,7 +23,9 @@
 
 /* Width the labels are padded to, so the fields line up in one column, as in
    the acquisition settings window. */
-static constexpr size_t alignment = 18;
+/* Wide enough for the longest label in this window, which is the one about
+   taking the symbol file of the acquisition settings. */
+static constexpr size_t alignment = 22;
 
 /* Cycled through by the button label while a run is in progress. A programmer
    that takes a minute to say anything would otherwise look like a button that
@@ -255,11 +257,11 @@ void Gui::drawFlashingSettingsWindow()
 	ImGui::SameLine();
 	ImGui::HelpMarker("Selected file path replaces the {file} macro in the flash command below.");
 
-	GuiHelper::drawTextAlignedToSize("Use *.elf file:", alignment);
+	GuiHelper::drawTextAlignedToSize("Use *.elf/*.axf file:", alignment);
 	ImGui::SameLine();
 	ImGui::Checkbox("##useElfFile", &settings.useElfFile);
 	ImGui::SameLine();
-	ImGui::HelpMarker("When checked, {file} is replaced with the *.elf path set in Options -> Acquisition.");
+	ImGui::HelpMarker("When checked, {file} is replaced with the *.elf/*.axf path set in Options -> Acquisition.");
 
 	/* FLASH COMMAND */
 	GuiHelper::drawTextAlignedToSize("Flash command:", alignment);

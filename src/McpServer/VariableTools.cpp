@@ -557,8 +557,8 @@ namespace mcp
 					  .onGuiThread = false});
 
 		registry.add({.name = "set_elf_path",
-					  .description = "Set the ELF file for variable address resolution. 'relative': store path relative to project file (default 1).",
-					  .inputSchema = objectSchema(Json::object({{"path", stringProperty("Path to the *.elf file")},
+					  .description = "Set the symbol file (*.elf or *.axf, both are ELF) for variable address resolution. 'relative': store path relative to project file (default 1).",
+					  .inputSchema = objectSchema(Json::object({{"path", stringProperty("Path to the *.elf/*.axf file")},
 																{"relative", booleanProperty("1 = relative path (default), 0 = absolute")}}),
 												  {"path"}),
 					  .handler = setElfPath});

@@ -3,7 +3,9 @@
 #include "LibDwarfParser.hpp"
 #include "TiOfdParser.hpp"
 
-static constexpr size_t alignment = 30;
+/* Wide enough for the longest label in this window, which is the one about
+   refreshing on a change of the symbol file. */
+static constexpr size_t alignment = 36;
 
 void Gui::drawAcqusitionSettingsScope(ActiveViewType type)
 {
@@ -27,7 +29,7 @@ void Gui::acqusitionSettingsViewer()
 	GuiHelper::drawCenteredText("General");
 	ImGui::Separator();
 
-	GuiHelper::drawTextAlignedToSize("*.elf file:", alignment);
+	GuiHelper::drawTextAlignedToSize("*.elf/*.axf file:", alignment);
 	ImGui::SameLine();
 	ImGui::InputText("##", &projectElfPath, 0, NULL, NULL);
 	ImGui::SameLine();
@@ -36,11 +38,11 @@ void Gui::acqusitionSettingsViewer()
 
 	ViewerDataHandler::Settings settings = viewerDataHandler->getSettings();
 
-	GuiHelper::drawTextAlignedToSize("Refresh vars on *.elf change:", alignment);
+	GuiHelper::drawTextAlignedToSize("Refresh vars on *.elf/*.axf change:", alignment);
 	ImGui::SameLine();
 	ImGui::Checkbox("##refresh", &settings.refreshAddressesOnElfChange);
 
-	GuiHelper::drawTextAlignedToSize("Stop on *.elf change:", alignment);
+	GuiHelper::drawTextAlignedToSize("Stop on *.elf/*.axf change:", alignment);
 	ImGui::SameLine();
 	ImGui::Checkbox("##stop", &settings.stopAcqusitionOnElfChange);
 
@@ -267,7 +269,7 @@ void Gui::drawElfSettings(ViewerDataHandler::Settings& settings)
 	for (const std::string& label : labels)
 		labelPointers.push_back(label.c_str());
 
-	GuiHelper::drawTextAlignedToSize("*.elf parser:", alignment);
+	GuiHelper::drawTextAlignedToSize("*.elf/*.axf parser:", alignment);
 	ImGui::SameLine();
 
 	if (ImGui::Combo("##elfParser", &current, labelPointers.data(), static_cast<int>(labelPointers.size())))

@@ -142,12 +142,12 @@ class VariableEditWindow
 			selectVariableWindow->setShowState(true);
 
 		ImGui::SameLine();
-		ImGui::HelpMarker("Select or type an imported variable name from the *.elf file.");
+		ImGui::HelpMarker("Select or type an imported variable name from the *.elf/*.axf file.");
 
 		ImGui::EndDisabled();
 
 		/* SHOULD UPDATE FROM ELF */
-		GuiHelper::drawTextAlignedToSize("update from *.elf:", alignment);
+		GuiHelper::drawTextAlignedToSize("update from *.elf/*.axf:", alignment);
 		ImGui::SameLine();
 		if (ImGui::Checkbox("##shouldUpdateFromElf", &shouldUpdateFromElf))
 		{
@@ -155,7 +155,7 @@ class VariableEditWindow
 			editedVariable->setIsTrackedNameDifferent(false);
 		}
 		ImGui::SameLine();
-		ImGui::HelpMarker("Check if the variable address and size should be automatically updated from *.elf file.");
+		ImGui::HelpMarker("Check if the variable address and size should be automatically updated from *.elf/*.axf file.");
 
 		/* ADDRESS */
 		ImGui::BeginDisabled(shouldUpdateFromElf);
@@ -408,8 +408,10 @@ class VariableEditWindow
 	/**
 	 * @brief Text alignemnt in front of the input fields
 	 *
+	 * Wide enough for the longest label, which is the one about updating the
+	 * address from the symbol file.
 	 */
-	static constexpr size_t alignment = 22;
+	static constexpr size_t alignment = 25;
 
 	bool showVariableEditWindow = false;
 	bool stateChanged = false;
