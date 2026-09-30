@@ -114,12 +114,50 @@ class PlotEditWindow
 			if (ImGui::Button("select...", ImVec2(65 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
 				selectVariableWindow->setShowState(true);
 		}
+
+		/* A table is a grid of rows, not a drawing with axes, so there is
+		   nothing for a label to sit next to. */
+		if (editedPlot->getType() != Plot::Type::TABLE)
+			drawAxisLabelSettings();
+	}
+
+	void drawAxisLabelSettings()
+	{
+		/* The field is empty while the axis still carries its automatic label,
+		   so the grey text behind the field is that label: what stands in the
+		   box is what gets drawn, and an empty box means the grey text is
+		   used. Typing over it replaces the label for this plot only. */
+		std::string xLabel = editedPlot->getXAxisLabel();
+		std::string yLabel = editedPlot->getYAxisLabel();
+
+		GuiHelper::drawTextAlignedToSize("X-axis label:", alignment);
+		ImGui::SameLine();
+		drawAxisLabelInput("##xAxisLabel", xLabel, editedPlot->getDefaultXAxisLabel());
+		if (ImGui::IsItemDeactivatedAfterEdit())
+			editedPlot->setXAxisLabel(xLabel);
+
+		GuiHelper::drawTextAlignedToSize("Y-axis label:", alignment);
+		ImGui::SameLine();
+		drawAxisLabelInput("##yAxisLabel", yLabel, editedPlot->getDefaultYAxisLabel());
+		if (ImGui::IsItemDeactivatedAfterEdit())
+			editedPlot->setYAxisLabel(yLabel);
 	}
 
    private:
+	/* One axis label field. The label the axis carries on its own is shown as
+	   the hint rather than written into the field, so an untouched field stays
+	   empty and the plot keeps following whatever it is drawn against. */
+	void drawAxisLabelInput(const char* id, std::string& label, const std::string& automatic)
+	{
+		const std::string hint = automatic.empty() ? std::string("(no label)") : automatic;
+		ImGui::InputTextWithHint(id, hint.c_str(), &label, 0, NULL, NULL);
+	}
+
 	/**
 	 * @brief Text alignemnt in front of the input fields
 	 *
+	 * Wide enough for the longest one, which is the axis variable on an XY
+	 * plot.
 	 */
 	static constexpr size_t alignment = 18;
 

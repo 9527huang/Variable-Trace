@@ -68,7 +68,7 @@ uint32_t Variable::getAddress() const
 	return address;
 }
 
-std::string Variable::getName()
+std::string Variable::getName() const
 {
 	return name;
 }

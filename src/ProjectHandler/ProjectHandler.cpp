@@ -158,6 +158,12 @@ json ProjectHandler::serializePlot(const std::shared_ptr<Plot>& plt) const
 	entry["name"] = plt->getName();
 	entry["type"] = static_cast<uint8_t>(plt->getType());
 
+	/* Written even when empty, which is the usual state: the key being there
+	   is what tells a reader that the plot has labels of its own rather than
+	   ones this build forgot to save. */
+	entry["xAxisLabel"] = plt->getXAxisLabel();
+	entry["yAxisLabel"] = plt->getYAxisLabel();
+
 	if (plt->getType() == Plot::Type::XY)
 		entry["xAxisVariable"] = plt->getXAxisVariable() != nullptr ? plt->getXAxisVariable()->getName() : "";
 
@@ -466,6 +472,11 @@ void ProjectHandler::deserializePlots(const json& plots)
 
 		auto plot = plotHandler->addPlot(name);
 		plot->setType(static_cast<Plot::Type>(entry.value("type", static_cast<uint8_t>(Plot::Type::CURVE))));
+
+		/* A project written before the labels existed has neither key, and an
+		   empty label is the same as no label, so both read back the same. */
+		plot->setXAxisLabel(entry.value("xAxisLabel", std::string()));
+		plot->setYAxisLabel(entry.value("yAxisLabel", std::string()));
 
 		if (plot->getType() == Plot::Type::XY)
 		{

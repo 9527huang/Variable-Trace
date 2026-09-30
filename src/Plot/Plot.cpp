@@ -263,7 +263,7 @@ bool Plot::isHovered() const
 	return isHoveredOver;
 }
 
-Variable* Plot::getXAxisVariable()
+Variable* Plot::getXAxisVariable() const
 {
 	return xAxisSeries.var;
 }
@@ -271,4 +271,56 @@ Variable* Plot::getXAxisVariable()
 void Plot::setXAxisVariable(Variable* var)
 {
 	xAxisSeries.var = var;
+}
+
+void Plot::setXAxisLabel(const std::string& newLabel)
+{
+	xAxisLabel = newLabel;
+}
+
+void Plot::setYAxisLabel(const std::string& newLabel)
+{
+	yAxisLabel = newLabel;
+}
+
+std::string Plot::getXAxisLabel() const
+{
+	return xAxisLabel;
+}
+
+std::string Plot::getYAxisLabel() const
+{
+	return yAxisLabel;
+}
+
+std::string Plot::getDefaultXAxisLabel() const
+{
+	if (type == Type::CURVE)
+		return "time[s]";
+
+	/* An XY plot draws one variable against another, so the horizontal axis
+	   carries the name of the variable it is drawn against. A bar chart puts
+	   the series names along the bottom as ticks and leaves the label empty. */
+	if (type == Type::XY && xAxisSeries.var != nullptr)
+		return xAxisSeries.var->getName();
+
+	return "";
+}
+
+std::string Plot::getDefaultYAxisLabel() const
+{
+	if (type == Type::BAR)
+		return "Value";
+
+	return "";
+}
+
+std::string Plot::getEffectiveXAxisLabel() const
+{
+	return xAxisLabel.empty() ? getDefaultXAxisLabel() : xAxisLabel;
+}
+
+std::string Plot::getEffectiveYAxisLabel() const
+{
+	return yAxisLabel.empty() ? getDefaultYAxisLabel() : yAxisLabel;
 }

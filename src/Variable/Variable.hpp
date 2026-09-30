@@ -76,7 +76,7 @@ class Variable
 
 	void setAddress(uint32_t addr);
 	uint32_t getAddress() const;
-	std::string getName();
+	std::string getName() const;
 	void rename(const std::string& newName);
 
 	void setColor(float r, float g, float b, float a);

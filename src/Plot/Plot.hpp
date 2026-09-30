@@ -138,8 +138,28 @@ class Plot
 	void setIsHovered(bool isHovered);
 	bool isHovered() const;
 
-	Variable* getXAxisVariable();
+	Variable* getXAxisVariable() const;
 	void setXAxisVariable(Variable* var);
+
+	/* Text drawn along each axis. An empty string is the normal state and
+	   means the axis keeps whatever it was called before a label could be
+	   typed in, so an older project reads back looking the same. */
+	void setXAxisLabel(const std::string& newLabel);
+	void setYAxisLabel(const std::string& newLabel);
+	std::string getXAxisLabel() const;
+	std::string getYAxisLabel() const;
+
+	/* What the axis is called with no label set. A curve is drawn against
+	   time and a bar chart is drawn against the names of its series, which is
+	   where the two fixed names come from. */
+	std::string getDefaultXAxisLabel() const;
+	std::string getDefaultYAxisLabel() const;
+
+	/* The text to draw: the label when one was typed in, the default
+	   otherwise. Both drawing and the editor read this, so the field in the
+	   editor always describes what is on screen. */
+	std::string getEffectiveXAxisLabel() const;
+	std::string getEffectiveYAxisLabel() const;
 
 	displayFormat getSeriesDisplayFormat(const std::string& name) const;
 	void setSeriesDisplayFormat(const std::string& name, displayFormat format);
@@ -150,6 +170,8 @@ class Plot
    private:
 	std::string name;
 	std::string alias;
+	std::string xAxisLabel;
+	std::string yAxisLabel;
 	std::map<std::string, std::shared_ptr<Series>> seriesMap;
 	ScrollingBuffer<double> time;
 	Series xAxisSeries;

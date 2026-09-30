@@ -36,6 +36,8 @@ namespace mcp
 		{
 			destination->setType(source->getType());
 			destination->setAlias(source->getAlias());
+			destination->setXAxisLabel(source->getXAxisLabel());
+			destination->setYAxisLabel(source->getYAxisLabel());
 			destination->setVisibility(source->getVisibility());
 			destination->setDomain(source->getDomain());
 			destination->setTraceVarType(source->getTraceVarType());

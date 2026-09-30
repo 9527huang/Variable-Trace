@@ -76,17 +76,17 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 	{
 		recordDrawnPlot(plot->getName());
 
-		Variable* xAxisVariable = plot->getXAxisVariable();
-		std::string xLabel = xAxisVariable ? xAxisVariable->getName() : "";
+		const std::string xLabel = plot->getEffectiveXAxisLabel();
+		const std::string yLabel = plot->getEffectiveYAxisLabel();
 
 		if (viewerDataHandler->getState() == DataHandlerBase::State::RUN)
 		{
-			ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AutoFit);
+			ImPlot::SetupAxis(ImAxis_Y1, yLabel.c_str(), ImPlotAxisFlags_AutoFit);
 			ImPlot::SetupAxis(ImAxis_X1, xLabel.c_str(), ImPlotAxisFlags_AutoFit);
 		}
 		else
 		{
-			ImPlot::SetupAxes(xLabel.c_str(), NULL, 0, 0);
+			ImPlot::SetupAxes(xLabel.c_str(), yLabel.c_str(), 0, 0);
 			ImPlot::SetupAxisLimits(ImAxis_X1, -1, 10, ImPlotCond_Once);
 			ImPlot::SetupAxisLimits(ImAxis_Y1, -0.1, 0.1, ImPlotCond_Once);
 		}
@@ -130,11 +130,14 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 	{
 		recordDrawnPlot(plot->getName());
 
+		const std::string xLabel = plot->getEffectiveXAxisLabel();
+		const std::string yLabel = plot->getEffectiveYAxisLabel();
+
 		if (viewerDataHandler->getState() == DataHandlerBase::State::RUN)
 		{
 			ViewerDataHandler::Settings settings = viewerDataHandler->getSettings();
-			ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AutoFit);
-			ImPlot::SetupAxis(ImAxis_X1, "time[s]", 0);
+			ImPlot::SetupAxis(ImAxis_Y1, yLabel.c_str(), ImPlotAxisFlags_AutoFit);
+			ImPlot::SetupAxis(ImAxis_X1, xLabel.c_str(), 0);
 			const double viewportWidth = (1.0 / viewerDataHandler->getAverageSamplingFrequency()) * settings.maxViewportPoints;
 			const double min = *time.getLastElement() < viewportWidth ? 0.0f : *time.getLastElement() - viewportWidth;
 			const double max = min == 0.0f ? *time.getLastElement() : min + viewportWidth;
@@ -142,7 +145,7 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 		}
 		else
 		{
-			ImPlot::SetupAxes("time[s]", NULL, 0, 0);
+			ImPlot::SetupAxes(xLabel.c_str(), yLabel.c_str(), 0, 0);
 			ImPlot::SetupAxisLimits(ImAxis_X1, -1, 10, ImPlotCond_Once);
 			ImPlot::SetupAxisLimits(ImAxis_Y1, -0.1, 0.1, ImPlotCond_Once);
 		}
@@ -226,7 +229,7 @@ void Gui::drawPlotBar(std::shared_ptr<Plot> plot)
 		}
 		glabels.push_back(nullptr);
 
-		ImPlot::SetupAxes(NULL, "Value", 0, 0);
+		ImPlot::SetupAxes(plot->getEffectiveXAxisLabel().c_str(), plot->getEffectiveYAxisLabel().c_str(), 0, 0);
 		ImPlot::SetupAxisLimits(ImAxis_X1, -1, visiblePlotsCnt, ImPlotCond_Always);
 		ImPlot::SetupAxisTicks(ImAxis_X1, positions.data(), visiblePlotsCnt, glabels.data());
 
