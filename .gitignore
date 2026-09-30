@@ -8,6 +8,10 @@ src/gitversion.hpp
 .codegraph/
 .workbuddy/
 
+# reverse-engineering workspace for the closed-source 1.2.9 build.
+# holds extracted strings/symbols of a proprietary binary: keep it local.
+analysis/
+
 **/[Dd]ebug/
 **/[Rr]elease/
 
