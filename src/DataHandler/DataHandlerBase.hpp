@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <thread>
 
@@ -34,6 +35,7 @@ class DataHandlerBase
 
 		viewerState = state;
 		stateChangeOrdered = true;
+		transitionStarted = std::chrono::steady_clock::now();
 	}
 	State getState() const
 	{
@@ -55,10 +57,19 @@ class DataHandlerBase
 	/* True between a state change being asked for and the acquisition thread
 	   having carried it out. The requested state is stored straight away, so
 	   without this an interface cannot tell a probe that is still being opened
-	   from one that is already delivering data. */
+	   from one that is already delivering data.
+	 *
+	 * A change to a probe that opens quickly is over in a few milliseconds, which
+	 * is less than one frame, so a check that only looked at the flag would jump
+	 * from one settled state to the other and the change would never be drawn at
+	 * all. The answer therefore stays true for a short window measured from the
+	 * request, long enough for a person to read the difference. */
 	bool isTransitionPending() const
 	{
-		return stateChangeOrdered.load();
+		if (stateChangeOrdered.load())
+			return true;
+
+		return (std::chrono::steady_clock::now() - transitionStarted) < minimumTransitionDisplay;
 	}
 
    protected:
@@ -71,6 +82,15 @@ class DataHandlerBase
 	std::mutex* mtx;
 	std::thread dataHandle;
 	std::atomic<bool> stateChangeOrdered = false;
+
+	/* How long a change stays reported as in progress even after it has been
+	   carried out, so that it is on screen long enough to be read. */
+	static constexpr std::chrono::milliseconds minimumTransitionDisplay{400};
+
+	/* Started well in the past, so that the first frame does not report a
+	   transition that never happened. */
+	std::chrono::steady_clock::time_point transitionStarted = std::chrono::steady_clock::now() - std::chrono::hours(1);
+
 	spdlog::logger* logger;
 
 	std::unique_ptr<CSVStreamer> csvStreamer;
