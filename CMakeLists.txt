@@ -161,6 +161,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiAcqusition.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiRecorder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiFlashing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiScreenshot.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiHelper.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/StlinkDebugProbe.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/JlinkDebugProbe.cpp
@@ -178,6 +179,8 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ProjectHandler/GlobalConfig.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Flashing/FlashingService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WritePlanner/WritePlanner.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Screenshot/PlotExport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Screenshot/PngWriter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FileHandler/NFDFileHandler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ImguiPlugins/ImguiPlugins.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stlink/inc/spdlogWrapper.cpp
@@ -283,9 +286,11 @@ target_include_directories(${EXECUTABLE} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Recorder
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Flashing
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WritePlanner
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Screenshot
     ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer)
 
 target_include_directories(${EXECUTABLE} SYSTEM PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb/
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/json/
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/http/
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stlink/inc/

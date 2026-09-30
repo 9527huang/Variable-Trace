@@ -90,6 +90,15 @@ bool GlobalConfig::load()
 		settings.apiWritesEnabled = api.value("writesEnabled", settings.apiWritesEnabled);
 	}
 
+	if (root.contains("plotExport"))
+	{
+		const auto& plotExport = root.at("plotExport");
+		settings.plotExport.askForLocation = plotExport.value("askForLocation", settings.plotExport.askForLocation);
+		settings.plotExport.directory = plotExport.value("directory", settings.plotExport.directory);
+		settings.plotExport.fileName = plotExport.value("fileName", settings.plotExport.fileName);
+		settings.plotExport.incrementFileName = plotExport.value("incrementFileName", settings.plotExport.incrementFileName);
+	}
+
 	if (root.contains("flashing"))
 	{
 		const auto& flashing = root.at("flashing");
@@ -144,6 +153,10 @@ bool GlobalConfig::save()
 						{"useElfFile", settings.flash.useElfFile},
 						{"timeoutEnabled", settings.flash.timeoutEnabled},
 						{"timeoutSeconds", settings.flash.timeoutSeconds}};
+	root["plotExport"] = {{"askForLocation", settings.plotExport.askForLocation},
+						  {"directory", settings.plotExport.directory},
+						  {"fileName", settings.plotExport.fileName},
+						  {"incrementFileName", settings.plotExport.incrementFileName}};
 	root["recentProjects"] = settings.recentProjects;
 
 	std::ofstream file(path, std::ios::trunc);

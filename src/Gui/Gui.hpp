@@ -27,6 +27,7 @@
 #include "JlinkDebugProbe.hpp"
 #include "JlinkTraceProbe.hpp"
 #include "Plot.hpp"
+#include "PlotExport.hpp"
 #include "PlotGroupHandler.hpp"
 #include "Popup.hpp"
 #include "ProjectHandler.hpp"
@@ -146,6 +147,31 @@ class Gui
 	   project file, so the model is owned here rather than by the window. */
 	std::shared_ptr<WritePlanner> writePlanner;
 	std::shared_ptr<WritePlannerWindow> writePlannerWindow;
+
+	/* -------------------------------------------------------- screenshots */
+	/* One plot, in logical screen coordinates, remembered from the moment it
+	   was drawn. The pixels of a frame can only be read once that frame has
+	   been rendered, so the rectangles of a frame are collected while drawing
+	   and consumed in the render step that follows. */
+	struct DrawnPlot
+	{
+		std::string name;
+		ImVec2 min;
+		ImVec2 max;
+	};
+
+	/* Set while a save is on its way. Collecting rectangles costs nothing the
+	   rest of the time, which matters because this runs for every plot of
+	   every frame. */
+	bool plotImagesRequested = false;
+	std::vector<DrawnPlot> drawnPlots;
+
+	/* A message the save produced. It is handed to the popup at the start of
+	   the next frame, because the save runs after the frame has been rendered
+	   and by then there is no window left to open a popup on. */
+	std::string pendingPlotImageTitle;
+	std::string pendingPlotImageMessage;
+	float pendingPlotImageSeconds = 0.0f;
 
 	/* Declared in this order on purpose. The server holds bare pointers to the
 	   bridge and to the context, and its destructor reaches into the bridge, so
@@ -276,6 +302,39 @@ class Gui
 
 	/* --------------------------------------------------------- write planner */
 	void drawWritePlannerWindow();
+
+	/* --------------------------------------------------------- screenshots */
+	/* Asks for every visible plot to be written as a PNG once the frame it
+	   belongs to has been rendered. */
+	void requestPlotImages();
+	/* Remembers where a plot ended up on screen. Called from inside the plot,
+	   and only while a save is pending.
+	   The first form reads the rectangle ImGui registered for the frame the
+	   plot was given, so it is valid right after BeginPlot and must not be
+	   moved later in the body, where the setup calls of the plot would come
+	   after it; the second takes an explicit rectangle, which is what a table
+	   needs. */
+	void recordDrawnPlot(const std::string& name);
+	void recordDrawnPlot(const std::string& name, const ImVec2& min, const ImVec2& max);
+	/* Reads the pixels of the plots of the frame that has just been rendered
+	   and writes them out. Called between rendering and the buffer swap,
+	   because after the swap the pixels are no longer there to read. */
+	void processPlotImages();
+	/* Copies one rectangle of the framebuffer into `rgba`, top row first.
+	   Returns false when the rectangle holds no visible pixels, which is what
+	   an off screen or collapsed plot gives. */
+	bool readFramebufferRegion(const ImVec2& min, const ImVec2& max, int& width, int& height, std::vector<uint8_t>& rgba);
+	/* Writes one plot out. `error` carries the reason when the answer is
+	   Failed, and stays unchanged otherwise. */
+	enum class SaveOutcome
+	{
+		Written = 0,
+		Cancelled = 1,
+		Failed = 2,
+	};
+	SaveOutcome savePlotImage(const DrawnPlot& plot, const plotExport::Settings& settings, size_t index, size_t count, std::string& error);
+	/* The Plot export section of the preferences window. */
+	void drawPlotExportSettings();
 
 	/* ------------------------------------------------------------ API server */
 	void setupMcpServer();

@@ -27,6 +27,8 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 {
 	if (ImPlot::BeginPlot(plot->getName().c_str(), ImVec2(), ImPlotFlags_NoChild | ImPlotFlags_NoTitle))
 	{
+		recordDrawnPlot(plot->getName());
+
 		if (first)
 			ImPlot::SetupAxis(ImAxis_X1, "time[s]", ImPlotAxisFlags_Opposite | ImPlotAxisFlags_NoLabel);
 		else

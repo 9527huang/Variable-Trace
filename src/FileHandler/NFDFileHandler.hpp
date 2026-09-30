@@ -14,7 +14,7 @@ class NFDFileHandler : public IFileHandler
 	init() override;
 	bool deinit() override;
 	std::string openFile(std::vector<Filter>&& filters) override;
-	std::string saveFile(std::vector<Filter>&& filters) override;
+	std::string saveFile(std::vector<Filter>&& filters, const std::string& defaultPath = "", const std::string& defaultName = "") override;
 	std::string openDirectory(std::vector<Filter>&& filters) override;
 
    private:
@@ -24,7 +24,7 @@ class NFDFileHandler : public IFileHandler
 		OPEN,
 		OPENDIR
 	};
-	std::string handleFile(handleType type, std::vector<Filter>& filters);
+	std::string handleFile(handleType type, std::vector<Filter>& filters, const std::string& defaultPath = "", const std::string& defaultName = "");
 };
 
 #endif

@@ -22,9 +22,9 @@ std::string NFDFileHandler::openFile(std::vector<Filter>&& filters)
 	return handleFile(handleType::OPEN, filters);
 }
 
-std::string NFDFileHandler::saveFile(std::vector<Filter>&& filters)
+std::string NFDFileHandler::saveFile(std::vector<Filter>&& filters, const std::string& defaultPath, const std::string& defaultName)
 {
-	return handleFile(handleType::SAVE, filters);
+	return handleFile(handleType::SAVE, filters, defaultPath, defaultName);
 }
 
 std::string NFDFileHandler::openDirectory(std::vector<Filter>&& filters)
@@ -32,7 +32,7 @@ std::string NFDFileHandler::openDirectory(std::vector<Filter>&& filters)
 	return handleFile(handleType::OPENDIR, filters);
 }
 
-std::string NFDFileHandler::handleFile(handleType type, std::vector<Filter>& filters)
+std::string NFDFileHandler::handleFile(handleType type, std::vector<Filter>& filters, const std::string& defaultPath, const std::string& defaultName)
 {
 	nfdchar_t* outPath = nullptr;
 
@@ -49,10 +49,16 @@ std::string NFDFileHandler::handleFile(handleType type, std::vector<Filter>& fil
 
 	nfdresult_t result = NFD_ERROR;
 
+	/* The dialog copies what it needs out of these, so a temporary would do,
+	   but keeping them alive for the call costs nothing and reads the same as
+	   the filters above. */
+	const nfdchar_t* startDirectory = defaultPath.empty() ? nullptr : defaultPath.c_str();
+	const nfdchar_t* startName = defaultName.empty() ? nullptr : defaultName.c_str();
+
 	if (type == handleType::SAVE)
-		result = NFD_SaveDialog(&outPath, filterData, filterCount, NULL, NULL);
+		result = NFD_SaveDialog(&outPath, filterData, filterCount, startDirectory, startName);
 	else if (type == handleType::OPEN)
-		result = NFD_OpenDialog(&outPath, filterData, filterCount, NULL);
+		result = NFD_OpenDialog(&outPath, filterData, filterCount, startDirectory);
 	else if (type == handleType::OPENDIR)
 		result = NFD_PickFolder(&outPath, NULL);
 

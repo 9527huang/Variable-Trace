@@ -74,6 +74,8 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 
 	if (ImPlot::BeginPlot(plot->getName().c_str(), ImVec2(-1, -1), ImPlotFlags_NoChild))
 	{
+		recordDrawnPlot(plot->getName());
+
 		Variable* xAxisVariable = plot->getXAxisVariable();
 		std::string xLabel = xAxisVariable ? xAxisVariable->getName() : "";
 
@@ -126,6 +128,8 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 
 	if (ImPlot::BeginPlot(plot->getName().c_str(), ImVec2(-1, -1), ImPlotFlags_NoChild))
 	{
+		recordDrawnPlot(plot->getName());
+
 		if (viewerDataHandler->getState() == DataHandlerBase::State::RUN)
 		{
 			ViewerDataHandler::Settings settings = viewerDataHandler->getSettings();
@@ -203,6 +207,8 @@ void Gui::drawPlotBar(std::shared_ptr<Plot> plot)
 
 	if (ImPlot::BeginPlot(plot->getName().c_str(), ImVec2(-1, -1), ImPlotFlags_NoChild))
 	{
+		recordDrawnPlot(plot->getName());
+
 		std::vector<const char*> glabels;
 		std::vector<double> positions;
 
@@ -316,6 +322,10 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 			ImGui::EndDisabled();
 		}
 		ImGui::EndTable();
+
+		/* A table has no plot area to ask for, so its rectangle is taken from
+		   the table item that was just closed. */
+		recordDrawnPlot(plot->getName(), ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 
 		if (ImGui::BeginDragDropTarget())
 		{

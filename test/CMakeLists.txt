@@ -44,6 +44,7 @@ include_directories(${EXECUTABLE}
     ${CMAKE_SOURCE_DIR}/src/MovingAverage
     ${CMAKE_SOURCE_DIR}/src/Flashing
     ${CMAKE_SOURCE_DIR}/src/WritePlanner
+    ${CMAKE_SOURCE_DIR}/src/Screenshot
     ${CMAKE_SOURCE_DIR}/src/CSVStreamer)
 
 include_directories(${EXECUTABLE} SYSTEM PRIVATE
@@ -52,6 +53,7 @@ include_directories(${EXECUTABLE} SYSTEM PRIVATE
     ${CMAKE_SOURCE_DIR}/third_party/imgui
     ${CMAKE_SOURCE_DIR}/third_party/implot
     ${CMAKE_SOURCE_DIR}/third_party/http
+    ${CMAKE_SOURCE_DIR}/third_party/stb
     # The acquisition data handler includes its probe headers, so the vendor
     # headers have to be reachable even though no probe is built here.
     ${CMAKE_SOURCE_DIR}/third_party/jlink/inc
@@ -71,6 +73,10 @@ set(SOURCES
     # same process handling the application uses.
     ${CMAKE_SOURCE_DIR}/src/Flashing/FlashingService.cpp
     ${CMAKE_SOURCE_DIR}/src/WritePlanner/WritePlanner.cpp
+    # Both are free of OpenGL, so the naming rules and the PNG writer are
+    # exercised here even though the capture itself needs a window.
+    ${CMAKE_SOURCE_DIR}/src/Screenshot/PlotExport.cpp
+    ${CMAKE_SOURCE_DIR}/src/Screenshot/PngWriter.cpp
     ${CMAKE_SOURCE_DIR}/src/CSVStreamer/CSVStreamer.cpp
     ${CMAKE_SOURCE_DIR}/src/MovingAverage/MovingAverage.cpp
     ${CMAKE_SOURCE_DIR}/src/DataHandler/ViewerDataHandler.cpp
@@ -127,6 +133,8 @@ add_executable(${EXECUTABLE} main.cpp
     VariableTest.cpp
     ProjectHandlerTest.cpp
     WritePlannerTest.cpp
+    PlotExportTest.cpp
+    PngWriterTest.cpp
     FlashingServiceTest.cpp
     FlashingToolsTest.cpp
     McpServerTest.cpp

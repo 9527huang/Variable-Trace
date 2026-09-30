@@ -242,6 +242,15 @@ void Gui::mainThread(std::string externalPath)
 		}
 		ImGui::End();
 
+		/* The image save runs after the frame has been drawn, so a message it
+		   produced is held until the next frame, which is the first one with a
+		   window to open a popup on. */
+		if (!pendingPlotImageMessage.empty())
+		{
+			popup.show(pendingPlotImageTitle.c_str(), pendingPlotImageMessage.c_str(), pendingPlotImageSeconds);
+			pendingPlotImageMessage.clear();
+		}
+
 		popup.handle();
 		flashPopup.handle();
 
@@ -251,6 +260,10 @@ void Gui::mainThread(std::string externalPath)
 		glfwGetFramebufferSize(window, &display_w, &display_h);
 		glViewport(0, 0, display_w, display_h);
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+		/* The back buffer still holds this frame and is about to be handed to
+		   the screen, which is the only moment its pixels can be read. */
+		processPlotImages();
 
 		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 		{
@@ -301,6 +314,12 @@ void Gui::drawMenu()
 
 		if (ImGui::MenuItem("Save As.."))
 			saveProjectAs();
+
+		/* Saving the plots does not touch the model, so it stays available
+		   while an acquisition is running. That is when the plots are worth
+		   keeping in the first place. */
+		if (ImGui::MenuItem("Save Plots to *.png", "Ctrl+P", false, true))
+			requestPlotImages();
 
 		if (ImGui::MenuItem("Quit"))
 			shouldSaveOnClose = true;
@@ -800,7 +819,7 @@ void Gui::drawPreferencesWindow()
 		ImGui::OpenPopup("Preferences");
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(500 * GuiHelper::contentScale, 520 * GuiHelper::contentScale));
+	ImGui::SetNextWindowSize(ImVec2(500 * GuiHelper::contentScale, 660 * GuiHelper::contentScale));
 	if (ImGui::BeginPopupModal("Preferences", &showPreferencesWindow, 0))
 	{
 		ImGuiIO& io = ImGui::GetIO();
@@ -863,6 +882,9 @@ void Gui::drawPreferencesWindow()
 		   waiting for the next launch. */
 		if (settings.mcpEnabled != mcpWasEnabled || settings.mcpPreferredPort != mcpWasPort)
 			applyMcpSettings();
+
+		ImGui::Separator();
+		drawPlotExportSettings();
 
 		const float buttonHeight = 25.0f * GuiHelper::contentScale;
 		ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowSize().y - buttonHeight / 2.0f - ImGui::GetFrameHeightWithSpacing()));
@@ -1323,6 +1345,14 @@ bool Gui::openLogDirectory(std::string& logDirectory)
 void Gui::checkShortcuts()
 {
 	const ImGuiIO& io = ImGui::GetIO();
+
+	/* Plots are worth saving precisely while an acquisition is filling them, so
+	   this one is not held back by the gate below.
+	   The second argument turns off key repeat: with it on, holding the two
+	   keys down would save the same plots again on every repeat, and each pass
+	   would overwrite the files the previous one had just numbered. */
+	if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_P, false))
+		requestPlotImages();
 
 	/* The File menu disables these entries while an acquisition is running,
 	   because loading a project replaces the whole variable and plot model. */

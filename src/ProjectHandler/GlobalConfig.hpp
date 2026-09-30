@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "FlashingService.hpp"
+#include "PlotExport.hpp"
 #include "spdlog/spdlog.h"
 
 /*
@@ -40,6 +41,10 @@ class GlobalConfig
 		   machine rather than to the project being debugged, so the command
 		   template lives here and not in the project file. */
 		FlashingService::FlashSettings flash{};
+
+		/* Plot export. An export directory belongs to the machine in the same
+		   way the programmer does, so this lives here as well. */
+		plotExport::Settings plotExport{};
 	};
 
 	explicit GlobalConfig(spdlog::logger* logger);
