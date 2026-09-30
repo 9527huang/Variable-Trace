@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <vector>
 
 #include "PlotExport.hpp"
 
@@ -130,4 +131,74 @@ TEST(PlotExportTest, anEmptyDirectoryLeavesABareFileName)
 
 	/* The dialog then decides, or the file lands in the working directory. */
 	EXPECT_EQ(plotExport::imagePath(settings, 0, 1), "MCUViewer_screenshot.png");
+}
+
+TEST(PlotExportTest, aSingleTargetIsTheNameOnItsOwn)
+{
+	plotExport::Settings settings;
+	settings.directory = "D:/shots";
+
+	const std::vector<std::string> targets = plotExport::targetPaths(settings, 1);
+
+	ASSERT_EQ(targets.size(), 1);
+	EXPECT_EQ(targets.at(0), "D:/shots/MCUViewer_screenshot.png");
+}
+
+TEST(PlotExportTest, aLongRunIsRepresentedByItsFirstTwo)
+{
+	plotExport::Settings settings;
+	settings.directory = "D:/shots";
+
+	/* The dialog prints these and says how many there are, so a run of twenty
+	   does not grow the list it has to read. */
+	const std::vector<std::string> targets = plotExport::targetPaths(settings, 20);
+
+	ASSERT_EQ(targets.size(), 2);
+	EXPECT_EQ(targets.at(0), "D:/shots/MCUViewer_screenshot_1.png");
+	EXPECT_EQ(targets.at(1), "D:/shots/MCUViewer_screenshot_2.png");
+}
+
+TEST(PlotExportTest, aRunOfTwoIsShownInFull)
+{
+	plotExport::Settings settings;
+
+	const std::vector<std::string> targets = plotExport::targetPaths(settings, 2);
+
+	ASSERT_EQ(targets.size(), 2);
+	EXPECT_EQ(targets.at(0), "MCUViewer_screenshot_1.png");
+	EXPECT_EQ(targets.at(1), "MCUViewer_screenshot_2.png");
+}
+
+TEST(PlotExportTest, nothingToWriteHasNoTargets)
+{
+	plotExport::Settings settings;
+
+	EXPECT_TRUE(plotExport::targetPaths(settings, 0).empty());
+}
+
+TEST(PlotExportTest, targetsFollowTheNameThatIsBeingTyped)
+{
+	plotExport::Settings settings;
+	settings.directory = "D:/shots";
+	settings.fileName = "my plots";
+
+	/* The dialog calls this on every frame, so a half typed name has to come
+	   back cleaned rather than throw or keep the forbidden characters. */
+	const std::vector<std::string> targets = plotExport::targetPaths(settings, 3);
+
+	ASSERT_EQ(targets.size(), 2);
+	EXPECT_EQ(targets.at(0), "D:/shots/my plots_1.png");
+}
+
+TEST(PlotExportTest, aRunWithoutIncrementingShowsTheSameTargetTwice)
+{
+	plotExport::Settings settings;
+	settings.incrementFileName = false;
+
+	/* The dialog reads the repeat as the warning it is: every plot goes to one
+	   file and only the last one is left. */
+	const std::vector<std::string> targets = plotExport::targetPaths(settings, 4);
+
+	ASSERT_EQ(targets.size(), 2);
+	EXPECT_EQ(targets.at(0), targets.at(1));
 }

@@ -86,3 +86,15 @@ std::string plotExport::imagePath(const Settings& settings, size_t index, size_t
 {
 	return joinPath(settings.directory, imageFileName(settings, index, count));
 }
+
+std::vector<std::string> plotExport::targetPaths(const Settings& settings, size_t count)
+{
+	std::vector<std::string> paths;
+
+	const size_t shown = count < 2 ? count : 2;
+
+	for (size_t index = 0; index < shown; index++)
+		paths.push_back(imagePath(settings, index, count));
+
+	return paths;
+}

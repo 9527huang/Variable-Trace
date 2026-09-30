@@ -201,6 +201,7 @@ void Gui::mainThread(std::string externalPath)
 		drawMenu();
 		drawAboutWindow();
 		drawPreferencesWindow();
+		drawPlotExportDialog();
 		drawRecorderWindow();
 		drawFlashOutputWindow();
 		drawFlashingSettingsWindow();
@@ -263,7 +264,7 @@ void Gui::mainThread(std::string externalPath)
 
 		/* The back buffer still holds this frame and is about to be handed to
 		   the screen, which is the only moment its pixels can be read. */
-		processPlotImages();
+		capturePlotImages();
 
 		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 		{

@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 /*
  * The naming and path rules behind File -> Save Plots to *.png.
@@ -54,6 +55,16 @@ namespace plotExport
 
 	/* The full path of one image of a run, ready for the writer. */
 	std::string imagePath(const Settings& settings, size_t index, size_t count);
+
+	/* The paths a run of `count` images will write, for the export dialog to
+	   show before any file exists.
+	 *
+	 * At most two are returned. A longer run numbers its files in one pattern,
+	 * so the first two carry the whole meaning and the caller says how many
+	 * there are; listing all of them would grow the dialog with the plot count
+	 * and tell the reader nothing new. An empty result means there is nothing
+	 * to write. */
+	std::vector<std::string> targetPaths(const Settings& settings, size_t count);
 }
 
 #endif

@@ -160,11 +160,45 @@ class Gui
 		ImVec2 max;
 	};
 
-	/* Set while a save is on its way. Collecting rectangles costs nothing the
-	   rest of the time, which matters because this runs for every plot of
+	/* One plot taken off the frame, held until the export dialog has been
+	   answered.
+	   The pixels have to be read while the frame is still in the back buffer,
+	   which is the one moment they exist; the dialog that names the files can
+	   only be shown on a later frame. Keeping them here is what lets the
+	   dialog say how many files it is about to write and what each of them is
+	   called. */
+	struct PlotImage
+	{
+		std::string name;
+		int width = 0;
+		int height = 0;
+		std::vector<uint8_t> rgba;
+	};
+
+	/* Set while a capture is on its way. Collecting rectangles costs nothing
+	   the rest of the time, which matters because this runs for every plot of
 	   every frame. */
 	bool plotImagesRequested = false;
 	std::vector<DrawnPlot> drawnPlots;
+
+	/* The plots of the frame that was just captured. They outlive the frame,
+	   unlike `drawnPlots`, because the decision about their names comes after
+	   it. */
+	std::vector<PlotImage> pendingPlotImages;
+
+	/* Whether the export dialog is up. Its body reads the settings that name
+	   the files, so it doubles as the point where the naming is confirmed. */
+	bool plotExportDialogOpen = false;
+	/* Set together with the flag above, and cleared by the dialog the first
+	   time its body is drawn. The focus is asked for on that frame rather than
+	   on the frame the window reports itself as appearing: a popup that has
+	   been opened before is not always reported that way, and a dialog that
+	   opens without the keyboard on the name is one where typing continues the
+	   old name instead of replacing it. */
+	bool plotExportDialogFocusName = false;
+	/* Shown inside the dialog when a write failed, so the answer is one
+	   correction away instead of a dismissed dialog and a lost screenshot. */
+	std::string plotExportError;
 
 	/* A message the save produced. It is handed to the popup at the start of
 	   the next frame, because the save runs after the frame has been rendered
@@ -304,11 +338,12 @@ class Gui
 	void drawWritePlannerWindow();
 
 	/* --------------------------------------------------------- screenshots */
-	/* Asks for every visible plot to be written as a PNG once the frame it
-	   belongs to has been rendered. */
+	/* Asks for every visible plot to be written as a PNG. The frame they are
+	   drawn on is captured at the end of that frame, and the naming follows in
+	   the export dialog on the next one. */
 	void requestPlotImages();
 	/* Remembers where a plot ended up on screen. Called from inside the plot,
-	   and only while a save is pending.
+	   and only while a capture is pending.
 	   The first form reads the rectangle ImGui registered for the frame the
 	   plot was given, so it is valid right after BeginPlot and must not be
 	   moved later in the body, where the setup calls of the plot would come
@@ -317,9 +352,11 @@ class Gui
 	void recordDrawnPlot(const std::string& name);
 	void recordDrawnPlot(const std::string& name, const ImVec2& min, const ImVec2& max);
 	/* Reads the pixels of the plots of the frame that has just been rendered
-	   and writes them out. Called between rendering and the buffer swap,
-	   because after the swap the pixels are no longer there to read. */
-	void processPlotImages();
+	   into `pendingPlotImages`. Called between rendering and the buffer swap,
+	   because after the swap the pixels are no longer there to read.
+	   This is also where the export dialog is opened, and where a run that
+	   asks for a location per image is written without one. */
+	void capturePlotImages();
 	/* Copies one rectangle of the framebuffer into `rgba`, top row first.
 	   Returns false when the rectangle holds no visible pixels, which is what
 	   an off screen or collapsed plot gives. */
@@ -332,7 +369,16 @@ class Gui
 		Cancelled = 1,
 		Failed = 2,
 	};
-	SaveOutcome savePlotImage(const DrawnPlot& plot, const plotExport::Settings& settings, size_t index, size_t count, std::string& error);
+	SaveOutcome savePlotImage(const PlotImage& image, const plotExport::Settings& settings, size_t index, size_t count, std::string& error);
+	/* Writes every captured plot. Returns false when at least one of them
+	   failed, leaving `plotExportError` set and the pixels in hand so the same
+	   run can be tried again with a corrected path. On any other answer the
+	   pixels are released. */
+	bool writePlotImages();
+	/* The export dialog. It appears between the capture and the write, which is
+	   the only point at which the number of images is known and none of the
+	   files exist yet. */
+	void drawPlotExportDialog();
 	/* The Plot export section of the preferences window. */
 	void drawPlotExportSettings();
 
