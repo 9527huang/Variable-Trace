@@ -109,6 +109,49 @@ bool StlinkDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size
 	return stlink_write_mem8(sl, address, size) == 0;
 }
 
+bool StlinkDebugProbe::readBlock(uint32_t address, uint8_t* buf, uint32_t size)
+{
+	std::lock_guard<std::mutex> lock(mtx);
+
+	if (!isRunning)
+		return false;
+
+	/* stlink_read_mem32 fetches a range in one transaction but wants a length
+	   that is a multiple of four, so the range is walked in aligned chunks and
+	   served from the driver buffer. Chunks are kept well below the size of that
+	   buffer, which is a hundred kilobytes. */
+	constexpr uint32_t chunkSize = 1024;
+
+	uint32_t transferred = 0;
+
+	while (transferred < size)
+	{
+		const uint32_t remaining = size - transferred;
+
+		if (remaining < 4)
+		{
+			uint32_t value = 0;
+
+			if (stlink_read_debug32(sl, address + transferred, &value) != 0)
+				return false;
+
+			std::memcpy(buf + transferred, &value, remaining);
+			transferred += remaining;
+			break;
+		}
+
+		const uint32_t chunk = std::min<uint32_t>(chunkSize, remaining & ~3u);
+
+		if (stlink_read_mem32(sl, address + transferred, static_cast<uint16_t>(chunk)) != 0)
+			return false;
+
+		std::memcpy(buf + transferred, sl->q_buf, chunk);
+		transferred += chunk;
+	}
+
+	return true;
+}
+
 std::string StlinkDebugProbe::getLastErrorMsg() const
 {
 	return lastErrorMsg;

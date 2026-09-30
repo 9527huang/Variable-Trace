@@ -1,8 +1,11 @@
 #include "ConfigHandler.hpp"
 
+#include <map>
 #include <memory>
 #include <random>
+#include <utility>
 #include <variant>
+#include <vector>
 
 #include "IDebugProbe.hpp"
 #include "ITraceProbe.hpp"
@@ -203,6 +206,12 @@ void ConfigHandler::loadPlotGroups()
 
 	plotGroupHandler->removeAllGroups();
 
+	/* Legacy sections are keyed by index, so a parent group travels as the index
+	   of its parent rather than by name. The index is turned back into a name
+	   once every group of the file has been read. */
+	std::map<uint32_t, std::string> groupNamesById;
+	std::vector<std::pair<std::string, int64_t>> pendingParents;
+
 	while (!groupName.empty())
 	{
 		std::string sectionName("group" + std::to_string(groupNumber));
@@ -212,6 +221,23 @@ void ConfigHandler::loadPlotGroups()
 		{
 			auto group = plotGroupHandler->addGroup(groupName);
 			logger->info("Adding group: {}", groupName);
+
+			groupNamesById[groupNumber] = groupName;
+
+			const std::string parent = ini->get(sectionName).get("parent");
+
+			if (!parent.empty())
+			{
+				try
+				{
+					pendingParents.emplace_back(groupName, std::stoll(parent));
+				}
+				catch (const std::exception&)
+				{
+					logger->warn("Group {} has an unreadable parent index: {}", groupName, parent);
+				}
+			}
+
 			uint32_t plotNumber = 0;
 			std::string plotName = ini->get(plotGroupFieldFromID(groupNumber, plotNumber)).get("name");
 			std::string visibilityStr = ini->get(plotGroupFieldFromID(groupNumber, plotNumber)).get("visibility");
@@ -230,6 +256,23 @@ void ConfigHandler::loadPlotGroups()
 		}
 		groupNumber++;
 	}
+
+	for (const auto& [name, parentId] : pendingParents)
+	{
+		auto parent = groupNamesById.find(static_cast<uint32_t>(parentId));
+
+		/* A parent index that is not in the file would hide the group under a
+		   name nobody can reach, so the group stays at the top level. */
+		if (parentId < 0 || parent == groupNamesById.end())
+		{
+			logger->warn("Group {} names a parent that is not in the config: {}", name, parentId);
+			continue;
+		}
+
+		if (!plotGroupHandler->moveGroup(name, parent->second))
+			logger->warn("Group {} cannot be nested in {}", name, parent->second);
+	}
+
 	/* Add all plots to the first group if there are no groups */
 	if (plotGroupHandler->getGroupCount() == 0)
 	{
@@ -467,13 +510,25 @@ mINI::INIStructure ConfigHandler::prepareSaveConfigFile(const std::string& elfPa
 		plotId++;
 	}
 
+	/* The parent group is stored as the index of the parent section, because two
+	   groups of a legacy config could carry the same name and the index is what
+	   the file already uses to tell them apart. -1 means a top-level group. */
+	std::map<std::string, uint32_t> groupIds;
+	uint32_t nextGroupId = 0;
+
+	for (const auto& [name, group] : *plotGroupHandler)
+		groupIds[name] = nextGroupId++;
+
 	uint32_t groupId = 0;
 	for (auto& [name, group] : *plotGroupHandler)
 	{
 		(configIni)[groupFieldFromID(groupId)]["name"] = group->getName();
 
+		auto parent = groupIds.find(group->getParentName());
+		(configIni)[groupFieldFromID(groupId)]["parent"] = parent == groupIds.end() ? "-1" : std::to_string(parent->second);
+
 		uint32_t plotId = 0;
-		for (auto& [name, plotElem] : *group)
+		for (auto& [plotName, plotElem] : *group)
 		{
 			auto plot = plotElem.plot;
 			bool visibility = plotElem.visibility;

@@ -48,7 +48,15 @@ class WindowsProcessHandler
 		buffer.fill(0);
 
 		if (pipes.first == nullptr || pipes.second == nullptr)
+		{
 			pipes = popen2(cmd.c_str());
+
+			/* The program could not be started - the path is wrong, or the
+			   directory is not readable. Handing a null stream to the C library
+			   is not something it has to survive, so it is not attempted. */
+			if (pipes.first == nullptr || pipes.second == nullptr)
+				return {};
+		}
 		else
 		{
 			fputs(cmd.c_str(), pipes.first);
@@ -61,6 +69,36 @@ class WindowsProcessHandler
 			if (result.find(endMarker) != std::string::npos)
 				break;
 		}
+
+		return result;
+	}
+
+	/* Reads until the program closes its output, for a program that prints a
+	   result rather than answering at a prompt. Such a program has no marker to
+	   stop at, and searching a marker that never appears would walk the whole
+	   of what has been read on every chunk - which is quadratic on a dump of a
+	   few tens of megabytes. */
+	std::string executeCmdToEnd(std::string cmd)
+	{
+		std::string result{};
+		std::array<char, 4096> buffer;
+		buffer.fill(0);
+
+		if (pipes.first == nullptr || pipes.second == nullptr)
+		{
+			pipes = popen2(cmd.c_str());
+
+			if (pipes.first == nullptr || pipes.second == nullptr)
+				return {};
+		}
+		else
+		{
+			fputs(cmd.c_str(), pipes.first);
+			fflush(pipes.first);
+		}
+
+		while (fgets(buffer.data(), buffer.size(), pipes.second) != nullptr)
+			result += buffer.data();
 
 		return result;
 	}
@@ -153,7 +191,14 @@ class UnixProcessHandler
 		std::array<char, 128> buffer;
 
 		if (pipes.first == nullptr || pipes.second == nullptr)
+		{
 			pipes = popen2(cmd.c_str());
+
+			/* See the Windows handler: a stream that was never opened is not
+			   handed to the C library. */
+			if (pipes.first == nullptr || pipes.second == nullptr)
+				return {};
+		}
 		else
 		{
 			fputs(cmd.c_str(), pipes.first);
@@ -166,6 +211,33 @@ class UnixProcessHandler
 			if (result.find(endMarker) != std::string::npos)
 				break;
 		}
+
+		return result;
+	}
+
+	/* See the Windows handler: a program that prints a result and exits has no
+	   marker to stop at, and looking for one anyway costs a scan of everything
+	   read so far on every chunk. */
+	std::string executeCmdToEnd(std::string cmd)
+	{
+		std::string result{};
+		std::array<char, 4096> buffer;
+
+		if (pipes.first == nullptr || pipes.second == nullptr)
+		{
+			pipes = popen2(cmd.c_str());
+
+			if (pipes.first == nullptr || pipes.second == nullptr)
+				return {};
+		}
+		else
+		{
+			fputs(cmd.c_str(), pipes.first);
+			fflush(pipes.first);
+		}
+
+		while (fgets(buffer.data(), buffer.size(), pipes.second) != nullptr)
+			result += buffer.data();
 
 		return result;
 	}

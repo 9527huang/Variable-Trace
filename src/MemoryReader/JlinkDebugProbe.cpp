@@ -206,6 +206,15 @@ bool JlinkDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size)
 	return (isRunning && JLINKARM_WriteMemEx(address, size, buf, 0) >= 0);
 }
 
+bool JlinkDebugProbe::readBlock(uint32_t address, uint8_t* buf, uint32_t size)
+{
+	std::lock_guard<std::mutex> lock(mtx);
+	/* The J-Link moves the whole range in one call, which is what makes the
+	   recorder buffer download bearable: a word at a time would be some eight
+	   thousand round trips for a full buffer. */
+	return (isRunning && size > 0 && JLINKARM_ReadMemEx(address, size, buf, 0) >= 0);
+}
+
 std::string JlinkDebugProbe::getLastErrorMsg() const
 {
 	return lastErrorMsg;

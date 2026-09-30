@@ -2,6 +2,8 @@
 #define _GUI_VARIABLESEDIT_HPP
 
 #include <algorithm>
+#include <optional>
+#include <vector>
 
 #include "GuiHelper.hpp"
 #include "Popup.hpp"
@@ -177,6 +179,45 @@ class VariableEditWindow
 
 		ImGui::EndDisabled();
 
+		/* WRITE LIMITS */
+		GuiHelper::drawTextAlignedToSize("write limits:", alignment);
+		ImGui::SameLine();
+
+		bool writeLimitsEnabled = editedVariable->getWriteLimitsEnabled();
+
+		if (ImGui::Checkbox("##writeLimitsEnabled", &writeLimitsEnabled))
+		{
+			/* The bounds are kept as they are, because turning the guard back on
+			   should restore the range the user last typed rather than zeroes. */
+			editedVariable->setWriteLimits(writeLimitsEnabled, editedVariable->getWriteMin(), editedVariable->getWriteMax());
+		}
+
+		ImGui::SameLine();
+		ImGui::HelpMarker("When enabled, writing values outside the specified range will be rejected.");
+
+		ImGui::BeginDisabled(!writeLimitsEnabled);
+
+		std::string writeMin = GuiHelper::numberToString(editedVariable->getWriteMin());
+		std::string writeMax = GuiHelper::numberToString(editedVariable->getWriteMax());
+
+		GuiHelper::drawTextAlignedToSize("min:", alignment);
+		ImGui::SameLine();
+		if (ImGui::InputText("##writeLimitMin", &writeMin, ImGuiInputTextFlags_CharsDecimal, NULL, NULL))
+			editedVariable->setWriteLimits(true, GuiHelper::convertStringToNumber<double>(writeMin), editedVariable->getWriteMax());
+
+		if (ImGui::IsItemDeactivatedAfterEdit() && editedVariable->getWriteMin() > editedVariable->getWriteMax())
+			popup.show("Error!", "Min value cannot be greater than max value!", 1.5f);
+
+		GuiHelper::drawTextAlignedToSize("max:", alignment);
+		ImGui::SameLine();
+		if (ImGui::InputText("##writeLimitMax", &writeMax, ImGuiInputTextFlags_CharsDecimal, NULL, NULL))
+			editedVariable->setWriteLimits(true, editedVariable->getWriteMin(), GuiHelper::convertStringToNumber<double>(writeMax));
+
+		if (ImGui::IsItemDeactivatedAfterEdit() && editedVariable->getWriteMax() < editedVariable->getWriteMin())
+			popup.show("Error!", "Max value cannot be less than min value!", 1.5f);
+
+		ImGui::EndDisabled();
+
 		/* POSTPROCESSING */
 		ImGui::Dummy(ImVec2(-1, 5));
 		GuiHelper::drawCenteredText("Postprocessing");
@@ -273,6 +314,94 @@ class VariableEditWindow
 				editedVariable->setFractional(fractional);
 			}
 		}
+
+		if (editedVariable->isEnum())
+			drawEnumLabelsEditor();
+	}
+
+	/* The label list of a custom enumeration. An 'enum' interpretation whose
+	   labels come from the symbol file shows the same table, so that a name can
+	   be corrected without switching the interpretation first. */
+	void drawEnumLabelsEditor()
+	{
+		ImGui::Dummy(ImVec2(-1, 3));
+		GuiHelper::drawTextAlignedToSize("fields:", alignment);
+		ImGui::SameLine();
+		ImGui::HelpMarker("Name the values this variable can take. A value without a name is shown as a number.");
+
+		std::vector<Variable::EnumLabel> labels = editedVariable->getEnumLabels();
+		std::optional<size_t> indexToRemove;
+
+		const float rowHeight = 23.0f * GuiHelper::contentScale;
+
+		if (ImGui::BeginTable("##Enum Values", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp, ImVec2(0, 4 * rowHeight)))
+		{
+			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 90 * GuiHelper::contentScale);
+			ImGui::TableSetupColumn("##", ImGuiTableColumnFlags_WidthFixed, 60 * GuiHelper::contentScale);
+			ImGui::TableHeadersRow();
+
+			for (size_t index = 0; index < labels.size(); index++)
+			{
+				ImGui::TableNextRow();
+				ImGui::PushID(static_cast<int>(index));
+
+				ImGui::TableSetColumnIndex(0);
+				std::string label = labels[index].label;
+
+				if (ImGui::InputText("##customEnumLabel", &label, ImGuiInputTextFlags_None, NULL, NULL))
+					labels[index].label = label;
+
+				if (ImGui::IsItemDeactivatedAfterEdit())
+				{
+					bool duplicated = false;
+
+					for (size_t other = 0; other < labels.size(); other++)
+					{
+						if (other != index && labels[other].label == labels[index].label)
+							duplicated = true;
+					}
+
+					if (labels[index].label.empty())
+						popup.show("Error!", "Label cannot be empty!", 1.5f);
+					else if (duplicated)
+						popup.show("Error!", "Label already exists!", 1.5f);
+				}
+
+				ImGui::TableSetColumnIndex(1);
+				std::string value = std::to_string(labels[index].value);
+
+				/* The value field is signed, so the minus sign has to be allowed
+				   through; CharsDecimal accepts digits, a sign and a dot. */
+				if (ImGui::InputText("##customEnumValue", &value, ImGuiInputTextFlags_CharsDecimal, NULL, NULL))
+					labels[index].value = static_cast<int64_t>(GuiHelper::convertStringToNumber<double>(value));
+
+				if (ImGui::IsItemDeactivatedAfterEdit() && value.find_first_not_of("0123456789+-.") != std::string::npos)
+					popup.show("Error!", "Value must be a valid integer!", 1.5f);
+
+				ImGui::TableSetColumnIndex(2);
+				ImGui::PushID("del");
+
+				if (ImGui::Button("Del", ImVec2(-1, rowHeight)))
+					indexToRemove = index;
+
+				ImGui::PopID();
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+		}
+
+		if (ImGui::Button("Add", ImVec2(120 * GuiHelper::contentScale, rowHeight)))
+			labels.push_back({"", 0});
+
+		if (indexToRemove.has_value())
+			labels.erase(labels.begin() + static_cast<std::ptrdiff_t>(*indexToRemove));
+
+		/* Writing the list back on every frame would be wasted work and would
+		   make the labels change under a caller that only meant to look. */
+		if (labels != editedVariable->getEnumLabels())
+			editedVariable->setEnumLabels(labels);
 	}
 
    private:

@@ -1,12 +1,15 @@
 #pragma once
 
+#include <filesystem>
+#include <future>
 #include <set>
 #include <string>
 
-#include "GdbParser.hpp"
+#include "ElfParserFactory.hpp"
 #include "GuiHelper.hpp"
 #include "GuiImportVariables.hpp"
 #include "GuiVariablesEdit.hpp"
+#include "IElfParser.hpp"
 #include "PlotHandler.hpp"
 #include "Popup.hpp"
 #include "Variable.hpp"
@@ -18,15 +21,53 @@ class VariableTableWindow
    public:
 	VariableTableWindow(ViewerDataHandler* viewerDataHandler, PlotHandler* plotHandler, VariableHandler* variableHandler, std::string* projectElfPath, std::string* projectConfigPath, spdlog::logger* logger) : viewerDataHandler(viewerDataHandler), plotHandler(plotHandler), variableHandler(variableHandler), projectElfPath(projectElfPath), projectConfigPath(projectConfigPath), logger(logger)
 	{
-		parser = std::make_shared<GdbParser>(variableHandler, logger);
+		parser = ElfParserFactory::create(IElfParser::Type::Gdb, variableHandler, logger);
+		parserName = parser->getName();
 		variableEditWindow = std::make_shared<VariableEditWindow>(variableHandler);
 		importVariablesWindow = std::make_shared<ImportVariablesWindow>(parser.get(), projectElfPath, projectConfigPath, variableHandler);
+	}
+
+	/* An address refresh made from the API is the same operation as this window
+	   performs, so it has to move the same baseline. Otherwise the window keeps
+	   offering to reload changes that were already applied. */
+	void markElfRefreshed()
+	{
+		lastModifiedTime = std::filesystem::file_time_type::clock::now();
+	}
+
+	/* Follows the setting. A change of parser replaces the object the table
+	   parses with, because the names and the addresses it produced came from a
+	   different reading of the file and cannot be carried across. */
+	void syncParser()
+	{
+		const ViewerDataHandler::Settings settings = viewerDataHandler->getSettings();
+
+		/* A refresh already running holds the parser it started on. Swapping
+		   now would let the old one finish into an object nobody reads from,
+		   and the new one would never see the file. The change is picked up on
+		   the next frame instead. */
+		if (settings.elfParser != parserName && !isRefreshRunning())
+		{
+			parser = ElfParserFactory::create(settings.elfParser, variableHandler, logger);
+			parserName = parser->getName();
+
+			if (importVariablesWindow != nullptr)
+				importVariablesWindow->setParser(parser.get());
+
+			/* The addresses in the table were read by the previous parser, so
+			   the file counts as unread by this one. */
+			markElfRefreshed();
+		}
+
+		ElfParserFactory::applySettings(*parser, settings.gdbCommand, settings.ofd2000Command);
 	}
 
 	void draw()
 	{
 		static ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_Resizable;
 		static std::set<std::string> selection;
+
+		syncParser();
 
 		ImGui::BeginDisabled(viewerDataHandler->getState() == DataHandlerBase::State::RUN);
 		ImGui::Dummy(ImVec2(-1, 5));
@@ -161,13 +202,12 @@ class VariableTableWindow
 
 	void drawUpdateAddressesFromElf()
 	{
-		static std::future<bool> refreshThread{};
 		static bool shouldPopStyle = false;
 
 		static constexpr size_t textSize = 40;
 		char buttonText[textSize]{};
 
-		if (refreshThread.valid() && refreshThread.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+		if (isRefreshRunning())
 			snprintf(buttonText, textSize, "Update variable addresses %c", "|/-\\"[(int)(ImGui::GetTime() / 0.05f) & 3]);
 		else
 		{
@@ -205,9 +245,8 @@ class VariableTableWindow
 
 		if (ImGui::Button(buttonText, ImVec2(-1, 25 * GuiHelper::contentScale)) || performVariablesUpdate)
 		{
-			parser->changeCurrentGDBCommand(viewerDataHandler->getSettings().gdbCommand);
 			lastModifiedTime = std::filesystem::file_time_type::clock::now();
-			refreshThread = std::async(std::launch::async, &GdbParser::updateVariableMap, parser, GuiHelper::convertProjectPathToAbsolute(projectElfPath, projectConfigPath));
+			refreshThread = std::async(std::launch::async, &IElfParser::updateVariableMap, parser, GuiHelper::convertProjectPathToAbsolute(projectElfPath, projectConfigPath));
 			performVariablesUpdate = false;
 		}
 
@@ -218,6 +257,11 @@ class VariableTableWindow
 			shouldPopStyle = false;
 		}
 		ImGui::EndDisabled();
+	}
+
+	bool isRefreshRunning()
+	{
+		return refreshThread.valid() && refreshThread.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
 	}
 
 	bool checkElfFileChanged()
@@ -261,11 +305,19 @@ class VariableTableWindow
 	spdlog::logger* logger;
 
 	Popup popup;
-	std::shared_ptr<GdbParser> parser;
+	std::shared_ptr<IElfParser> parser;
+	/* The name the parser above was built from, so that a change of setting can
+	   be noticed without keeping a second copy of the settings. */
+	std::string parserName;
 	std::shared_ptr<VariableEditWindow> variableEditWindow;
 	std::shared_ptr<ImportVariablesWindow> importVariablesWindow;
 
 	std::filesystem::file_time_type lastModifiedTime = std::filesystem::file_time_type::clock::now();
+
+	/* Owned by the window rather than by the drawing function, because the
+	   parser is replaced between frames and a refresh in flight must not be
+	   mistaken for one on the new parser. */
+	std::future<bool> refreshThread{};
 
 	bool performVariablesUpdate = false;
 };

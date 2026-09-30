@@ -1,5 +1,8 @@
 #include "Gui.hpp"
 
+#include "LibDwarfParser.hpp"
+#include "TiOfdParser.hpp"
+
 static constexpr size_t alignment = 30;
 
 void Gui::drawAcqusitionSettingsScope(ActiveViewType type)
@@ -66,7 +69,7 @@ void Gui::acqusitionSettingsViewer()
 
 	drawDebugProbes();
 	drawLoggingSettings(plotHandler, settings);
-	drawGdbSettings(settings);
+	drawElfSettings(settings);
 	viewerDataHandler->setSettings(settings);
 }
 
@@ -86,28 +89,25 @@ void Gui::drawDebugProbes()
 	GuiHelper::drawTextAlignedToSize("Debug probe:", alignment);
 	ImGui::SameLine();
 
-	const char* debugProbes[] = {"STLINK", "JLINK"};
+	const char* debugProbes[] = {"STLINK", "JLINK", "SERIAL"};
 	IDebugProbe::DebugProbeSettings probeSettings = viewerDataHandler->getProbeSettings();
-	int32_t debugProbe = probeSettings.debugProbe;
+	int32_t debugProbe = static_cast<int32_t>(probeSettings.debugProbe);
 
 	if (ImGui::Combo("##debugProbe", &debugProbe, debugProbes, IM_ARRAYSIZE(debugProbes)))
 	{
-		probeSettings.debugProbe = debugProbe;
+		probeSettings.debugProbe = static_cast<uint32_t>(debugProbe);
 		modified = true;
 
-		if (probeSettings.debugProbe == 1)
-		{
-			debugProbeDevice = jlinkProbe;
-			shouldListDevices = true;
-		}
-		else
-		{
-			debugProbeDevice = stlinkProbe;
-			shouldListDevices = true;
-		}
+		/* The list holds serial numbers for the two hardware probes and port
+		   names for the serial one, so it is rebuilt whenever the type moves. */
+		debugProbeDevice = probeForType(probeSettings.debugProbe);
+		shouldListDevices = true;
 		SNptr = 0;
 	}
-	GuiHelper::drawTextAlignedToSize("Debug probe S/N:", alignment);
+
+	const bool isSerial = probeSettings.debugProbe == IDebugProbe::Probe::Serial;
+
+	GuiHelper::drawTextAlignedToSize(isSerial ? "Serial port:" : "Debug probe S/N:", alignment);
 	ImGui::SameLine();
 
 	if (ImGui::Combo("##debugProbeSN", &SNptr, devicesList))
@@ -129,13 +129,30 @@ void Gui::drawDebugProbes()
 		shouldListDevices = false;
 	}
 
-	GuiHelper::drawTextAlignedToSize("SWD speed [kHz]:", alignment);
-	ImGui::SameLine();
+	if (isSerial)
+	{
+		/* The port carries the driver protocol and nothing else, so the only
+		   setting left is the line speed. */
+		GuiHelper::drawTextAlignedToSize("Baudrate:", alignment);
+		ImGui::SameLine();
 
-	if (ImGui::InputScalar("##speed", ImGuiDataType_U32, &probeSettings.speedkHz, NULL, NULL, "%u"))
-		modified = true;
+		if (ImGui::InputScalar("##baudrate", ImGuiDataType_U32, &probeSettings.baudrate, NULL, NULL, "%u"))
+			modified = true;
 
-	if (probeSettings.debugProbe == 1)
+		ImGui::SameLine();
+		ImGui::HelpMarker("Line speed of the serial port. It has to match the baud rate the target firmware configures for its UART.");
+		probeSettings.mode = IDebugProbe::Mode::NORMAL;
+	}
+	else
+	{
+		GuiHelper::drawTextAlignedToSize("SWD speed [kHz]:", alignment);
+		ImGui::SameLine();
+
+		if (ImGui::InputScalar("##speed", ImGuiDataType_U32, &probeSettings.speedkHz, NULL, NULL, "%u"))
+			modified = true;
+	}
+
+	if (probeSettings.debugProbe == IDebugProbe::Probe::Jlink)
 	{
 		GuiHelper::drawTextAlignedToSize("Target name:", alignment);
 		ImGui::SameLine();
@@ -178,7 +195,7 @@ void Gui::drawDebugProbes()
 			ImGui::PopStyleColor();
 		}
 	}
-	else
+	else if (!isSerial)
 		probeSettings.mode = IDebugProbe::Mode::NORMAL;
 
 	if (devicesList.empty())
@@ -220,16 +237,95 @@ void Gui::drawLoggingSettings(PlotHandler* handler, Settings& settings)
 	ImGui::PopID();
 }
 
-void Gui::drawGdbSettings(ViewerDataHandler::Settings& settings)
+void Gui::drawElfSettings(ViewerDataHandler::Settings& settings)
 {
 	ImGui::PushID("advanced");
 	ImGui::Dummy(ImVec2(-1, 5));
 	GuiHelper::drawCenteredText("Advanced");
 	ImGui::Separator();
 
-	GuiHelper::drawTextAlignedToSize("GDB command:", alignment);
+	/* The parser comes first, because which program has to be named below it
+	   depends on which one is chosen. */
+	const std::vector<IElfParser::Type> types = ElfParserFactory::availableTypes();
+
+	std::vector<std::string> labels;
+	labels.reserve(types.size());
+
+	int current = 0;
+
+	for (size_t index = 0; index < types.size(); index++)
+	{
+		labels.push_back(ElfParserFactory::labelOf(types[index]));
+
+		if (IElfParser::nameOf(types[index]) == settings.elfParser)
+			current = static_cast<int>(index);
+	}
+
+	std::vector<const char*> labelPointers;
+	labelPointers.reserve(labels.size());
+
+	for (const std::string& label : labels)
+		labelPointers.push_back(label.c_str());
+
+	GuiHelper::drawTextAlignedToSize("*.elf parser:", alignment);
 	ImGui::SameLine();
-	ImGui::InputText("##gdb", &settings.gdbCommand, 0, NULL, NULL);
+
+	if (ImGui::Combo("##elfParser", &current, labelPointers.data(), static_cast<int>(labelPointers.size())))
+		settings.elfParser = IElfParser::nameOf(types[static_cast<size_t>(current)]);
+
+	ImGui::SameLine();
+	ImGui::HelpMarker("Choose the ELF parser.");
+
+	ImGui::SameLine();
+	ImGui::HelpMarker("GDB: reliable, default. DWARF: faster variable address updates (beta). C2000: for TI C2000 targets, uses ofd2000.");
+
+	const IElfParser::Type selected = types[static_cast<size_t>(current)];
+
+	if (selected == IElfParser::Type::Gdb)
+	{
+		GuiHelper::drawTextAlignedToSize("GDB command:", alignment);
+		ImGui::SameLine();
+		ImGui::InputText("##gdb", &settings.gdbCommand, 0, NULL, NULL);
+		ImGui::SameLine();
+		ImGui::HelpMarker("Change to other GDB variant if needed. Given program will be run to update variables addresses.");
+	}
+	else if (selected == IElfParser::Type::TiOfd)
+	{
+		GuiHelper::drawTextAlignedToSize("ofd2000 path:", alignment);
+		ImGui::SameLine();
+		ImGui::InputText("##ofd2000Path", &settings.ofd2000Command, 0, NULL, NULL);
+		ImGui::SameLine();
+
+		if (ImGui::Button("...", ImVec2(35 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
+		{
+			const std::string picked = fileHandler->openFile({{"ofd2000 executable", "exe"}, {"All files", "*"}});
+
+			if (!picked.empty())
+				settings.ofd2000Command = picked;
+		}
+
+		ImGui::SameLine();
+		ImGui::HelpMarker("Auto-detected from the TI C2000 code generation tools / Code Composer Studio install. Override here if not found automatically.");
+
+		GuiHelper::drawTextAlignedToSize("ofd2000 status:", alignment);
+		ImGui::SameLine();
+
+		if (TiOfdParser::toolExists(settings.ofd2000Command))
+			ImGui::TextUnformatted("OK");
+		else
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight);
+			ImGui::TextUnformatted("NOT FOUND. Please set the ofd2000 path manually");
+			ImGui::PopStyleColor();
+		}
+	}
+	else if (!LibDwarfParser::isCompiledIn())
+	{
+		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight);
+		GuiHelper::drawCenteredText("This build was compiled without the DWARF library, so this parser cannot read a file.");
+		ImGui::PopStyleColor();
+	}
+
 	ImGui::PopID();
 }
 

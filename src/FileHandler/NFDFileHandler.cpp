@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "nfd.h"
 
@@ -16,32 +17,42 @@ bool NFDFileHandler::deinit()
 	return true;
 }
 
-std::string NFDFileHandler::openFile(std::pair<std::string, std::string>&& filterFileNameFileExtension)
+std::string NFDFileHandler::openFile(std::vector<Filter>&& filters)
 {
-	return handleFile(handleType::OPEN, filterFileNameFileExtension);
+	return handleFile(handleType::OPEN, filters);
 }
 
-std::string NFDFileHandler::saveFile(std::pair<std::string, std::string>&& filterFileNameFileExtension)
+std::string NFDFileHandler::saveFile(std::vector<Filter>&& filters)
 {
-	return handleFile(handleType::SAVE, filterFileNameFileExtension);
+	return handleFile(handleType::SAVE, filters);
 }
 
-std::string NFDFileHandler::openDirectory(std::pair<std::string, std::string>&& filterFileNameFileExtension)
+std::string NFDFileHandler::openDirectory(std::vector<Filter>&& filters)
 {
-	return handleFile(handleType::OPENDIR, filterFileNameFileExtension);
+	return handleFile(handleType::OPENDIR, filters);
 }
 
-std::string NFDFileHandler::handleFile(handleType type, std::pair<std::string, std::string>& filterFileNameFileExtension)
+std::string NFDFileHandler::handleFile(handleType type, std::vector<Filter>& filters)
 {
 	nfdchar_t* outPath = nullptr;
-	nfdfilteritem_t filterItem[1] = {{filterFileNameFileExtension.first.c_str(), filterFileNameFileExtension.second.c_str()}};
+
+	/* The dialog keeps pointers into these entries while it is open, so the
+	   strings have to outlive the call and the vector must not be resized. */
+	std::vector<nfdfilteritem_t> filterItems;
+	filterItems.reserve(filters.size());
+
+	for (const Filter& filter : filters)
+		filterItems.push_back({filter.first.c_str(), filter.second.c_str()});
+
+	const nfdfilteritem_t* filterData = filterItems.empty() ? nullptr : filterItems.data();
+	const nfdfiltersize_t filterCount = static_cast<nfdfiltersize_t>(filterItems.size());
 
 	nfdresult_t result = NFD_ERROR;
 
 	if (type == handleType::SAVE)
-		result = NFD_SaveDialog(&outPath, filterItem, 1, NULL, NULL);
+		result = NFD_SaveDialog(&outPath, filterData, filterCount, NULL, NULL);
 	else if (type == handleType::OPEN)
-		result = NFD_OpenDialog(&outPath, filterItem, 1, NULL);
+		result = NFD_OpenDialog(&outPath, filterData, filterCount, NULL);
 	else if (type == handleType::OPENDIR)
 		result = NFD_PickFolder(&outPath, NULL);
 

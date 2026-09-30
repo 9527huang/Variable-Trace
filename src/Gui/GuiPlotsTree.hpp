@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -22,9 +23,6 @@ class PlotsTree
 	void draw()
 	{
 		const uint32_t windowHeight = 350 * GuiHelper::contentScale;
-		static std::string selectedGroup = "";
-		static std::string selectedPlot = "";
-		std::optional<std::string> plotNameToDelete = {};
 
 		ImGui::Dummy(ImVec2(-1, 5));
 		GuiHelper::drawCenteredText("Plots");
@@ -42,7 +40,7 @@ class PlotsTree
 		}
 
 		if (!plotHandler->checkIfPlotExists(selectedPlot))
-			selectedPlot = plotGroupHandler->getActiveGroup()->begin()->second.plot->getName();
+			selectFirstPlotOfActiveGroup();
 
 		if (!plotGroupHandler->checkIfGroupExists(selectedGroup))
 			selectedGroup = plotGroupHandler->getActiveGroup()->getName();
@@ -50,90 +48,13 @@ class PlotsTree
 		ImGui::BeginChild("Plot Tree", ImVec2(-1, windowHeight));
 		ImGui::BeginChild("left pane", ImVec2(200 * GuiHelper::contentScale, -1), true);
 
-		ImGuiTreeNodeFlags base_flags = ImGuiTreeNodeFlags_FramePadding | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_OpenOnArrow;
+		/* Only the groups without a parent start a branch; the rest are reached
+		   by recursing, which is what makes the tree as deep as the user built
+		   it rather than one level. */
 		std::optional<std::string> groupNameToDelete;
 
-		for (auto& [name, group] : *plotGroupHandler)
-		{
-			ImGuiTreeNodeFlags node_flags = base_flags;
-			if (selectedGroup == name)
-			{
-				node_flags |= ImGuiTreeNodeFlags_Selected;
-				plotGroupHandler->setActiveGroup(name);
-			}
-
-			bool state = ImGui::TreeNodeEx(group->getName().c_str(), node_flags);
-
-			if (ImGui::IsItemClicked(ImGuiMouseButton_Left) || ImGui::IsItemClicked(ImGuiMouseButton_Right))
-				selectedGroup = name;
-
-			drawMenuGroupPopup(name, [&]()
-							   { addNewGroup(); }, [&]()
-							   { addNewPlot(); }, [&](std::string name)
-							   { groupNameToDelete = name; }, [&](std::string name)
-							   {
-								   groupEditWindow->setGroupToEdit(plotGroupHandler->getGroup(name));
-								   groupEditWindow->setShowGroupEditWindowState(true); });
-
-			if (state)
-			{
-				/* Drag n Drop target for plots within groups */
-				if (ImGui::BeginDragDropTarget())
-				{
-					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PLOT"))
-					{
-						std::string selection = *(std::string*)payload->Data;
-						group->addPlot(plotHandler->getPlot(selection));
-					}
-					ImGui::EndDragDropTarget();
-				}
-
-				for (auto& [name, plotElem] : *group)
-				{
-					auto plot = plotElem.plot;
-					ImGui::PushID("plot");
-
-					ImGui::Checkbox(std::string("##" + name).c_str(), (bool*)&plotElem.visibility);
-					ImGui::SameLine();
-
-					bool shouldSelect = (selectedPlot == name && plotGroupHandler->getActiveGroup() == group);
-
-					if (ImGui::Selectable(name.c_str(), shouldSelect, ImGuiSelectableFlags_AllowDoubleClick))
-					{
-						selectedPlot = name;
-
-						if (ImGui::IsMouseDoubleClicked(0))
-						{
-							plotEditWindow->setPlotToEdit(plot);
-							plotEditWindow->setShowPlotEditWindowState(true);
-						}
-					}
-
-					drawMenuPlotPopup(name, [&]()
-									  { addNewPlot(); }, [&](std::string name)
-									  { plotNameToDelete = name; }, [&](std::string name)
-									  {plotEditWindow->setPlotToEdit(plot);
-							           plotEditWindow->setShowPlotEditWindowState(true); });
-
-					/* Drag n Drop source for plots within groups */
-					if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-					{
-						ImGui::SetDragDropPayload("PLOT", &name, sizeof(name));
-						ImGui::TextUnformatted(name.c_str());
-						ImGui::EndDragDropSource();
-					}
-
-					if (plot->isHovered() && ImGui::IsMouseClicked(0))
-						selectedPlot = plot->getName();
-
-					ImGui::PopID();
-				}
-				ImGui::TreePop();
-			}
-
-			if (plotNameToDelete.has_value())
-				group->removePlot(plotNameToDelete.value_or(""));
-		}
+		for (const std::string& rootName : plotGroupHandler->getRootNames())
+			drawGroupNode(rootName, groupNameToDelete);
 
 		if (groupNameToDelete.has_value())
 			plotGroupHandler->removeGroup(groupNameToDelete.value());
@@ -143,7 +64,18 @@ class PlotsTree
 
 		groupEditWindow->draw();
 
-		std::shared_ptr<Plot> plt = plotHandler->getPlot(selectedPlot);
+		std::shared_ptr<Plot> plt = plotHandler->checkIfPlotExists(selectedPlot) ? plotHandler->getPlot(selectedPlot) : nullptr;
+
+		/* A group can be empty, and then there is nothing on the right to show. */
+		if (plt == nullptr)
+		{
+			ImGui::BeginGroup();
+			GuiHelper::drawCenteredText("No plot selected");
+			ImGui::EndGroup();
+			ImGui::EndChild();
+			return;
+		}
+
 		ImGui::BeginGroup();
 		ImGui::PushID(plt->getName().c_str());
 
@@ -223,7 +155,132 @@ class PlotsTree
 			addNewGroup();
 	}
 
-	void addNewPlot()
+	/* Draws one group together with its plots and everything nested in it. The
+	   parameter names the group, so the same group object cannot be drawn twice
+	   even if two branches of a hand-edited file referred to it. */
+	void drawGroupNode(const std::string& name, std::optional<std::string>& groupNameToDelete)
+	{
+		if (!plotGroupHandler->checkIfGroupExists(name))
+			return;
+
+		const std::shared_ptr<PlotGroup> group = plotGroupHandler->getGroup(name);
+
+		ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_FramePadding | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_OpenOnArrow;
+
+		if (selectedGroup == name)
+		{
+			nodeFlags |= ImGuiTreeNodeFlags_Selected;
+			plotGroupHandler->setActiveGroup(name);
+		}
+
+		/* A group that holds other groups opens by default, so a project that was
+		   just loaded shows its whole shape instead of one collapsed line. */
+		if (plotGroupHandler->hasChildren(name))
+			nodeFlags |= ImGuiTreeNodeFlags_DefaultOpen;
+
+		const bool state = ImGui::TreeNodeEx(group->getName().c_str(), nodeFlags);
+
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Left) || ImGui::IsItemClicked(ImGuiMouseButton_Right))
+			selectedGroup = name;
+
+		drawMenuGroupPopup(name, [&]()
+						   { addNewGroup(name); }, [&]()
+						   { addNewPlot(name); }, [&](std::string groupToDelete)
+						   { groupNameToDelete = groupToDelete; }, [&](std::string groupToEdit)
+						   {
+							   groupEditWindow->setGroupToEdit(plotGroupHandler->getGroup(groupToEdit));
+							   groupEditWindow->setShowGroupEditWindowState(true); });
+
+		if (state)
+		{
+			/* Drag n Drop target for plots within groups */
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PLOT"))
+				{
+					std::string dropped = *(std::string*)payload->Data;
+					group->addPlot(plotHandler->getPlot(dropped));
+				}
+				ImGui::EndDragDropTarget();
+			}
+
+			std::optional<std::string> plotNameToDelete;
+
+			for (auto& [plotId, plotElem] : *group)
+			{
+				auto plot = plotElem.plot;
+				ImGui::PushID("plot");
+
+				ImGui::Checkbox(std::string("##" + plotId).c_str(), (bool*)&plotElem.visibility);
+				ImGui::SameLine();
+
+				bool shouldSelect = (selectedPlot == plotId && plotGroupHandler->getActiveGroup() == group);
+
+				if (ImGui::Selectable(plotId.c_str(), shouldSelect, ImGuiSelectableFlags_AllowDoubleClick))
+				{
+					selectedPlot = plotId;
+
+					if (ImGui::IsMouseDoubleClicked(0))
+					{
+						plotEditWindow->setPlotToEdit(plot);
+						plotEditWindow->setShowPlotEditWindowState(true);
+					}
+				}
+
+				drawMenuPlotPopup(plotId, [&]()
+								  { addNewPlot(name); }, [&](std::string plotToDelete)
+								  { plotNameToDelete = plotToDelete; }, [&](std::string)
+								  {plotEditWindow->setPlotToEdit(plot);
+						           plotEditWindow->setShowPlotEditWindowState(true); });
+
+				/* Drag n Drop source for plots within groups */
+				if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+				{
+					ImGui::SetDragDropPayload("PLOT", &plotId, sizeof(plotId));
+					ImGui::TextUnformatted(plotId.c_str());
+					ImGui::EndDragDropSource();
+				}
+
+				if (plot->isHovered() && ImGui::IsMouseClicked(0))
+					selectedPlot = plot->getName();
+
+				ImGui::PopID();
+			}
+
+			if (plotNameToDelete.has_value())
+				group->removePlot(plotNameToDelete.value_or(""));
+
+			/* Children are drawn inside the expanded node, which is what puts
+			   them one level deeper than their parent. */
+			for (const std::string& childName : plotGroupHandler->getChildNames(name))
+				drawGroupNode(childName, groupNameToDelete);
+
+			ImGui::TreePop();
+		}
+	}
+
+	/* The panel on the right shows one plot. When the remembered name is gone -
+	   the plot was deleted, or the group it belonged to went away - the first
+	   plot of the active group takes its place. */
+	void selectFirstPlotOfActiveGroup()
+	{
+		selectedPlot = "";
+
+		const std::shared_ptr<PlotGroup> group = plotGroupHandler->getActiveGroup();
+
+		if (group == nullptr)
+			return;
+
+		auto first = group->begin();
+
+		if (first != group->end() && first->second.plot != nullptr)
+			selectedPlot = first->second.plot->getName();
+	}
+
+	/* An empty group name means the active group, which is what the buttons at
+	   the top of the tree want; the context menu passes the group it was opened
+	   on so that a new plot lands where the user clicked. */
+	void addNewPlot(const std::string& groupName = "")
 	{
 		uint32_t num = 0;
 		while (plotHandler->checkIfPlotExists(std::string("new plot") + std::to_string(num)))
@@ -231,19 +288,28 @@ class PlotsTree
 
 		std::string newName = std::string("new plot") + std::to_string(num);
 		auto plot = plotHandler->addPlot(newName);
-		plotGroupHandler->getActiveGroup()->addPlot(plot);
+
+		std::shared_ptr<PlotGroup> target = plotGroupHandler->getActiveGroup();
+
+		if (!groupName.empty() && plotGroupHandler->checkIfGroupExists(groupName))
+			target = plotGroupHandler->getGroup(groupName);
+
+		if (target != nullptr)
+			target->addPlot(plot);
+
 		plotEditWindow->setPlotToEdit(plot);
 		plotEditWindow->setShowPlotEditWindowState(true);
 	}
 
-	void addNewGroup()
+	/* An empty parent name puts the group at the top level. */
+	void addNewGroup(const std::string& parentName = "")
 	{
 		uint32_t num = 0;
 		while (plotGroupHandler->checkIfGroupExists(std::string("new group") + std::to_string(num)))
 			num++;
 
 		std::string newName = std::string("new group") + std::to_string(num);
-		auto group = plotGroupHandler->addGroup(newName);
+		auto group = plotGroupHandler->addGroup(newName, PlotGroup::Type::Sampling, parentName);
 		groupEditWindow->setGroupToEdit(group);
 		groupEditWindow->setShowGroupEditWindowState(true);
 	}
@@ -252,7 +318,7 @@ class PlotsTree
 	{
 		if (ImGui::Button("Export plot to *.csv", ImVec2(-1, 25 * GuiHelper::contentScale)))
 		{
-			std::string path = fileHandler->saveFile(std::pair<std::string, std::string>("CSV", "csv"));
+			std::string path = fileHandler->saveFile({{"CSV", "csv"}});
 			std::ofstream csvFile(path);
 
 			if (!csvFile)
@@ -344,6 +410,12 @@ class PlotsTree
 	PlotGroupHandler* plotGroupHandler;
 	VariableHandler* variableHandler;
 	std::shared_ptr<PlotEditWindow> plotEditWindow;
+
+	/* Which group and plot the tree has selected. Held here rather than as
+	   locals of draw(), because the branch that draws a nested group is a
+	   method of its own and has to read and write the same selection. */
+	std::string selectedGroup = "";
+	std::string selectedPlot = "";
 
 	std::unique_ptr<GroupEditWindow> groupEditWindow;
 

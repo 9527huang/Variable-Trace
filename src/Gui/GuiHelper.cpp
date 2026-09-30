@@ -39,7 +39,32 @@ uint32_t GuiHelper::hexStringToDecimal(const std::string& hexStr)
 }
 
 
-std::string GuiHelper::convertProjectPathToAbsolute(const std::string* relativePath, std::string* projectConfigPath)
+std::string GuiHelper::numberToString(double number)
+{
+	/* std::to_string fixes the decimals at six, which turns a limit of 100 into
+	   "100.000000" in the field the user has to edit. Printing the shortest text
+	   that reads back as the same number keeps the field tidy. */
+	std::ostringstream stream;
+	stream << std::setprecision(15) << number;
+
+	std::string text = stream.str();
+
+	if (text.find('.') == std::string::npos)
+		return text;
+
+	while (!text.empty() && text.back() == '0')
+		text.pop_back();
+
+	if (!text.empty() && text.back() == '.')
+		text.pop_back();
+
+	return text;
+}
+
+/* Both arguments are read only: the path is resolved against the folder of the
+   project file, and neither is changed, so a caller that holds them as const
+   can use this as well. */
+std::string GuiHelper::convertProjectPathToAbsolute(const std::string* relativePath, const std::string* projectConfigPath)
 {
 	if (relativePath->empty())
 		return "";

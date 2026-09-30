@@ -42,6 +42,14 @@ static ImVec4 orangeLightDim = (ImVec4)ImColor::HSV(0.116f, 0.97f, 0.82f);
 std::string intToHexString(uint32_t var);
 
 /**
+ * @brief Text of a number with the trailing zeroes removed, for an input field
+ *
+ * @param number
+ * @return std::string
+ */
+std::string numberToString(double number);
+
+/**
  * @brief Draw window-centered text
  *
  * @param text
@@ -71,7 +79,7 @@ uint32_t hexStringToDecimal(const std::string& hexStr);
  * @param name name of the item to be deleted
  * @return std::optional<std::string> if button clicked returns name, otherwise std::nullopt
  */
-std::string convertProjectPathToAbsolute(const std::string* relativePath, std::string* projectConfigPath);
+std::string convertProjectPathToAbsolute(const std::string* relativePath, const std::string* projectConfigPath);
 
 std::optional<std::string> showDeletePopup(const char* text, const std::string& name);
 

@@ -22,6 +22,7 @@ class StlinkDebugProbe : public IDebugProbe
 	std::optional<IDebugProbe::varEntryType> readSingleEntry() override;
 	bool readMemory(uint32_t address, uint8_t* buf, uint32_t size) override;
 	bool writeMemory(uint32_t address, uint8_t* buf, uint32_t size) override;
+	bool readBlock(uint32_t address, uint8_t* buf, uint32_t size) override;
 
 	std::string getLastErrorMsg() const override;
 	std::vector<std::string> getConnectedDevices() override;

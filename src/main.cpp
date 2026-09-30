@@ -6,8 +6,10 @@
 #include "../commons.hpp"
 #include "CLI11.hpp"
 #include "ConfigHandler.hpp"
+#include "GlobalConfig.hpp"
 #include "Gui.hpp"
 #include "NFDFileHandler.hpp"
+#include "ProjectHandler.hpp"
 #include "VariableHandler.hpp"
 #include "gitversion.hpp"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -50,10 +52,18 @@ int main(int argc, char** argv)
 	ViewerDataHandler viewerDataHandler(&plotGroupHandler, &variableHandler, &plotHandler, &tracePlotHandler, done, &mtx, loggerPtr);
 	TraceDataHandler traceDataHandler(&plotGroupHandler, &variableHandler, &plotHandler, &tracePlotHandler, done, &mtx, loggerPtr);
 
+	/* The INI reader is kept for the legacy .cfg projects only. */
 	ConfigHandler configHandler("", &plotHandler, &tracePlotHandler, &plotGroupHandler, &variableHandler, &viewerDataHandler, &traceDataHandler, loggerPtr);
+
+	ProjectHandler projectHandler(&variableHandler, &plotHandler, &plotGroupHandler, loggerPtr);
+
+	GlobalConfig globalConfig(loggerPtr);
+	globalConfig.load();
+	globalConfig.removeMissingRecentProjects();
+
 	NFDFileHandler fileHandler;
 
-	Gui gui(&plotHandler, &variableHandler, &configHandler, &plotGroupHandler, &fileHandler, &tracePlotHandler, &viewerDataHandler, &traceDataHandler, done, &mtx, loggerPtr, projectPath);
+	Gui gui(&plotHandler, &variableHandler, &configHandler, &projectHandler, &globalConfig, &plotGroupHandler, &fileHandler, &tracePlotHandler, &viewerDataHandler, &traceDataHandler, done, &mtx, loggerPtr, projectPath);
 
 	while (!done)
 	{

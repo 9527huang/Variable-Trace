@@ -109,6 +109,47 @@ if(WIN32)
     set(INSTALL_PATH bin)
 endif()
 
+# ---------------------------------------------------------------- libdwarf
+# The one optional dependency. The application is complete without it: the GDB
+# parser answers the same questions through a child process, which is slower but
+# works for every dialect. The in-process reader is linked when a library is
+# found, and the code that needs it is guarded by the macro defined below, so a
+# build without it still produces an application that runs and says why one of
+# its three parsers is not there.
+set(LIBDWARF_ROOT "" CACHE PATH "Prefix of a libdwarf installation, holding include/ and lib/")
+
+if(WIN32 AND NOT LIBDWARF_ROOT)
+    set(LIBDWARF_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libdwarf)
+endif()
+
+set(VARIABLE_TRACE_HAS_LIBDWARF FALSE)
+set(LIBDWARF_RUNTIME_DLLS "")
+
+if(WIN32)
+    set(LIBDWARF_INCLUDE_DIR ${LIBDWARF_ROOT}/include/windows)
+    set(LIBDWARF_LIBRARIES ${LIBDWARF_ROOT}/lib/windows/libdwarf.dll.a)
+    set(LIBDWARF_RUNTIME_DLLS
+        ${LIBDWARF_ROOT}/lib/windows/libdwarf-2.dll
+        ${LIBDWARF_ROOT}/lib/windows/zlib1.dll
+        ${LIBDWARF_ROOT}/lib/windows/libzstd.dll)
+
+    if(EXISTS ${LIBDWARF_LIBRARIES})
+        set(VARIABLE_TRACE_HAS_LIBDWARF TRUE)
+    endif()
+else()
+    find_package(PkgConfig QUIET)
+
+    if(PkgConfig_FOUND)
+        pkg_check_modules(LIBDWARF QUIET libdwarf)
+
+        if(LIBDWARF_FOUND)
+            set(LIBDWARF_INCLUDE_DIR ${LIBDWARF_INCLUDE_DIRS})
+            set(LIBDWARF_LIBRARIES ${LIBDWARF_LINK_LIBRARIES})
+            set(VARIABLE_TRACE_HAS_LIBDWARF TRUE)
+        endif()
+    endif()
+endif()
+
 set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/commons.cpp
@@ -118,13 +159,25 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiSwoControl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiAbout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiAcqusition.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiRecorder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiFlashing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/GuiHelper.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/StlinkDebugProbe.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/JlinkDebugProbe.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/SerialProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/SerialPort.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/SerialDebugProbe.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/SerialDriverLayout.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Recorder/RecorderLayout.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Recorder/RecorderHandler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Plot/Plot.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Variable/Variable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MovingAverage/MovingAverage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ConfigHandler/ConfigHandler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ProjectHandler/ProjectHandler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ProjectHandler/GlobalConfig.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Flashing/FlashingService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/WritePlanner/WritePlanner.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FileHandler/NFDFileHandler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ImguiPlugins/ImguiPlugins.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stlink/inc/spdlogWrapper.cpp
@@ -132,11 +185,32 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/TraceReader/TraceReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/TraceReader/StlinkTraceProbe.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/TraceReader/JlinkTraceProbe.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/GdbParser/GdbParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/IElfParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/GdbParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/ElfParserFactory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/ElfTarget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/DwarfDecode.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/LibDwarfParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/OfdDwarfXml.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/TiOfdParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer/CSVStreamer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/VariableHandler/VariableHandler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DataHandler/ViewerDataHandler.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/DataHandler/TraceDataHandler.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DataHandler/TraceDataHandler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/McpTypes.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/McpProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/McpToolRegistry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/McpBridge.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/McpServer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/McpToolHelpers.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/ProjectTools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/GroupTools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/PlotTools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/VariableTools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/RecorderTools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/AcquisitionTools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/DataTools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/FlashingTools.cpp)
 
 set(IMGUI_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/imgui.cpp
@@ -194,19 +268,26 @@ target_include_directories(${EXECUTABLE} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MovingAverage
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Variable
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ConfigHandler
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ProjectHandler
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ImguiPlugins
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FileHandler
     ${CMAKE_CURRENT_SOURCE_DIR}/src/PlotHandler
     ${CMAKE_CURRENT_SOURCE_DIR}/src/TraceReader
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RingBuffer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Statistics
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/GdbParser
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser
     ${CMAKE_CURRENT_SOURCE_DIR}/src/PlotGroupHandler
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/VariableHandler
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/DataHandler)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DataHandler
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Recorder
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Flashing
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/WritePlanner
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer)
 
 target_include_directories(${EXECUTABLE} SYSTEM PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/json/
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/http/
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stlink/inc/
     ${JLINK_INCLUDE_DIR}
     ${LIBUSB_INCLUDE_DIR}
@@ -220,13 +301,22 @@ target_include_directories(${EXECUTABLE} SYSTEM PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog/inc/
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/CLI11/inc/)
 
+if(VARIABLE_TRACE_HAS_LIBDWARF)
+    target_include_directories(${EXECUTABLE} SYSTEM PRIVATE ${LIBDWARF_INCLUDE_DIR})
+    target_link_libraries(${EXECUTABLE} ${LIBDWARF_LIBRARIES})
+    target_compile_definitions(${EXECUTABLE} PRIVATE VARIABLE_TRACE_HAS_LIBDWARF=1)
+    message(STATUS "Variable-Trace: the in-process DWARF reader is included")
+else()
+    message(STATUS "Variable-Trace: built without libdwarf, the DWARF parser will report itself unavailable")
+endif()
+
 if(APPLE)
     include_directories(${OPENGL_INCLUDE_DIRS} ${GLUT_INCLUDE_DIRS} ${STLINK_INCLUDE_DIRS})
     target_link_libraries(${EXECUTABLE} ${STLINK_MACOS} ${LIBUSB_LIBRARY} ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} spdlog::spdlog pthread dl glfw nfd)
 elseif(UNIX)
     target_link_libraries(${EXECUTABLE} ${STLINK_LINUX} ${LIBUSB_LIBRARY} ${JLINK_LINUX} spdlog::spdlog pthread dl GL glfw nfd)
 elseif(WIN32)
-    target_link_libraries(${EXECUTABLE} ${GLFW3_WINDOWS} ${STLINK_WINDOWS} ${LIBUSB_WINDOWS} ${SPDLOG_WINDOWS} ${JLINK_WINDOWS} -static ssp opengl32 nfd -static-libstdc++ -static-libgcc)
+    target_link_libraries(${EXECUTABLE} ${GLFW3_WINDOWS} ${STLINK_WINDOWS} ${LIBUSB_WINDOWS} ${SPDLOG_WINDOWS} ${JLINK_WINDOWS} -static ssp opengl32 ws2_32 nfd -static-libstdc++ -static-libgcc)
 endif()
 
 if(WIN32)
@@ -249,6 +339,18 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy
         ${JLINK_WINDOWS}
         ${CMAKE_BINARY_DIR})
+
+    # The DWARF library and the two compression libraries it imports have to sit
+    # next to the executable: the loader resolves them by name at start up, and
+    # the failure when it cannot is a dialog rather than a message here.
+    foreach(DWARF_DLL ${LIBDWARF_RUNTIME_DLLS})
+        if(EXISTS ${DWARF_DLL})
+            add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy
+                ${DWARF_DLL}
+                ${CMAKE_BINARY_DIR})
+        endif()
+    endforeach()
 endif()
 
 add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
@@ -265,7 +367,7 @@ if(WIN32)
         set_target_properties(${EXECUTABLE} PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
 
-    install(FILES ${LIBUSB_WINDOWS} ${GLFW3_WINDOWS} ${GDB_WINDOWS} ${JLINK_WINDOWS} DESTINATION ${INSTALL_PATH})
+    install(FILES ${LIBUSB_WINDOWS} ${GLFW3_WINDOWS} ${GDB_WINDOWS} ${JLINK_WINDOWS} ${LIBDWARF_RUNTIME_DLLS} DESTINATION ${INSTALL_PATH})
     set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
     SetOutPath \\\"$INSTDIR\\\\bin\\\"
     CreateShortCut \\\"$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\${EXECUTABLE}.lnk\\\" \\\"$INSTDIR\\\\bin\\\\${EXECUTABLE}.exe\\\"

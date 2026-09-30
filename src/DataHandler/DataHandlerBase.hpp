@@ -42,6 +42,16 @@ class DataHandlerBase
 		return viewerState;
 	}
 
+	/* Reads the state without waiting for a pending transition to be processed.
+	   getState() spins until the acquisition thread has finished the transition,
+	   and that transition contains the probe connect, so a caller on the
+	   interface thread would be held for as long as the connect takes. Callers
+	   that only need to know whether acquisition runs use this one. */
+	State getStateImmediate() const
+	{
+		return viewerState.load();
+	}
+
    protected:
 	PlotGroupHandler* plotGroupHandler;
 	VariableHandler* variableHandler;

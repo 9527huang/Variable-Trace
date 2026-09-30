@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "JlinkDebugProbe.hpp"
@@ -18,11 +19,28 @@ ViewerDataHandler::~ViewerDataHandler()
 		dataHandle.join();
 }
 
-bool ViewerDataHandler::writeSeriesValue(Variable& var, double value)
+bool ViewerDataHandler::writeVariable(Variable& var, double value)
 {
+	lastWriteError.clear();
+
+	/* The guard runs before the lock, because it reads nothing the sampling
+	   thread writes. A variable without limits reports as allowed, which is the
+	   behaviour the application had before limits existed. */
+	if (!var.isWriteAllowed(value))
+	{
+		lastWriteError = "Value " + std::to_string(value) + " is out of write limits [" +
+						 std::to_string(var.getWriteMin()) + ", " + std::to_string(var.getWriteMax()) + "]";
+		return false;
+	}
+
 	std::lock_guard<std::mutex> lock(*mtx);
 	uint32_t rawValue = var.getRawFromDouble(value);
 	return debugProbe->writeMemory(var.getAddress(), (uint8_t*)&rawValue, var.getSize());
+}
+
+std::string ViewerDataHandler::getLastWriteError() const
+{
+	return lastWriteError;
 }
 
 std::string ViewerDataHandler::getLastReaderError() const
@@ -54,6 +72,11 @@ void ViewerDataHandler::setSettings(const Settings& newSettings)
 {
 	settings = newSettings;
 	plotHandler->setMaxPoints(settings.maxPoints);
+}
+
+void ViewerDataHandler::requestRestart()
+{
+	restartRequested.store(true);
 }
 
 void ViewerDataHandler::updateVariables(double timestamp, const std::unordered_map<uint32_t, double>& values)
@@ -99,10 +122,18 @@ void ViewerDataHandler::dataHandler()
 
 			if (probeSettings.mode == IDebugProbe::Mode::HSS)
 			{
-				if (!debugProbe->isValid())
-					setState(State::STOP);
+				std::optional<IDebugProbe::varEntryType> maybeEntry;
 
-				auto maybeEntry = debugProbe->readSingleEntry();
+				/* Held only around the probe call, so a caller that is waiting
+				   for the connection gets it as soon as this read is done. */
+				{
+					std::unique_lock<std::mutex> probeLock = lockProbe();
+
+					if (!debugProbe->isValid())
+						setState(State::STOP);
+
+					maybeEntry = debugProbe->readSingleEntry();
+				}
 
 				if (!maybeEntry.has_value())
 					continue;
@@ -121,15 +152,23 @@ void ViewerDataHandler::dataHandler()
 			{
 				std::unordered_map<uint32_t, double> rawValues;
 
-				/* sample by address */
-				for (auto& [address, size] : sampleList)
+				/* One sample is a set of reads, and a caller that wants the
+				   connection gets it between two samples rather than in the
+				   middle of one. */
 				{
-					uint32_t value = 0;
-					if (debugProbe->readMemory(address, (uint8_t*)&value, size))
-						rawValues[address] = value;
-					else
-						setState(State::STOP);
+					std::unique_lock<std::mutex> probeLock = lockProbe();
+
+					/* sample by address */
+					for (auto& [address, size] : sampleList)
+					{
+						uint32_t value = 0;
+						if (debugProbe->readMemory(address, (uint8_t*)&value, size))
+							rawValues[address] = value;
+						else
+							setState(State::STOP);
+					}
 				}
+
 				double timestamp = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - start).count();
 				updateVariables(timestamp, rawValues);
 
@@ -149,6 +188,8 @@ void ViewerDataHandler::dataHandler()
 				createSampleList();
 				prepareCSVFile();
 
+				std::unique_lock<std::mutex> probeLock = lockProbe();
+
 				if (debugProbe->startAcqusition(probeSettings, sampleList, settings.sampleFrequencyHz))
 				{
 					timer = 0;
@@ -160,11 +201,30 @@ void ViewerDataHandler::dataHandler()
 			}
 			else
 			{
+				std::unique_lock<std::mutex> probeLock = lockProbe();
 				debugProbe->stopAcqusition();
 				if (settings.shouldLog)
 					csvStreamer->finishLogging();
 			}
 			stateChangeOrdered = false;
+		}
+
+		/* A restart rebuilds the sample list, which is what makes a variable that
+		   was just added to a plot, or a newly activated group, take effect. */
+		if (restartRequested.exchange(false) && viewerState == State::RUN)
+		{
+			std::unique_lock<std::mutex> probeLock = lockProbe();
+			debugProbe->stopAcqusition();
+			createSampleList();
+			prepareCSVFile();
+
+			timer = 0;
+			lastT = 0.0;
+			start = std::chrono::steady_clock::now();
+
+			/* Same handling as a failing start from the state transition above. */
+			if (!debugProbe->startAcqusition(probeSettings, sampleList, settings.sampleFrequencyHz))
+				viewerState = State::STOP;
 		}
 	}
 }

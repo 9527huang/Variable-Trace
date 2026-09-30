@@ -1,8 +1,25 @@
 #include "GdbParser.hpp"
 
+#include <filesystem>
+
 GdbParser::GdbParser(VariableHandler* variableHandler, spdlog::logger* logger) : variableHandler(variableHandler), logger(logger)
 {
 	validateGDB();
+}
+
+IElfParser::Type GdbParser::getType() const
+{
+	return Type::Gdb;
+}
+
+std::string GdbParser::getName() const
+{
+	return nameOf(Type::Gdb);
+}
+
+std::string GdbParser::getDescription() const
+{
+	return descriptionOf(Type::Gdb);
 }
 
 void GdbParser::changeCurrentGDBCommand(const std::string& command)
@@ -10,22 +27,48 @@ void GdbParser::changeCurrentGDBCommand(const std::string& command)
 	currentGDBCommand = command;
 }
 
+std::string GdbParser::getCurrentGDBCommand() const
+{
+	return currentGDBCommand;
+}
+
 bool GdbParser::validateGDB()
 {
 	ProcessHandler process;
 
-	auto output = process.executeCmd(currentGDBCommand + std::string(" -v"), "GNU gdb");
+	auto output = process.executeCmd(currentGDBCommand + std::string(versionProbe), "GNU gdb");
 
 	if (output.find("GNU") != std::string::npos || output.find("gnu") != std::string::npos)
 	{
 		logger->info("GDB executable working!");
+		setError("");
 		return true;
 	}
-	else
-	{
-		logger->error("GDB executable error! Please check the GDB path in the acqusition settings!");
-		return false;
-	}
+
+	setError("The program '" + currentGDBCommand + "' did not answer like GDB. Check the GDB command in the acquisition settings.");
+	logger->error("GDB executable error! Please check the GDB path in the acqusition settings!");
+	return false;
+}
+
+bool GdbParser::checkAvailability(std::string& reason)
+{
+	if (validateGDB())
+		return true;
+
+	reason = getLastErrorMsg();
+	return false;
+}
+
+void GdbParser::setError(const std::string& message)
+{
+	std::lock_guard<std::mutex> lock(mtx);
+	lastErrorMsg = message;
+}
+
+std::string GdbParser::getLastErrorMsg() const
+{
+	std::lock_guard<std::mutex> lock(mtx);
+	return lastErrorMsg;
 }
 
 bool GdbParser::updateVariableMap(const std::string& elfPath)
@@ -34,7 +77,10 @@ bool GdbParser::updateVariableMap(const std::string& elfPath)
 		return false;
 
 	if (!std::filesystem::exists(elfPath))
+	{
+		setError("The symbol file '" + elfPath + "' does not exist.");
 		return false;
+	}
 
 	std::string cmd = currentGDBCommand + std::string(" --interpreter=mi ") + elfPath;
 	process.executeCmd(cmd, "(gdb)");
@@ -42,6 +88,7 @@ bool GdbParser::updateVariableMap(const std::string& elfPath)
 	for (std::shared_ptr<Variable> var : *variableHandler)
 	{
 		std::string name = var->getName();
+
 		if (var->getShouldUpdateFromElf() == false)
 			continue;
 
@@ -49,6 +96,7 @@ bool GdbParser::updateVariableMap(const std::string& elfPath)
 		var->setType(Variable::Type::UNKNOWN);
 
 		auto maybeAddress = checkAddress(var->getTrackedName());
+
 		if (!maybeAddress.has_value())
 			continue;
 
@@ -58,6 +106,7 @@ bool GdbParser::updateVariableMap(const std::string& elfPath)
 	}
 
 	process.closePipes();
+	setError("");
 
 	return true;
 }
@@ -68,32 +117,42 @@ bool GdbParser::parse(const std::string& elfPath)
 		return false;
 
 	if (!std::filesystem::exists(elfPath))
+	{
+		setError("The symbol file '" + elfPath + "' does not exist.");
 		return false;
+	}
 
-	std::unique_lock<std::mutex> lock(mtx);
-	parsedData.clear();
-	lock.unlock();
+	{
+		std::lock_guard<std::mutex> lock(mtx);
+		parsedData.clear();
+	}
 
 	std::string cmd = currentGDBCommand + std::string(" --interpreter=mi ") + elfPath;
 	process.executeCmd(cmd, "(gdb)");
 	auto out = process.executeCmd("info variables\n", "(gdb)");
 
 	size_t start = 0;
+
 	while (out.length() > 0)
 	{
 		std::string delimiter = "File";
 
 		auto end = out.find(delimiter, start);
+
 		if (end == std::string::npos)
 			break;
+
 		/* find tylda sign next */
 		start = out.find("~", end);
+
 		if (start == std::string::npos)
 			break;
+
 		/* account for tylda and " */
 		start += 2;
 		/* find the end of filepath */
 		end = out.find(":", start);
+
 		if (end == std::string::npos)
 			break;
 
@@ -107,10 +166,12 @@ bool GdbParser::parse(const std::string& elfPath)
 			end = end1;
 			parseVariableChunk(out.substr(start, end - start));
 		}
+
 		start = end;
 	}
 
 	process.closePipes();
+	setError("");
 
 	return true;
 }
@@ -122,10 +183,12 @@ void GdbParser::parseVariableChunk(const std::string& chunk)
 	while (1)
 	{
 		auto semicolonPos = chunk.find(';', start);
+
 		if (semicolonPos == std::string::npos)
 			break;
 
 		auto spacePos = chunk.rfind(' ', semicolonPos);
+
 		if (spacePos == std::string::npos)
 			break;
 
@@ -136,78 +199,89 @@ void GdbParser::parseVariableChunk(const std::string& chunk)
 	}
 }
 
-void GdbParser::checkVariableType(std::string& name)
+void GdbParser::checkVariableType(const std::string& name)
 {
 	auto maybeAddress = checkAddress(name);
+
 	if (!maybeAddress.has_value())
 		return;
 
 	std::string out;
+	const Variable::Type type = checkType(name, &out);
 
-	if (checkType(name, &out) != Variable::Type::UNKNOWN)
+	if (type != Variable::Type::UNKNOWN)
 	{
-		/* trivial type */
 		std::lock_guard<std::mutex> lock(mtx);
-		parsedData[name] = VariableData{maybeAddress.value(), true};
+		parsedData[name] = Symbol{maybeAddress.value(), type};
+		return;
 	}
-	else
+
+	/* The name holds a structure rather than a number. Its fields are what the
+	   debug link can read, so each of them is asked about in turn. */
+	auto subStart = 0;
+
+	while (1)
 	{
-		auto subStart = 0;
+		auto semicolonPos = out.find(';', subStart);
 
-		while (1)
+		logger->debug("POS: {}", subStart);
+		logger->debug("SEMICOLON POS: {}", semicolonPos);
+		logger->debug("OUT: {}", out);
+
+		if (semicolonPos == std::string::npos)
+			break;
+
+		if (out[semicolonPos - 1] == ')')
 		{
-			auto semicolonPos = out.find(';', subStart);
-
-			logger->debug("POS: {}", subStart);
-			logger->debug("SEMICOLON POS: {}", semicolonPos);
-			logger->debug("OUT: {}", out);
-
-			if (semicolonPos == std::string::npos)
-				break;
-
-			if (out[semicolonPos - 1] == ')')
-			{
-				subStart = semicolonPos + 1;
-				continue;
-			}
-
-			auto spacePos = out.rfind(' ', semicolonPos);
-
-			logger->debug("SPACE POS: {}", spacePos);
-
-			if (spacePos == std::string::npos)
-				break;
-
-			auto varName = out.substr(spacePos + 1, semicolonPos - spacePos - 1);
-
-			logger->debug("VAR NAME: {}", varName);
-
-			/* if a const method or a pointer */
-			if (varName == "const" || varName[0] == '*')
-			{
-				subStart = semicolonPos + 1;
-				continue;
-			}
-
-			auto fullName = name + "." + varName;
-
-			logger->debug("FULL NAME: {}", fullName);
-
-			if (fullName.size() < 100)
-				checkVariableType(fullName);
-
 			subStart = semicolonPos + 1;
+			continue;
 		}
+
+		auto spacePos = out.rfind(' ', semicolonPos);
+
+		logger->debug("SPACE POS: {}", spacePos);
+
+		if (spacePos == std::string::npos)
+			break;
+
+		auto varName = out.substr(spacePos + 1, semicolonPos - spacePos - 1);
+
+		logger->debug("VAR NAME: {}", varName);
+
+		/* if a const method or a pointer */
+		if (varName == "const" || varName[0] == '*')
+		{
+			subStart = semicolonPos + 1;
+			continue;
+		}
+
+		auto fullName = name + "." + varName;
+
+		logger->debug("FULL NAME: {}", fullName);
+
+		if (fullName.size() < 100)
+			checkVariableType(fullName);
+
+		subStart = semicolonPos + 1;
 	}
 }
 
 Variable::Type GdbParser::checkType(const std::string& name, std::string* output)
 {
 	auto out = process.executeCmd(std::string("ptype ") + name + std::string("\n"), "(gdb)");
+
 	if (output != nullptr)
 		*output = out;
+
 	auto start = out.find("=");
+
+	if (start == std::string::npos || start + 2 > out.size())
+		return Variable::Type::UNKNOWN;
+
 	auto end = out.find("\\n", start);
+
+	if (end == std::string::npos || end < start + 2)
+		return Variable::Type::UNKNOWN;
 
 	auto line = out.substr(start + 2, end - start - 2);
 
@@ -216,17 +290,20 @@ Variable::Type GdbParser::checkType(const std::string& name, std::string* output
 	/* remove const and volatile */
 	if (line.find("volatile ", 0) != std::string::npos)
 		line.erase(0, 9);
+
 	if (line.find("const ", 0) != std::string::npos)
 		line.erase(0, 6);
+
 	if (line.find("static const ", 0) != std::string::npos)
 		line.erase(0, 13);
+
 	if (line.find("enum {", 0) != std::string::npos)
 		return Variable::Type::I32;
 
-	if (!isTrivial.contains(line))
+	if (!typeNames.contains(line))
 		return Variable::Type::UNKNOWN;
 
-	return isTrivial.at(line);
+	return typeNames.at(line);
 }
 
 std::optional<uint32_t> GdbParser::checkAddress(const std::string& name)
@@ -247,6 +324,10 @@ std::optional<uint32_t> GdbParser::checkAddress(const std::string& name)
 
 	/* this finds the \n as a string consting of '\' and 'n' not '\n' */
 	size_t eol = out2.find("\\n");
+
+	if (eol == std::string::npos || eol < equalSignPos + 2)
+		return std::nullopt;
+
 	/* +2 is to skip = and a space */
 	auto address = out2.substr(equalSignPos + 2, eol - equalSignPos - 2);
 
@@ -264,7 +345,7 @@ std::optional<uint32_t> GdbParser::checkAddress(const std::string& name)
 	return addressValue;
 }
 
-std::map<std::string, GdbParser::VariableData> GdbParser::getParsedData()
+IElfParser::SymbolMap GdbParser::getParsedData() const
 {
 	std::lock_guard<std::mutex> lock(mtx);
 	return parsedData;

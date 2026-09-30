@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+#include <vector>
+
 #include "GuiHelper.hpp"
 #include "Plot.hpp"
 #include "PlotGroupHandler.hpp"
@@ -82,6 +85,47 @@ class GroupEditWindow
 
 			else
 				popup.show("Error!", "Group already exists!", 1.5f);
+		}
+
+		/* PARENT */
+		GuiHelper::drawTextAlignedToSize("parent:", alignment);
+		ImGui::SameLine();
+
+		/* Every group is offered except this one and the groups below it, because
+		   nesting a group in its own child would cut the whole branch off the
+		   tree. Index 0 is the top level, which is not a group. */
+		std::vector<std::string> candidates{"top level"};
+
+		for (const auto& [candidateName, candidate] : *plotGroupHandler)
+		{
+			if (candidateName == editedGroup->getName() || plotGroupHandler->isDescendantOf(candidateName, editedGroup->getName()))
+				continue;
+
+			candidates.push_back(candidateName);
+		}
+
+		int32_t currentParent = 0;
+
+		for (size_t index = 1; index < candidates.size(); index++)
+		{
+			if (candidates[index] == editedGroup->getParentName())
+				currentParent = static_cast<int32_t>(index);
+		}
+
+		if (ImGui::BeginCombo("##parent", candidates[static_cast<size_t>(currentParent)].c_str()))
+		{
+			for (size_t index = 0; index < candidates.size(); index++)
+			{
+				const bool isCurrent = static_cast<int32_t>(index) == currentParent;
+
+				if (ImGui::Selectable(candidates[index].c_str(), isCurrent))
+					plotGroupHandler->moveGroup(editedGroup->getName(), index == 0 ? "" : candidates[index]);
+
+				if (isCurrent)
+					ImGui::SetItemDefaultFocus();
+			}
+
+			ImGui::EndCombo();
 		}
 	}
 

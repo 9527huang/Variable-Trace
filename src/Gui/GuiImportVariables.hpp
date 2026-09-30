@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include "GdbParser.hpp"
+#include "IElfParser.hpp"
 #include "Gui.hpp"
 #include "ImguiPlugins.hpp"
 #include "Popup.hpp"
@@ -12,7 +12,7 @@
 class ImportVariablesWindow
 {
    public:
-	ImportVariablesWindow(GdbParser* parser, std::string* projectElfPath, std::string* projectConfigPath, VariableHandler* variableHandler) : parser(parser), projectElfPath(projectElfPath), projectConfigPath(projectConfigPath), variableHandler(variableHandler)
+	ImportVariablesWindow(IElfParser* parser, std::string* projectElfPath, std::string* projectConfigPath, VariableHandler* variableHandler) : parser(parser), projectElfPath(projectElfPath), projectConfigPath(projectConfigPath), variableHandler(variableHandler)
 	{
 	}
 
@@ -22,6 +22,14 @@ class ImportVariablesWindow
 		static std::future<bool> refreshThread{};
 		static bool wasPreviouslyOpened = false;
 		static bool shouldUpdateOnOpen = false;
+
+		/* A parser that was just replaced has read nothing yet, so the first
+		   frame after the change reads the file through it. */
+		if (parserChanged)
+		{
+			shouldUpdateOnOpen = true;
+			parserChanged = false;
+		}
 
 		if (showImportVariablesWindow)
 		{
@@ -52,7 +60,7 @@ class ImportVariablesWindow
 
 			if (ImGui::Button(buttonText, ImVec2(-1, 25 * GuiHelper::contentScale)) || shouldUpdateOnOpen)
 			{
-				refreshThread = std::async(std::launch::async, &GdbParser::parse, parser, GuiHelper::convertProjectPathToAbsolute(projectElfPath, projectConfigPath));
+				refreshThread = std::async(std::launch::async, &IElfParser::parse, parser, GuiHelper::convertProjectPathToAbsolute(projectElfPath, projectConfigPath));
 				shouldUpdateOnOpen = false;
 			}
 
@@ -119,6 +127,15 @@ class ImportVariablesWindow
 		showImportVariablesWindow = show;
 	}
 
+	/* The table owns the parser and replaces it when the setting changes, so
+	   the window is told which one to read rather than being rebuilt. The
+	   next frame reads the new one, whose answers are not the previous ones. */
+	void setParser(IElfParser* newParser)
+	{
+		parser = newParser;
+		parserChanged = true;
+	}
+
 	bool shouldPerformVariableUpdate()
 	{
 		bool temp = shouldUpdate;
@@ -127,7 +144,7 @@ class ImportVariablesWindow
 	}
 
    private:
-	void drawImportVariablesTable(const std::map<std::string, GdbParser::VariableData>& importedVars, std::unordered_map<std::string, uint32_t>& selection, const std::string& substring)
+	void drawImportVariablesTable(const IElfParser::SymbolMap& importedVars, std::unordered_map<std::string, uint32_t>& selection, const std::string& substring)
 	{
 		static ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_Resizable;
 
@@ -173,7 +190,7 @@ class ImportVariablesWindow
 	}
 
    private:
-	GdbParser* parser;
+	IElfParser* parser;
 	std::string* projectElfPath;
 	std::string* projectConfigPath;
 
@@ -184,4 +201,5 @@ class ImportVariablesWindow
 
 	bool showImportVariablesWindow = false;
 	bool shouldUpdate = false;
+	bool parserChanged = false;
 };

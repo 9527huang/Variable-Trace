@@ -3,6 +3,7 @@
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "IFileHandler.hpp"
 
@@ -12,9 +13,9 @@ class NFDFileHandler : public IFileHandler
 	bool
 	init() override;
 	bool deinit() override;
-	std::string openFile(std::pair<std::string, std::string>&& filterFileNameFileExtension) override;
-	std::string saveFile(std::pair<std::string, std::string>&& filterFileNameFileExtension) override;
-	std::string openDirectory(std::pair<std::string, std::string>&& filterFileNameFileExtension) override;
+	std::string openFile(std::vector<Filter>&& filters) override;
+	std::string saveFile(std::vector<Filter>&& filters) override;
+	std::string openDirectory(std::vector<Filter>&& filters) override;
 
    private:
 	enum class handleType
@@ -23,7 +24,7 @@ class NFDFileHandler : public IFileHandler
 		OPEN,
 		OPENDIR
 	};
-	std::string handleFile(handleType type, std::pair<std::string, std::string>& filterFileNameFileExtension);
+	std::string handleFile(handleType type, std::vector<Filter>& filters);
 };
 
 #endif

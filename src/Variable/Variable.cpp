@@ -1,6 +1,8 @@
 #include "Variable.hpp"
 
+#include <algorithm>
 #include <limits>
+#include <vector>
 
 const char* Variable::types[8] = {"unknown",
 								  "uint8_t",
@@ -11,9 +13,11 @@ const char* Variable::types[8] = {"unknown",
 								  "int32_t",
 								  "float"};
 
-const char* Variable::highLevelTypes[3] = {"-",
+const char* Variable::highLevelTypes[5] = {"-",
 										   "signed fixed point",
-										   "unsigned fixed point"};
+										   "unsigned fixed point",
+										   "enum",
+										   "custom enum"};
 
 Variable::Variable(std::string name) : name(name)
 {
@@ -335,6 +339,70 @@ Variable::Fractional Variable::getFractional() const
 bool Variable::isFractional() const
 {
 	return highLevelType == HighLevelType::SIGNEDFRAC || highLevelType == HighLevelType::UNSIGNEDFRAC;
+}
+
+void Variable::setEnumLabels(const std::vector<EnumLabel>& enumLabels)
+{
+	this->enumLabels = enumLabels;
+}
+
+std::vector<Variable::EnumLabel> Variable::getEnumLabels() const
+{
+	return enumLabels;
+}
+
+bool Variable::isEnum() const
+{
+	return highLevelType == HighLevelType::ENUM || highLevelType == HighLevelType::CUSTOM_ENUM;
+}
+
+std::string Variable::getEnumLabel(double value) const
+{
+	if (!isEnum())
+		return "";
+
+	/* The stored value is what the variable shows after postprocessing, so a
+	   match can be made directly. A value with a fraction cannot name a label,
+	   hence the truncation rather than a comparison of the doubles. */
+	const int64_t asInteger = static_cast<int64_t>(value);
+
+	for (const EnumLabel& entry : enumLabels)
+	{
+		if (entry.value == asInteger)
+			return entry.label;
+	}
+
+	return "";
+}
+
+void Variable::setWriteLimits(bool enabled, double min, double max)
+{
+	writeLimitsEnabled = enabled;
+	writeMin = min;
+	writeMax = max;
+}
+
+bool Variable::getWriteLimitsEnabled() const
+{
+	return writeLimitsEnabled;
+}
+
+double Variable::getWriteMin() const
+{
+	return writeMin;
+}
+
+double Variable::getWriteMax() const
+{
+	return writeMax;
+}
+
+bool Variable::isWriteAllowed(double valueToWrite) const
+{
+	if (!writeLimitsEnabled)
+		return true;
+
+	return valueToWrite >= writeMin && valueToWrite <= writeMax;
 }
 
 void Variable::setIsCurrentlySampled(bool isCurrentlySampled)

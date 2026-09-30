@@ -305,8 +305,11 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 				if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))
 				{
 					logger->info("New value to be written: {}", valueToWrite);
-					if (!viewerDataHandler->writeSeriesValue(*serPtr->var, std::stod(valueToWrite)))
-						logger->error("Error while writing new value!");
+					if (!viewerDataHandler->writeVariable(*serPtr->var, std::stod(valueToWrite)))
+					{
+						const std::string reason = viewerDataHandler->getLastWriteError();
+						logger->error("Error while writing new value! {}", reason);
+					}
 				}
 			}
 			ImGui::PopStyleColor(3);
