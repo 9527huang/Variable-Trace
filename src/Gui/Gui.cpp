@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include <unistd.h>
 
+#include <cstdio>
 #include <filesystem>
 #include <future>
 #include <set>
@@ -331,15 +332,218 @@ void Gui::drawMenu()
 		ImGui::EndMenu();
 	}
 
-	if (activeView == ActiveViewType::VarViewer)
-	{
-		ImGui::SetCursorPosX((ImGui::GetWindowSize().x - 210 * GuiHelper::contentScale));
-		GuiHelper::drawDescriptionWithNumber("sampling: ", viewerDataHandler->getAverageSamplingFrequency(), " Hz", 2);
-	}
+	/* Drawn while the bar is still the current window, because it reads the
+	   place the menu titles ended at as its left boundary. */
+	drawConnectionIndicator();
 
 	ImGui::EndMainMenuBar();
 	askShouldSaveOnExit(shouldSaveOnClose);
 	askShouldSaveOnNew(shouldSaveOnNew);
+}
+
+/* One label and value line of the connection tooltip. The value column is at a
+   fixed offset so that the rows line up without a table. */
+static void drawIndicatorRow(const char* label, const std::string& value)
+{
+	ImGui::TextUnformatted(label);
+	ImGui::SameLine(135.0f * GuiHelper::contentScale);
+	ImGui::TextUnformatted(value.c_str());
+}
+
+void Gui::drawConnectionIndicator()
+{
+	const bool isVariableView = (activeView == ActiveViewType::VarViewer);
+
+	/* The two tabs drive two separate probes, so the indicator follows the tab
+	   that is showing rather than reporting a single global state. */
+	DataHandlerBase* handler = isVariableView ? static_cast<DataHandlerBase*>(viewerDataHandler) : static_cast<DataHandlerBase*>(traceDataHandler);
+
+	static const char* const probeNames[] = {"STLINK", "JLINK", "SERIAL"};
+	const uint32_t probeType = isVariableView ? viewerDataHandler->getProbeSettings().debugProbe : traceDataHandler->getProbeSettings().debugProbe;
+	const size_t probeIndex = (static_cast<size_t>(probeType) < IM_ARRAYSIZE(probeNames)) ? static_cast<size_t>(probeType) : 0;
+	const char* const probeName = probeNames[probeIndex];
+
+	std::string serialNumber;
+	std::string targetName;
+	uint32_t speedkHz = 0;
+	uint32_t baudrate = 0;
+	bool serialPort = false;
+	bool hasTargetName = false;
+	bool highSpeed = false;
+
+	if (isVariableView)
+	{
+		const IDebugProbe::DebugProbeSettings settings = viewerDataHandler->getProbeSettings();
+
+		serialNumber = settings.serialNumber;
+		targetName = settings.device;
+		speedkHz = settings.speedkHz;
+		baudrate = settings.baudrate;
+		serialPort = (settings.debugProbe == IDebugProbe::Probe::Serial);
+		hasTargetName = (settings.debugProbe == IDebugProbe::Probe::Jlink);
+		highSpeed = (settings.mode == IDebugProbe::Mode::HSS);
+	}
+	else
+	{
+		const ITraceProbe::TraceProbeSettings settings = traceDataHandler->getProbeSettings();
+
+		serialNumber = settings.serialNumber;
+		targetName = settings.device;
+		speedkHz = settings.speedkHz;
+		hasTargetName = (settings.debugProbe == 1);
+	}
+
+	/* The requested state is stored the moment the button is pressed, so the
+	   pending flag is what keeps "the probe is being opened" apart from "the
+	   data flows". */
+	const bool transitioning = handler->isTransitionPending();
+	const bool acquired = (handler->getStateImmediate() == DataHandlerBase::State::RUN);
+
+	const char* stateText = "Disconnected";
+	ImVec4 stateFace = GuiHelper::red;
+	ImVec4 stateFaceHovered = GuiHelper::redLight;
+	ImVec4 stateFaceActive = GuiHelper::redLightDim;
+
+	if (acquired)
+	{
+		stateText = "Connected";
+		stateFace = GuiHelper::green;
+		stateFaceHovered = GuiHelper::greenLight;
+		stateFaceActive = GuiHelper::greenLightDim;
+	}
+
+	if (transitioning)
+	{
+		stateText = acquired ? "Connecting" : "Disconnecting";
+		stateFace = GuiHelper::orange;
+		stateFaceHovered = GuiHelper::orangeLight;
+		stateFaceActive = GuiHelper::orangeLightDim;
+	}
+
+	const float scale = GuiHelper::contentScale;
+	const float textPadding = 9.0f * scale;
+	const float gap = 10.0f * scale;
+	const float margin = 6.0f * scale;
+	const float height = ImGui::GetFrameHeight();
+
+	/* Both segments keep the width of their longest text, so that the group does
+	   not move while the state or the rate changes. */
+	const float stateWidth = ImGui::CalcTextSize("Disconnecting").x + 2.0f * textPadding;
+	const float probeWidth = ImGui::CalcTextSize(probeName).x + 2.0f * textPadding;
+
+	char samplingText[64] = "";
+	float samplingWidth = 0.0f;
+
+	if (isVariableView)
+	{
+		/* Formatted here rather than by the helper that draws it, because the
+		   width has to be known before the row is laid out. */
+		std::snprintf(samplingText, sizeof(samplingText), "sampling: %.2f Hz", viewerDataHandler->getAverageSamplingFrequency());
+		samplingWidth = ImGui::CalcTextSize("sampling: 1000000.00 Hz").x;
+	}
+
+	const bool withSampling = (samplingText[0] != '\0');
+	const float rateWidth = withSampling ? samplingWidth + gap : 0.0f;
+
+	/* The menu titles are drawn first, so where the bar cursor sits now is the
+	   left edge this group must not cross. */
+	const float titlesEndX = ImGui::GetCursorPosX() + gap;
+	float startX = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - margin - rateWidth - stateWidth - probeWidth;
+
+	if (startX < titlesEndX && withSampling)
+	{
+		/* The connection state is worth more than the rate, so the rate is the
+		   one that is given up when the window is too narrow for both. */
+		samplingText[0] = '\0';
+		startX += rateWidth;
+	}
+
+	if (startX < titlesEndX)
+		return;
+
+	ImGui::SetCursorPosX(startX);
+
+	bool hovered = false;
+	bool pressed = false;
+
+	ImGui::PushStyleColor(ImGuiCol_Button, stateFace);
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, stateFaceHovered);
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, stateFaceActive);
+
+	pressed |= ImGui::Button(stateText, ImVec2(stateWidth, height));
+	hovered |= ImGui::IsItemHovered();
+
+	ImGui::PopStyleColor(3);
+
+	/* No gap between the two, so they read as one control with a coloured half
+	   and a named half. */
+	ImGui::SameLine(0.0f, 0.0f);
+
+	ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::neutral);
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::neutralLight);
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::neutralLight);
+
+	pressed |= ImGui::Button(probeName, ImVec2(probeWidth, height));
+	hovered |= ImGui::IsItemHovered();
+
+	ImGui::PopStyleColor(3);
+
+	if (pressed)
+		showAcqusitionSettingsWindow = true;
+
+	if (samplingText[0] != '\0')
+	{
+		ImGui::SameLine(0.0f, gap);
+
+		/* Right aligned inside the width reserved for it, so extra digits grow
+		   towards the left and nothing else in the bar moves. */
+		const float valueWidth = ImGui::CalcTextSize(samplingText).x;
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + samplingWidth - valueWidth);
+		ImGui::TextUnformatted(samplingText);
+	}
+
+	if (!hovered)
+		return;
+
+	ImGui::BeginTooltip();
+	ImGui::TextUnformatted(isVariableView ? "Variable Viewer acquisition" : "Trace Viewer acquisition");
+	ImGui::Separator();
+
+	drawIndicatorRow("State", stateText);
+	drawIndicatorRow("Probe", probeName);
+
+	if (serialPort)
+	{
+		drawIndicatorRow("Serial port", serialNumber.empty() ? "-" : serialNumber);
+		drawIndicatorRow("Baudrate", std::to_string(baudrate) + " baud");
+	}
+	else
+	{
+		drawIndicatorRow("Serial number", serialNumber.empty() ? "-" : serialNumber);
+		drawIndicatorRow("SWD speed", std::to_string(speedkHz) + " kHz");
+	}
+
+	if (hasTargetName)
+	{
+		drawIndicatorRow("Target name", targetName.empty() ? "-" : targetName);
+		drawIndicatorRow("Mode", highSpeed ? "HSS" : "NORMAL");
+	}
+
+	/* The reason the last start failed. Without it a disconnected chip says
+	   nothing about whether the probe, the target or a setting is at fault. */
+	const std::string readerError = handler->getLastReaderError();
+
+	if (!readerError.empty())
+	{
+		ImGui::Separator();
+		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 360.0f * GuiHelper::contentScale);
+		ImGui::TextUnformatted(readerError.c_str());
+		ImGui::PopTextWrapPos();
+	}
+
+	ImGui::Separator();
+	ImGui::TextUnformatted("Click to open the acquisition settings.");
+	ImGui::EndTooltip();
 }
 
 void Gui::drawOpenRecentMenu()

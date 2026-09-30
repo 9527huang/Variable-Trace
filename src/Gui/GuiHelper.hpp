@@ -13,25 +13,36 @@
 
 namespace GuiHelper
 {
-/**
- * @brief scale of the content used in the Gui settings
+/* The scale of the display the window sits on. Written once by Gui::mainThread
+ * and read by every file that sizes a widget, so it has to be one object shared
+ * by all of them. `inline` gives it a single definition across translation
+ * units; inside a header a plain `static` would give each file its own copy, and
+ * the file that does the writing is not the file that does most of the reading.
  *
- */
-static float contentScale = 1.0f;
+ * The colours below are constant, so a copy each would only waste space, but
+ * they follow the same rule so that a later change cannot reintroduce the
+ * split. */
+inline float contentScale = 1.0f;
 
-static ImVec4 white = (ImVec4)ImColor::HSV(0.0f, 0.0f, 1.0f);
+inline ImVec4 white = (ImVec4)ImColor::HSV(0.0f, 0.0f, 1.0f);
 
-static ImVec4 green = (ImVec4)ImColor::HSV(0.365f, 0.94f, 0.37f);
-static ImVec4 greenLight = (ImVec4)ImColor::HSV(0.365f, 0.94f, 0.57f);
-static ImVec4 greenLightDim = (ImVec4)ImColor::HSV(0.365f, 0.94f, 0.47f);
+inline ImVec4 green = (ImVec4)ImColor::HSV(0.365f, 0.94f, 0.37f);
+inline ImVec4 greenLight = (ImVec4)ImColor::HSV(0.365f, 0.94f, 0.57f);
+inline ImVec4 greenLightDim = (ImVec4)ImColor::HSV(0.365f, 0.94f, 0.47f);
 
-static ImVec4 red = (ImVec4)ImColor::HSV(0.0f, 0.95f, 0.72f);
-static ImVec4 redLight = (ImVec4)ImColor::HSV(0.0f, 0.95f, 0.92f);
-static ImVec4 redLightDim = (ImVec4)ImColor::HSV(0.0f, 0.95f, 0.82f);
+inline ImVec4 red = (ImVec4)ImColor::HSV(0.0f, 0.95f, 0.72f);
+inline ImVec4 redLight = (ImVec4)ImColor::HSV(0.0f, 0.95f, 0.92f);
+inline ImVec4 redLightDim = (ImVec4)ImColor::HSV(0.0f, 0.95f, 0.82f);
 
-static ImVec4 orange = (ImVec4)ImColor::HSV(0.116f, 0.97f, 0.72f);
-static ImVec4 orangeLight = (ImVec4)ImColor::HSV(0.116f, 0.97f, 0.92f);
-static ImVec4 orangeLightDim = (ImVec4)ImColor::HSV(0.116f, 0.97f, 0.82f);
+inline ImVec4 orange = (ImVec4)ImColor::HSV(0.116f, 0.97f, 0.72f);
+inline ImVec4 orangeLight = (ImVec4)ImColor::HSV(0.116f, 0.97f, 0.92f);
+inline ImVec4 orangeLightDim = (ImVec4)ImColor::HSV(0.116f, 0.97f, 0.82f);
+
+/* The half of a two part readout that carries a name rather than a state. It
+   stays neutral so that the coloured half next to it is the one that is read as
+   the state. */
+inline ImVec4 neutral = (ImVec4)ImColor::HSV(0.0f, 0.0f, 0.28f);
+inline ImVec4 neutralLight = (ImVec4)ImColor::HSV(0.0f, 0.0f, 0.40f);
 
 /**
  * @brief Convert int32_t to hexadecilam string

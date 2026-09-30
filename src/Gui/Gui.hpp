@@ -182,6 +182,10 @@ class Gui
    private:
 	void mainThread(std::string externalPath);
 	void drawMenu();
+	/* The state of the probe behind the tab that is showing, plus, for the
+	   variable viewer, the rate the acquisition is reaching. Drawn at the right
+	   end of the main menu bar. */
+	void drawConnectionIndicator();
 	void drawStartButton(DataHandlerBase* activeDataHandler);
 	void drawDebugProbes();
 	void drawTraceProbes();

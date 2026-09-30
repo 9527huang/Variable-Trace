@@ -52,6 +52,15 @@ class DataHandlerBase
 		return viewerState.load();
 	}
 
+	/* True between a state change being asked for and the acquisition thread
+	   having carried it out. The requested state is stored straight away, so
+	   without this an interface cannot tell a probe that is still being opened
+	   from one that is already delivering data. */
+	bool isTransitionPending() const
+	{
+		return stateChangeOrdered.load();
+	}
+
    protected:
 	PlotGroupHandler* plotGroupHandler;
 	VariableHandler* variableHandler;
