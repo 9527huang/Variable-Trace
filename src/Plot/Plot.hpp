@@ -213,6 +213,28 @@ class Plot
 	void setSeriesDisplayFormat(const std::string& name, displayFormat format);
 	std::string getSeriesValueString(const std::string& name, double value);
 
+	/* How a cursor reading is written out.
+
+	   These live here rather than with the drawing code so that they can be
+	   read and checked without a window: they are text formatting and nothing
+	   else. A cursor sitting on a whole number should not read as that number
+	   plus five zeroes, so a fixed point form is only used while there is
+	   something after the point worth showing. */
+	static std::string formatCursorValue(double value);
+
+	/* A time in milliseconds. The horizontal axis of a curve is drawn in
+	   seconds, but the spans a cursor measures are the ones between one run
+	   of the firmware and the next, and those are milliseconds. The unit is
+	   spelled out because a reading of 0.366667 makes the reader convert it
+	   and 366.667 ms does not. */
+	static std::string formatCursorMilliseconds(double seconds);
+
+	/* The rate a span stands for, in hertz. A pair of time cursors measures a
+	   period, and the useful reading of a period is usually how often it
+	   repeats. A pair sitting on one instant has no rate, and says so rather
+	   than reporting an infinite number. */
+	static std::string formatCursorRate(double seconds);
+
 	int32_t statisticsSeries = 0;
 
    private:

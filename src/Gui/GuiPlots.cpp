@@ -194,7 +194,7 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 			{
 				const double timepoint = plot->markerX0.getValue();
 				const double value = *(serPtr->buffer->getFirstElementCopy() + time.getIndexFromvalue(timepoint));
-				name = key + " = " + CursorRenderer::formatValue(value);
+				name = key + " = " + Plot::formatCursorValue(value);
 			}
 
 			ImPlot::SetNextLineStyle(ImVec4(serPtr->var->getColor().r, serPtr->var->getColor().g, serPtr->var->getColor().b, 1.0f));

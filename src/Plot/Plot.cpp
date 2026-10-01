@@ -3,6 +3,7 @@
 #include <unistd.h>
 
 #include <bitset>
+#include <iomanip>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -328,4 +329,61 @@ std::string Plot::getEffectiveXAxisLabel() const
 std::string Plot::getEffectiveYAxisLabel() const
 {
 	return yAxisLabel.empty() ? getDefaultYAxisLabel() : yAxisLabel;
+}
+
+std::string Plot::formatCursorValue(double value)
+{
+	std::stringstream ss;
+
+	if (value == 0.0)
+	{
+		ss << "0";
+	}
+	else if (std::abs(value) < 1e-4 || std::abs(value) >= 1e7)
+	{
+		/* A reading this small or this large has no useful fixed point
+		   form, so it keeps its significant digits instead. */
+		ss << std::setprecision(4) << std::showpoint << value;
+	}
+	else
+	{
+		ss << std::fixed << std::setprecision(5) << value;
+	}
+
+	std::string text = ss.str();
+
+	const size_t point = text.find('.');
+	if (point != std::string::npos)
+	{
+		const size_t last = text.find_last_not_of('0');
+
+		/* Take off the trailing zeroes, and the point with them when the
+		   digits behind it are all zeroes. Without the second step a whole
+		   number reads as "2." instead of "2". */
+		if (last == std::string::npos || last <= point)
+			text.erase(point);
+		else
+			text.erase(last + 1);
+	}
+
+	return text;
+}
+
+std::string Plot::formatCursorMilliseconds(double seconds)
+{
+	return formatCursorValue(seconds * 1000.0) + " ms";
+}
+
+std::string Plot::formatCursorRate(double seconds)
+{
+	/* A pair of cursors sitting on the same instant has no period, so it
+	   has no rate either. */
+	if (seconds == 0.0)
+		return "-";
+
+	std::stringstream ss;
+
+	ss << std::fixed << std::setprecision(1) << 1.0 / std::abs(seconds);
+
+	return ss.str();
 }

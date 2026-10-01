@@ -109,7 +109,7 @@ class CursorRenderer
 	 * @param firstLabel name of the first reading, x0 or y0
 	 * @param secondLabel name of the second reading
 	 * @param differenceLabel name of the reading between them, dx or dy
-	 * @param vertical true for X cursors, which put their text at the top and bottom of the line
+	 * @param vertical true for X cursors, whose three readings run along the top of the plot
 	 * @param limits what the plot currently shows
 	 */
 	static void drawReadings(const Plot::Marker& first, const Plot::Marker& second, const char* firstLabel, const char* secondLabel, const char* differenceLabel, bool vertical, const ImPlotRect& limits)
@@ -132,13 +132,17 @@ class CursorRenderer
 				return marker.getValue() < (limits.X.Min + limits.X.Max) * 0.5 ? 1.0 : -1.0;
 			};
 
-			/* Both readings of a cursor share a side, so the second one is
-			   placed below the first instead of on top of it. */
-			ImPlot::Annotation(first.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(first) * step), 0.0f), true, "%s = %s", firstLabel, formatValue(first.getValue()).c_str());
-			ImPlot::Annotation(second.getValue(), limits.Y.Min, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(second) * step), 0.0f), true, "%s = %s", secondLabel, formatValue(second.getValue()).c_str());
-			/* The distance is what the pair is for, so it is drawn next to the
-			   second line as well, below that line's own reading. */
-			ImPlot::Annotation(second.getValue(), limits.Y.Min, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(second) * step), static_cast<float>(lineHeight)), true, "%s = %s", differenceLabel, formatValue(gap).c_str());
+			/* Every reading of a time cursor sits along the top of the plot,
+			   which is the one strip no curve reaches into and where the
+			   numbers can be read without covering the trace. The three of
+			   them belong to the pair, so they are stacked under the second
+			   line: the second cursor's place, the distance to the first one,
+			   and the rate that distance stands for. */
+			ImPlot::Annotation(first.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(first) * step), 0.0f), true, "%s = %s", firstLabel, Plot::formatCursorMilliseconds(first.getValue()).c_str());
+
+			ImPlot::Annotation(second.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(second) * step), 0.0f), true, "%s = %s", secondLabel, Plot::formatCursorMilliseconds(second.getValue()).c_str());
+			ImPlot::Annotation(second.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(second) * step), static_cast<float>(lineHeight)), true, "%s = %s", differenceLabel, Plot::formatCursorMilliseconds(gap).c_str());
+			ImPlot::Annotation(second.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(second) * step), static_cast<float>(2.0 * lineHeight)), true, "1/dt = %s Hz", Plot::formatCursorRate(gap).c_str());
 		}
 		else
 		{
@@ -156,35 +160,14 @@ class CursorRenderer
 	/**
 	 * @brief A value with the digits that carry no information taken off
 	 *
-	 * A cursor sitting on a whole number should not read as that number plus
-	 * five zeroes, so the fixed point form is only used while there is
-	 * something after the point to show.
+	 * The formatting is the plot's, because the same reading is written into
+	 * the cursor label and into the text on the plot, and the two have to
+	 * agree. This name is kept short because the reading calls below build
+	 * their text from several of these at once.
 	 */
 	static std::string formatValue(double value)
 	{
-		char buffer[64];
-
-		if (value == 0.0)
-		{
-			ImFormatString(buffer, sizeof(buffer), "0");
-			return buffer;
-		}
-
-		if (std::abs(value) < 1e-4 || std::abs(value) >= 1e7)
-			ImFormatString(buffer, sizeof(buffer), "%.5g", value);
-		else
-			ImFormatString(buffer, sizeof(buffer), "%.5f", value);
-
-		std::string text = buffer;
-
-		const size_t point = text.find('.');
-		if (point != std::string::npos)
-		{
-			const size_t last = text.find_last_not_of('0');
-			text.erase(last == std::string::npos ? point : (last > point ? last + 1 : point + 1));
-		}
-
-		return text;
+		return Plot::formatCursorValue(value);
 	}
 
    private:

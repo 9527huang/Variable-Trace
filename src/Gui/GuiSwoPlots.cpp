@@ -67,18 +67,7 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 			ImPlotRect plotLimits = ImPlot::GetPlotLimits();
 
 			if (plot->drawsXCursors())
-			{
 				CursorRenderer::drawX(plot, plotLimits);
-
-				/* The two readings the pair gives are a time and its
-				   reciprocal, and the second one is what a trace is
-				   usually read for: it says how often the firmware came
-				   round. It is drawn under the distance reading. */
-				const double dx = plot->markerX1.getValue() - plot->markerX0.getValue();
-
-				if (dx != 0.0)
-					ImPlot::Annotation(plot->markerX1.getValue(), plotLimits.Y.Min, ImVec4(0, 0, 0, 0), ImVec2(10 * GuiHelper::contentScale, 36 * GuiHelper::contentScale), true, "1/dt = %.1f Hz", 1.0 / dx);
-			}
 
 			if (plot->drawsYCursors())
 				CursorRenderer::drawY(plot, plotLimits);
