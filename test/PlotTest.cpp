@@ -300,3 +300,41 @@ TEST(CursorReadingTest, aPlainValueDropsTheDigitsThatSayNothing)
 	EXPECT_EQ(Plot::formatCursorValue(-0.033333), "-0.03333");
 	EXPECT_EQ(Plot::formatCursorValue(0.0), "0");
 }
+
+/*
+ * The slope of the rectangle two pairs of cursors close. This is the reading
+ * a plot carries when neither of its axes is time: a pair of lines each way
+ * marks off a box, and what the box is opened for is how much the vertical
+ * side rises per unit of the horizontal one.
+ */
+
+TEST(CursorReadingTest, aSlopeIsTheRiseOverTheRun)
+{
+	EXPECT_EQ(Plot::formatCursorSlope(2.0, 4.0), "0.500");
+	EXPECT_EQ(Plot::formatCursorSlope(1.0, 3.0), "0.333");
+	EXPECT_EQ(Plot::formatCursorSlope(-2.0, 4.0), "-0.500");
+
+	/* A slope that happens to be a whole number still reads as one, and it
+	   keeps three places so that a column of them lines up. */
+	EXPECT_EQ(Plot::formatCursorSlope(8.0, 2.0), "4.000");
+}
+
+TEST(CursorReadingTest, aPairWithNoRunHasNoSlope)
+{
+	/* Two vertical cursors on the same spot close a box with no width, so
+	   there is nothing to divide the rise by. Writing infinity there would
+	   be a figure nobody asked for; the field says it has nothing instead. */
+	EXPECT_EQ(Plot::formatCursorSlope(2.0, 0.0), "-");
+
+	/* A rise of zero over a real run is a genuine slope of nothing, which
+	   is a number and is written as one. */
+	EXPECT_EQ(Plot::formatCursorSlope(0.0, 4.0), "0.000");
+}
+
+TEST(CursorReadingTest, aZeroSpanIsRecognisedAsOne)
+{
+	EXPECT_TRUE(Plot::cursorsShareAPosition(1.5, 1.5));
+	EXPECT_FALSE(Plot::cursorsShareAPosition(1.5, 1.6));
+	EXPECT_TRUE(Plot::cursorsShareAPosition(0.0, 0.0));
+	EXPECT_TRUE(Plot::cursorsShareAPosition(-2.0, -2.0));
+}
