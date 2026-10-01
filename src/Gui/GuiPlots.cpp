@@ -80,10 +80,7 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 		const std::string yLabel = plot->getEffectiveYAxisLabel();
 
 		if (viewerDataHandler->getState() == DataHandlerBase::State::RUN)
-		{
-			ImPlot::SetupAxis(ImAxis_Y1, yLabel.c_str(), ImPlotAxisFlags_AutoFit);
-			ImPlot::SetupAxis(ImAxis_X1, xLabel.c_str(), ImPlotAxisFlags_AutoFit);
-		}
+			ImPlot::SetupAxes(xLabel.c_str(), yLabel.c_str(), ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
 		else
 		{
 			ImPlot::SetupAxes(xLabel.c_str(), yLabel.c_str(), 0, 0);
@@ -93,6 +90,22 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 
 		plot->setIsHovered(ImPlot::IsPlotHovered());
 		dragAndDropPlot(plot);
+
+		/* The cursors go on the same way here as on a time plot: two lines
+		   each way, and the readings the rectangle they close produces. The
+		   slope of that rectangle is the reading this kind of plot is
+		   usually opened for, and it comes out of a pair on both
+		   directions, so the mode is asked rather than assumed. */
+		if (viewerDataHandler->getState() == DataHandlerBase::State::STOP)
+		{
+			ImPlotRect plotLimits = ImPlot::GetPlotLimits();
+
+			if (plot->drawsXCursors())
+				CursorRenderer::drawX(plot.get(), plotLimits);
+
+			if (plot->drawsYCursors())
+				CursorRenderer::drawY(plot.get(), plotLimits, plot->drawsXCursors() ? plot->markerX1.getValue() - plot->markerX0.getValue() : 0.0);
+		}
 
 		/* make thread safe copies of buffers - TODO refactor */
 		mtx->lock();
@@ -160,8 +173,11 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 			if (plot->drawsXCursors())
 				CursorRenderer::drawX(plot.get(), plotLimits);
 
+			/* The slope a pair of vertical cursors stands for is only a
+			   number when the same plot also has a pair along the bottom,
+			   so the width of that pair is handed over with them. */
 			if (plot->drawsYCursors())
-				CursorRenderer::drawY(plot.get(), plotLimits);
+				CursorRenderer::drawY(plot.get(), plotLimits, plot->drawsXCursors() ? plot->markerX1.getValue() - plot->markerX0.getValue() : 0.0);
 
 			handleDragRect(0, plot->stats, plotLimits);
 		}

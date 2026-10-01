@@ -88,11 +88,13 @@ class PlotsTree
 			plt->statisticsSeries = 0;
 		}
 
-		/* Staticstics */
-		ImGui::BeginDisabled(plt->getType() != Plot::Type::CURVE);
+		/* The cursors row stands above every plot type, the same way it does
+		   in the reference build: which lines a plot can carry is not
+		   decided by how it draws its data. A plot whose horizontal axis is
+		   another variable gets its slope reading out of the pair of
+		   vertical cursors, so the row is not limited to the time plots. */
 		drawCursorSettings(plt);
 		statisticsWindow.drawAnalog(plt);
-		ImGui::EndDisabled();
 		ImGui::PopID();
 
 		/* Var list within plot*/
@@ -167,12 +169,18 @@ class PlotsTree
 		}
 
 		ImGui::SameLine();
-		ImGui::BeginDisabled(!visible);
-		int32_t mode = static_cast<int32_t>(Plot::cursorModeToIndex(plt->getCursorMode()));
-		ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
-		if (ImGui::Combo("##cursorMode", &mode, Plot::cursorModeNames, IM_ARRAYSIZE(Plot::cursorModeNames)))
-			plt->setCursorMode(Plot::cursorModeFromIndex(static_cast<uint32_t>(mode)));
-		ImGui::EndDisabled();
+
+		/* The direction only has a meaning once there are cursors to point
+		   it at, so it is drawn only then. The reference build does the
+		   same, and it keeps the row down to one control until the user has
+		   asked for something that needs a second. */
+		if (visible)
+		{
+			int32_t mode = static_cast<int32_t>(Plot::cursorModeToIndex(plt->getCursorMode()));
+			ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
+			if (ImGui::Combo("##cursorMode", &mode, Plot::cursorModeNames, IM_ARRAYSIZE(Plot::cursorModeNames)))
+				plt->setCursorMode(Plot::cursorModeFromIndex(static_cast<uint32_t>(mode)));
+		}
 	}
 
 	void drawAddPlotButton()

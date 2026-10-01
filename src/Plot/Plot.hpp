@@ -235,6 +235,20 @@ class Plot
 	   than reporting an infinite number. */
 	static std::string formatCursorRate(double seconds);
 
+	/* The slope between the two corners of a pair of cursors.
+
+	   This is the reading a plot carries when both of its axes are values
+	   rather than time: two lines each way mark off a rectangle, and what the
+	   rectangle is read for is how much the vertical one changes per unit of
+	   the horizontal one. A pair whose corners share a horizontal position
+	   has no slope, and says so rather than reporting an infinite number. */
+	static std::string formatCursorSlope(double rise, double run);
+
+	/* Whether both cursors of a pair sit at the same place along their axis,
+	   in which case the span between them is zero and the readings that
+	   divide by it are not numbers. */
+	static bool cursorsShareAPosition(double first, double second);
+
 	int32_t statisticsSeries = 0;
 
    private:

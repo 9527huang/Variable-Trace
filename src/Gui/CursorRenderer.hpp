@@ -73,10 +73,11 @@ class CursorRenderer
 	 *
 	 * @param plot the plot being drawn
 	 * @param limits what the plot currently shows
+	 * @param xSpan the distance between the X cursors, or zero when there are none
 	 */
-	static void drawY(Plot* plot, const ImPlotRect& limits)
+	static void drawY(Plot* plot, const ImPlotRect& limits, double xSpan = 0.0)
 	{
-		drawY(plot, limits, 2);
+		drawY(plot, limits, 2, xSpan);
 	}
 
 	/**
@@ -111,8 +112,12 @@ class CursorRenderer
 	 * @param differenceLabel name of the reading between them, dx or dy
 	 * @param vertical true for X cursors, whose three readings run along the top of the plot
 	 * @param limits what the plot currently shows
+	 * @param run the width of the rectangle the pair closes with the other
+	 *        direction, which is what turns it into a slope. Zero when the plot
+	 *        carries no cursors along the other direction, and then the slope
+	 *        has nothing to divide by and is not drawn
 	 */
-	static void drawReadings(const Plot::Marker& first, const Plot::Marker& second, const char* firstLabel, const char* secondLabel, const char* differenceLabel, bool vertical, const ImPlotRect& limits)
+	static void drawReadings(const Plot::Marker& first, const Plot::Marker& second, const char* firstLabel, const char* secondLabel, const char* differenceLabel, bool vertical, const ImPlotRect& limits, double run = 0.0)
 	{
 		const double gap = second.getValue() - first.getValue();
 
@@ -154,6 +159,13 @@ class CursorRenderer
 			ImPlot::Annotation(limits.X.Min, first.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(first) * step)), true, "%s = %s", firstLabel, formatValue(first.getValue()).c_str());
 			ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * step)), true, "%s = %s", secondLabel, formatValue(second.getValue()).c_str());
 			ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * step - lineHeight)), true, "%s = %s", differenceLabel, formatValue(gap).c_str());
+
+			/* A slope is only a number once there is a run to divide the
+			   rise by, which is what the X cursors of the same plot give.
+			   Without them the reading has nothing behind it, so the line is
+			   left out rather than filled with a figure that means nothing. */
+			if (run != 0.0)
+				ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * step - 2.0 * lineHeight)), true, "dy/dx = %s", Plot::formatCursorSlope(gap, run).c_str());
 		}
 	}
 
@@ -185,7 +197,7 @@ class CursorRenderer
 		drawReadings(plot->markerX0, plot->markerX1, "x0", "x1", "dx", true, limits);
 	}
 
-	static void drawY(Plot* plot, const ImPlotRect& limits, uint32_t idBase)
+	static void drawY(Plot* plot, const ImPlotRect& limits, uint32_t idBase, double run)
 	{
 		placeIfUntouched(plot->markerY0, limits.Y.Min + (limits.Y.Max - limits.Y.Min) / 3.0);
 		placeIfUntouched(plot->markerY1, limits.Y.Min + 2.0 * (limits.Y.Max - limits.Y.Min) / 3.0);
@@ -193,7 +205,7 @@ class CursorRenderer
 		drawCrosshair(idBase + 0, plot->markerY0, false, yCursorColour);
 		drawCrosshair(idBase + 1, plot->markerY1, false, ImVec4(yCursorColour.x, yCursorColour.y, yCursorColour.z, 0.7f));
 
-		drawReadings(plot->markerY0, plot->markerY1, "y0", "y1", "dy", false, limits);
+		drawReadings(plot->markerY0, plot->markerY1, "y0", "y1", "dy", false, limits, run);
 	}
 
 	/* A cursor is placed the first time it is drawn and left alone after

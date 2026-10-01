@@ -156,12 +156,16 @@ void Gui::drawPlotsTreeSwo()
 	}
 
 	ImGui::SameLine();
-	ImGui::BeginDisabled(!cursorsVisible);
-	int32_t cursorMode = static_cast<int32_t>(Plot::cursorModeToIndex(plt->getCursorMode()));
-	ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
-	if (ImGui::Combo("##cursorMode", &cursorMode, Plot::cursorModeNames, IM_ARRAYSIZE(Plot::cursorModeNames)))
-		plt->setCursorMode(Plot::cursorModeFromIndex(static_cast<uint32_t>(cursorMode)));
-	ImGui::EndDisabled();
+
+	/* As in the plots tree: the direction is drawn only once there are
+	   cursors for it to point at. */
+	if (cursorsVisible)
+	{
+		int32_t cursorMode = static_cast<int32_t>(Plot::cursorModeToIndex(plt->getCursorMode()));
+		ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
+		if (ImGui::Combo("##cursorMode", &cursorMode, Plot::cursorModeNames, IM_ARRAYSIZE(Plot::cursorModeNames)))
+			plt->setCursorMode(Plot::cursorModeFromIndex(static_cast<uint32_t>(cursorMode)));
+	}
 	ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX(), ImGui::GetWindowSize().y - 25 * GuiHelper::contentScale / 2.0f - ImGui::GetFrameHeightWithSpacing()));
 	// drawExportPlotToCSVButton(plt);
 	ImGui::PopID();

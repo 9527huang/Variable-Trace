@@ -387,3 +387,23 @@ std::string Plot::formatCursorRate(double seconds)
 
 	return ss.str();
 }
+
+bool Plot::cursorsShareAPosition(double first, double second)
+{
+	return first == second;
+}
+
+std::string Plot::formatCursorSlope(double rise, double run)
+{
+	/* A vertical pair of cursors has no run to divide by, so the slope is
+	   not a number that could be written. The field says it has nothing
+	   rather than inventing a figure. */
+	if (cursorsShareAPosition(run, 0.0))
+		return "-";
+
+	std::stringstream ss;
+
+	ss << std::fixed << std::setprecision(3) << rise / run;
+
+	return ss.str();
+}
