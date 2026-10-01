@@ -250,3 +250,53 @@ TEST(PlotCursorTest, bothDirectionsHaveTheirOwnPairOfCursors)
 	EXPECT_EQ(plot.markerY0.getValue(), 3.0);
 	EXPECT_EQ(plot.markerY1.getValue(), 4.0);
 }
+
+/*
+ * What a cursor reading looks like. The horizontal axis of a curve is drawn
+ * in seconds, but the spans it is measured over are the ones between one run
+ * of the firmware and the next, so a time cursor reports milliseconds. The
+ * rate that goes with the span is the reading the pair is usually opened for,
+ * so it is carried alongside the time rather than left to be worked out.
+ *
+ * The values are strings because that is what reaches the screen, and a test
+ * that only checked the numbers would not catch a missing unit.
+ */
+
+TEST(CursorReadingTest, aTimeCursorReportsMilliseconds)
+{
+	EXPECT_EQ(Plot::formatCursorMilliseconds(0.352792), "352.792 ms");
+	EXPECT_EQ(Plot::formatCursorMilliseconds(0.719459), "719.459 ms");
+	EXPECT_EQ(Plot::formatCursorMilliseconds(0.366667), "366.667 ms");
+
+	/* A whole number of milliseconds keeps no decimal point, and a negative
+	   span - which a cursor dragged past its partner produces - keeps its
+	   sign so that the reader can see the order they are in. */
+	EXPECT_EQ(Plot::formatCursorMilliseconds(0.5), "500 ms");
+	EXPECT_EQ(Plot::formatCursorMilliseconds(-0.25), "-250 ms");
+	EXPECT_EQ(Plot::formatCursorMilliseconds(0.0), "0 ms");
+}
+
+TEST(CursorReadingTest, aSpanIsAlsoReportedAsItsRate)
+{
+	EXPECT_EQ(Plot::formatCursorRate(0.366667), "2.7");
+	EXPECT_EQ(Plot::formatCursorRate(0.01), "100.0");
+
+	/* The rate of a span read the other way round is the same rate, so the
+	   sign of the span does not turn into a negative frequency. */
+	EXPECT_EQ(Plot::formatCursorRate(-0.366667), "2.7");
+
+	/* A pair sitting on the same instant has no rate to report. Writing
+	   infinity there would be a number nobody asked for, so the field is
+	   left to say that it has nothing rather than inventing one. */
+	EXPECT_EQ(Plot::formatCursorRate(0.0), "-");
+}
+
+TEST(CursorReadingTest, aPlainValueDropsTheDigitsThatSayNothing)
+{
+	/* The vertical axis is not a time, so its readings keep the unit the
+	   axis carries and lose only the trailing zeroes. */
+	EXPECT_EQ(Plot::formatCursorValue(0.5), "0.5");
+	EXPECT_EQ(Plot::formatCursorValue(2.0), "2");
+	EXPECT_EQ(Plot::formatCursorValue(-0.033333), "-0.03333");
+	EXPECT_EQ(Plot::formatCursorValue(0.0), "0");
+}
