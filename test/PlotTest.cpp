@@ -13,6 +13,11 @@
  *
  * The tests below pin that automatic name down for each kind of plot, and then
  * check that a typed label replaces it without disturbing the others.
+ *
+ * The vertical axis is named on every kind of plot that has one. That is not
+ * only cosmetic: the right click menu of an axis offers a switch to hide its
+ * label, and ImPlot greys that switch out while the axis carries no text at
+ * all, so an unnamed axis is an axis whose label cannot be turned off.
  */
 
 TEST(PlotAxisLabelTest, aCurveIsDrawnAgainstTime)
@@ -20,11 +25,11 @@ TEST(PlotAxisLabelTest, aCurveIsDrawnAgainstTime)
 	Plot plot("p");
 
 	EXPECT_EQ(plot.getDefaultXAxisLabel(), "time[s]");
-	EXPECT_EQ(plot.getDefaultYAxisLabel(), "");
+	EXPECT_EQ(plot.getDefaultYAxisLabel(), "Value");
 
 	/* Nothing was typed in, so the automatic name is what gets drawn. */
 	EXPECT_EQ(plot.getEffectiveXAxisLabel(), "time[s]");
-	EXPECT_EQ(plot.getEffectiveYAxisLabel(), "");
+	EXPECT_EQ(plot.getEffectiveYAxisLabel(), "Value");
 }
 
 TEST(PlotAxisLabelTest, aBarChartNamesTheAxisItsValuesSitOn)
@@ -50,6 +55,17 @@ TEST(PlotAxisLabelTest, anXYPlotNamesTheHorizontalAxisAfterItsVariable)
 	plot.setXAxisVariable(&speed);
 
 	EXPECT_EQ(plot.getDefaultXAxisLabel(), "speed");
+}
+
+TEST(PlotAxisLabelTest, everyKindOfPlotWithAVerticalAxisNamesIt)
+{
+	for (const Plot::Type kind : {Plot::Type::CURVE, Plot::Type::BAR, Plot::Type::XY})
+	{
+		Plot plot("p");
+		plot.setType(kind);
+
+		EXPECT_EQ(plot.getDefaultYAxisLabel(), "Value") << "plot kind " << static_cast<int>(kind);
+	}
 }
 
 TEST(PlotAxisLabelTest, aTableHasNoAxesToName)

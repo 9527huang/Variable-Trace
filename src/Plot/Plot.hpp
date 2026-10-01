@@ -150,8 +150,10 @@ class Plot
 	std::string getYAxisLabel() const;
 
 	/* What the axis is called with no label set. A curve is drawn against
-	   time and a bar chart is drawn against the names of its series, which is
-	   where the two fixed names come from. */
+	   time and an XY plot against another variable, which is where the two
+	   horizontal names come from; the vertical axis holds the values of the
+	   plotted variables and is named after that. Only a table, which has no
+	   axes, leaves a name empty. */
 	std::string getDefaultXAxisLabel() const;
 	std::string getDefaultYAxisLabel() const;
 

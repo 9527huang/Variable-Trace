@@ -309,10 +309,15 @@ std::string Plot::getDefaultXAxisLabel() const
 
 std::string Plot::getDefaultYAxisLabel() const
 {
-	if (type == Type::BAR)
-		return "Value";
+	/* Every kind of plot that has a vertical axis carries the values of the
+	   variables it holds, so it is called that. Leaving this empty instead
+	   would make the axis anonymous, and an anonymous axis cannot have its
+	   label switched off in the right click menu either: ImPlot only offers
+	   that switch once there is text to switch. */
+	if (type == Type::TABLE)
+		return "";
 
-	return "";
+	return "Value";
 }
 
 std::string Plot::getEffectiveXAxisLabel() const
