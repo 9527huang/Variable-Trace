@@ -38,6 +38,13 @@ namespace mcp
 			destination->setAlias(source->getAlias());
 			destination->setXAxisLabel(source->getXAxisLabel());
 			destination->setYAxisLabel(source->getYAxisLabel());
+			destination->setCursorsVisible(source->getCursorsVisible());
+			destination->setCursorMode(source->getCursorMode());
+
+			destination->markerX0.setValue(source->markerX0.getValue());
+			destination->markerX1.setValue(source->markerX1.getValue());
+			destination->markerY0.setValue(source->markerY0.getValue());
+			destination->markerY1.setValue(source->markerY1.getValue());
 			destination->setVisibility(source->getVisibility());
 			destination->setDomain(source->getDomain());
 			destination->setTraceVarType(source->getTraceVarType());

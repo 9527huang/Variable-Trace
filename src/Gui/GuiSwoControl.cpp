@@ -141,12 +141,27 @@ void Gui::drawPlotsTreeSwo()
 	else
 		statisticsWindow.drawDigital(plt);
 
-	bool mx0 = (traceDataHandler->getState() == DataHandlerBase::State::RUN) ? false : plt->markerX0.getState();
-	ImGui::Text("markers    ");
+	/* Cursors are put away while the trace is running, for the same reason as
+	   on the variable side: a measurement of data that is still arriving is a
+	   measurement of nothing. The label sits above the controls because this
+	   panel is as narrow as the one in the plots tree. */
+	bool cursorsVisible = (traceDataHandler->getState() == DataHandlerBase::State::RUN) ? false : plt->getCursorsVisible();
+	ImGui::Text("Cursors:");
+	if (ImGui::Checkbox("##cursors", &cursorsVisible))
+	{
+		plt->setCursorsVisible(cursorsVisible);
+
+		if (cursorsVisible)
+			CursorRenderer::resetCursors(plt.get());
+	}
+
 	ImGui::SameLine();
-	ImGui::Checkbox("##mx0", &mx0);
-	plt->markerX0.setState(mx0);
-	plt->markerX1.setState(mx0);
+	ImGui::BeginDisabled(!cursorsVisible);
+	int32_t cursorMode = static_cast<int32_t>(Plot::cursorModeToIndex(plt->getCursorMode()));
+	ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
+	if (ImGui::Combo("##cursorMode", &cursorMode, Plot::cursorModeNames, IM_ARRAYSIZE(Plot::cursorModeNames)))
+		plt->setCursorMode(Plot::cursorModeFromIndex(static_cast<uint32_t>(cursorMode)));
+	ImGui::EndDisabled();
 	ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX(), ImGui::GetWindowSize().y - 25 * GuiHelper::contentScale / 2.0f - ImGui::GetFrameHeightWithSpacing()));
 	// drawExportPlotToCSVButton(plt);
 	ImGui::PopID();

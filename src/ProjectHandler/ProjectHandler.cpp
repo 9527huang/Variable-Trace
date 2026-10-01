@@ -164,6 +164,17 @@ json ProjectHandler::serializePlot(const std::shared_ptr<Plot>& plt) const
 	entry["xAxisLabel"] = plt->getXAxisLabel();
 	entry["yAxisLabel"] = plt->getYAxisLabel();
 
+	/* Where the cursors sit is part of what the user set up, so it is saved
+	   with the plot rather than left to be found again by hand. The mode is
+	   stored as a number: the names are for the combo box, and a project that
+	   reads back an unknown number falls back to the first mode. */
+	entry["cursorsVisible"] = plt->getCursorsVisible();
+	entry["cursorMode"] = Plot::cursorModeToIndex(plt->getCursorMode());
+	entry["cursorValues"] = json::object({{"x0", plt->markerX0.getValue()},
+										  {"x1", plt->markerX1.getValue()},
+										  {"y0", plt->markerY0.getValue()},
+										  {"y1", plt->markerY1.getValue()}});
+
 	if (plt->getType() == Plot::Type::XY)
 		entry["xAxisVariable"] = plt->getXAxisVariable() != nullptr ? plt->getXAxisVariable()->getName() : "";
 
@@ -477,6 +488,22 @@ void ProjectHandler::deserializePlots(const json& plots)
 		   empty label is the same as no label, so both read back the same. */
 		plot->setXAxisLabel(entry.value("xAxisLabel", std::string()));
 		plot->setYAxisLabel(entry.value("yAxisLabel", std::string()));
+
+		/* A project written before the cursors existed has none of these
+		   keys, which reads back as cursors that are switched off - the same
+		   as a new plot, so an older project opens looking as it was left. */
+		plot->setCursorsVisible(entry.value("cursorsVisible", false));
+		plot->setCursorMode(Plot::cursorModeFromIndex(entry.value("cursorMode", 0u)));
+
+		if (entry.contains("cursorValues") && entry.at("cursorValues").is_object())
+		{
+			const json& values = entry.at("cursorValues");
+
+			plot->markerX0.setValue(values.value("x0", 0.0));
+			plot->markerX1.setValue(values.value("x1", 0.0));
+			plot->markerY0.setValue(values.value("y0", 0.0));
+			plot->markerY1.setValue(values.value("y1", 0.0));
+		}
 
 		if (plot->getType() == Plot::Type::XY)
 		{

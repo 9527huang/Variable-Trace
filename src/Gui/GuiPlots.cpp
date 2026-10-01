@@ -156,14 +156,12 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 		if (viewerDataHandler->getState() == DataHandlerBase::State::STOP)
 		{
 			ImPlotRect plotLimits = ImPlot::GetPlotLimits();
-			handleMarkers(0, plot->markerX0, plotLimits, [&]()
-						  { ImPlot::Annotation(plot->markerX0.getValue(), plotLimits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(-10 * GuiHelper::contentScale, 0), true, "x0 %.5f", plot->markerX0.getValue()); });
 
-			handleMarkers(1, plot->markerX1, plotLimits, [&]()
-						  {
-			ImPlot::Annotation(plot->markerX1.getValue(), plotLimits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(10*GuiHelper::contentScale, 0), true, "x1 %.5f", plot->markerX1.getValue());
-			double dx = plot->markerX1.getValue() - plot->markerX0.getValue();
-			ImPlot::Annotation(plot->markerX1.getValue(), plotLimits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(10*GuiHelper::contentScale, 20*GuiHelper::contentScale), true, "x1-x0 %.5f", dx); });
+			if (plot->drawsXCursors())
+				CursorRenderer::drawX(plot.get(), plotLimits);
+
+			if (plot->drawsYCursors())
+				CursorRenderer::drawY(plot.get(), plotLimits);
 
 			handleDragRect(0, plot->stats, plotLimits);
 		}
@@ -186,19 +184,22 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 			if (!serPtr->visible)
 				continue;
 
-			const double timepoint = plot->markerX0.getValue();
-			const double value = *(serPtr->buffer->getFirstElementCopy() + time.getIndexFromvalue(timepoint));
-			auto name = plot->markerX0.getState() ? key + " = " + std::to_string(value) : key;
+			/* The value a series shows at the cursor is the one the
+			   reading under its name reports, so it is asked for at the
+			   first X cursor. Without that cursor there is no point on
+			   the series to name, and the legend stays as it was. */
+			std::string name = key;
+
+			if (plot->drawsXCursors())
+			{
+				const double timepoint = plot->markerX0.getValue();
+				const double value = *(serPtr->buffer->getFirstElementCopy() + time.getIndexFromvalue(timepoint));
+				name = key + " = " + CursorRenderer::formatValue(value);
+			}
 
 			ImPlot::SetNextLineStyle(ImVec4(serPtr->var->getColor().r, serPtr->var->getColor().g, serPtr->var->getColor().b, 1.0f));
 			ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 2.0f);
 			ImPlot::PlotLine(name.c_str(), time.getFirstElementCopy(), serPtr->buffer->getFirstElementCopy(), size, ImPlotLineFlags_None, offset, sizeof(double));
-
-			if (plot->markerX0.getState())
-			{
-				ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 3.0f, ImVec4(255, 255, 255, 255), 0.5f);
-				ImPlot::PlotScatter("###point", &timepoint, &value, 1, false);
-			}
 		}
 
 		ImPlot::EndPlot();
@@ -345,25 +346,6 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 	}
 	ImGui::PopStyleVar();
 	plot->setIsHovered(ImGui::IsItemHovered());
-}
-
-void Gui::handleMarkers(uint32_t id, Plot::Marker& marker, ImPlotRect plotLimits, std::function<void()> activeCallback)
-{
-	if (marker.getState())
-	{
-		double markerPos = marker.getValue();
-		if (markerPos == 0.0)
-		{
-			float offset = (std::abs(plotLimits.X.Max) - std::abs(plotLimits.X.Min)) / 3.0f;
-			markerPos = plotLimits.X.Min + (id == 0 ? offset : 2.0f * offset);
-			marker.setValue(markerPos);
-		}
-		ImPlot::DragLineX(id, &markerPos, id == 0 ? ImVec4(1, 0, 0, 1) : ImVec4(0, 1, 1, 1));
-		marker.setValue(markerPos);
-		activeCallback();
-	}
-	else
-		marker.setValue(0.0);
 }
 
 void Gui::handleDragRect(uint32_t id, Plot::DragRect& dragRect, ImPlotRect plotLimits)

@@ -65,14 +65,23 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 		if (traceDataHandler->getState() == DataHandlerBase::State::STOP)
 		{
 			ImPlotRect plotLimits = ImPlot::GetPlotLimits();
-			handleMarkers(0, plot->markerX0, plotLimits, [&]()
-						  { ImPlot::Annotation(plot->markerX0.getValue(), plotLimits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(-10, 0), true, "x0 %.5f", plot->markerX0.getValue()); });
-			handleMarkers(1, plot->markerX1, plotLimits, [&]()
-						  {
-			ImPlot::Annotation(plot->markerX1.getValue(), plotLimits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(10, 0), true, "x1 %.5f", plot->markerX1.getValue());
-			double dx = plot->markerX1.getValue() - plot->markerX0.getValue();
-			ImPlot::Annotation(plot->markerX1.getValue(), plotLimits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(10, 15), true, "x1-x0 %.5f ms", dx * 1000.0);
-			ImPlot::Annotation(plot->markerX1.getValue(), plotLimits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(10, 30), true, "1/dt %.1f Hz", 1.0 / dx); });
+
+			if (plot->drawsXCursors())
+			{
+				CursorRenderer::drawX(plot, plotLimits);
+
+				/* The two readings the pair gives are a time and its
+				   reciprocal, and the second one is what a trace is
+				   usually read for: it says how often the firmware came
+				   round. It is drawn under the distance reading. */
+				const double dx = plot->markerX1.getValue() - plot->markerX0.getValue();
+
+				if (dx != 0.0)
+					ImPlot::Annotation(plot->markerX1.getValue(), plotLimits.Y.Min, ImVec4(0, 0, 0, 0), ImVec2(10 * GuiHelper::contentScale, 36 * GuiHelper::contentScale), true, "1/dt = %.1f Hz", 1.0 / dx);
+			}
+
+			if (plot->drawsYCursors())
+				CursorRenderer::drawY(plot, plotLimits);
 
 			handleDragRect(0, plot->stats, plotLimits);
 		}
@@ -88,15 +97,17 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 		uint32_t size = time.getSize();
 		mtx->unlock();
 
-		const double timepoint = plot->markerX0.getValue();
-		const double value = *(ser->buffer->getFirstElementCopy() + time.getIndexFromvalue(timepoint));
-
 		ImPlot::SetNextLineStyle(ImVec4(ser->var->getColor().r, ser->var->getColor().g, ser->var->getColor().b, 1.0f));
 		ImPlot::SetNextFillStyle(ImVec4(ser->var->getColor().r, ser->var->getColor().g, ser->var->getColor().b, 1.0f), 0.25f);
 		ImPlot::PlotStairs(plot->getAlias().c_str(), time.getFirstElementCopy(), ser->buffer->getFirstElementCopy(), size, ImPlotStairsFlags_Shaded, offset, sizeof(double));
 
-		if (plot->markerX0.getState())
+		/* The dot marks where the first X cursor cut the trace, so it only
+		   exists while that cursor does. */
+		if (plot->drawsXCursors())
 		{
+			const double timepoint = plot->markerX0.getValue();
+			const double value = *(ser->buffer->getFirstElementCopy() + time.getIndexFromvalue(timepoint));
+
 			ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 3.0f, ImVec4(1, 1, 1, 1), 0.5f);
 			ImPlot::PlotScatter("###point", &timepoint, &value, 1, false);
 		}

@@ -56,6 +56,30 @@ class Plot
 		F32 = 6
 	};
 
+	/* Which cursors a plot draws. The two directions are independent: a
+	   cursor that measures along the bottom of the plot says nothing about
+	   the one that measures up the side, and both may be wanted at once. */
+	enum class CursorMode : uint8_t
+	{
+		X = 0,
+		Y = 1,
+		XY = 2
+	};
+
+	static constexpr const char* cursorModeNames[] = {"X", "Y", "X+Y"};
+
+	/* Reversible so that a project file can hold the number and a combo can
+	   show the name without either of them owning the mapping. */
+	static CursorMode cursorModeFromIndex(uint32_t index)
+	{
+		return index <= static_cast<uint32_t>(CursorMode::XY) ? static_cast<CursorMode>(index) : CursorMode::X;
+	}
+
+	static uint32_t cursorModeToIndex(CursorMode mode)
+	{
+		return static_cast<uint32_t>(mode);
+	}
+
 	class DragRect
 	{
 	   public:
@@ -96,9 +120,31 @@ class Plot
 		double value;
 	};
 
+	/* The cursors the plot draws.
+
+	   A pair of X cursors is what makes a measurement possible, so both
+	   directions carry two of them: a single line can say where something is,
+	   only two of them can say how far apart two things are. Which of them
+	   are drawn is read off the mode rather than stored per cursor, so the
+	   four lines cannot end up disagreeing about what the user asked for. */
 	Marker markerX0{};
 	Marker markerX1{};
+	Marker markerY0{};
+	Marker markerY1{};
 	Marker trigger{};
+
+	bool getCursorsVisible() const { return cursorsVisible; }
+	void setCursorsVisible(bool newVisible) { cursorsVisible = newVisible; }
+
+	CursorMode getCursorMode() const { return cursorMode; }
+	void setCursorMode(CursorMode newMode) { cursorMode = newMode; }
+
+	/* Whether the cursors of each direction are drawn, as a pair with the
+	   measurements that go with them. A direction whose cursors are hidden
+	   is not drawn at all, so the drawing code asks once instead of testing
+	   the mode in every branch. */
+	bool drawsXCursors() const { return cursorsVisible && cursorMode != CursorMode::Y; }
+	bool drawsYCursors() const { return cursorsVisible && cursorMode != CursorMode::X; }
 
 	DragRect stats{};
 
@@ -183,8 +229,8 @@ class Plot
 	TraceVarType traceVarType = TraceVarType::F32;
 	bool isHoveredOver = false;
 
-	Marker mx0;
-	Marker mx1;
+	bool cursorsVisible = false;
+	CursorMode cursorMode = CursorMode::X;
 };
 
 #endif

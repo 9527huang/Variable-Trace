@@ -79,26 +79,18 @@ class PlotsTree
 		ImGui::BeginGroup();
 		ImGui::PushID(plt->getName().c_str());
 
-		/* reset markers when viewer is running */
+		/* The cursors are put away while the plot is being filled with
+		   samples, because a measurement taken on data that is still
+		   arriving is a measurement of nothing. */
 		if (viewerDataHandler->getState() == ViewerDataHandler::State::RUN)
 		{
-			plt->markerX0.setState(false);
-			plt->markerX1.setState(false);
+			plt->setCursorsVisible(false);
 			plt->statisticsSeries = 0;
 		}
 
 		/* Staticstics */
 		ImGui::BeginDisabled(plt->getType() != Plot::Type::CURVE);
-		bool mx0 = plt->markerX0.getState();
-		bool mx1 = plt->markerX1.getState();
-		ImGui::Text("x0 marker  ");
-		ImGui::SameLine();
-		ImGui::Checkbox("##mx0", &mx0);
-		plt->markerX0.setState(mx0);
-		ImGui::Text("x1 marker  ");
-		ImGui::SameLine();
-		ImGui::Checkbox("##mx1", &mx1);
-		plt->markerX1.setState(mx1);
+		drawCursorSettings(plt);
 		statisticsWindow.drawAnalog(plt);
 		ImGui::EndDisabled();
 		ImGui::PopID();
@@ -144,6 +136,43 @@ class PlotsTree
 		ImGui::PopID();
 		ImGui::EndGroup();
 		ImGui::EndChild();
+	}
+
+	/* The cursors panel.
+
+	   One switch turns them on and a combo says which directions are drawn,
+	   because the two are not independent questions: an X cursor and its
+	   readings are one thing, and switching the whole set on without saying
+	   which set it is would leave the answer to a default nobody chose. The
+	   mode is kept in the plot, so the panel only presents it.
+
+	   The width of this panel is set by the tree beside it and does not grow
+	   with the window, so a label and two controls do not fit on one line.
+	   The label therefore goes above and the controls share the line below,
+	   which is how the same panel is laid out upstream. */
+	void drawCursorSettings(const std::shared_ptr<Plot>& plt)
+	{
+		ImGui::Text("Cursors:");
+
+		bool visible = plt->getCursorsVisible();
+		if (ImGui::Checkbox("##cursors", &visible))
+		{
+			plt->setCursorsVisible(visible);
+
+			/* Switching them back on places them again rather than leaving
+			   them wherever they were left, which would be a position from a
+			   run the user has since moved on from. */
+			if (visible)
+				CursorRenderer::resetCursors(plt.get());
+		}
+
+		ImGui::SameLine();
+		ImGui::BeginDisabled(!visible);
+		int32_t mode = static_cast<int32_t>(Plot::cursorModeToIndex(plt->getCursorMode()));
+		ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
+		if (ImGui::Combo("##cursorMode", &mode, Plot::cursorModeNames, IM_ARRAYSIZE(Plot::cursorModeNames)))
+			plt->setCursorMode(Plot::cursorModeFromIndex(static_cast<uint32_t>(mode)));
+		ImGui::EndDisabled();
 	}
 
 	void drawAddPlotButton()
