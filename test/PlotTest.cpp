@@ -116,7 +116,7 @@ TEST(PlotAxisLabelTest, aTypedLabelSurvivesAChangeOfPlotKind)
 	plot.setType(Plot::Type::CURVE);
 
 	EXPECT_EQ(plot.getEffectiveXAxisLabel(), "channel");
-	EXPECT_EQ(plot.getEffectiveYAxisLabel(), "");
+	EXPECT_EQ(plot.getEffectiveYAxisLabel(), "Value");
 }
 
 TEST(PlotAxisLabelTest, changingTheHorizontalVariableChangesTheAutomaticLabel)
@@ -137,4 +137,116 @@ TEST(PlotAxisLabelTest, changingTheHorizontalVariableChangesTheAutomaticLabel)
 	plot.setXAxisLabel("shaft");
 	plot.setXAxisVariable(&speed);
 	EXPECT_EQ(plot.getEffectiveXAxisLabel(), "shaft");
+}
+
+/*
+ * The cursors are the two pairs of lines a stopped plot is measured with. Two
+ * switches decide what is drawn and they answer different questions: the first
+ * says whether to measure at all, the second says which directions to measure
+ * in. Keeping them apart is what lets the mode mean something while the
+ * cursors are off, so that turning them on does not silently change direction.
+ */
+
+TEST(PlotCursorTest, aPlotStartsWithNoCursors)
+{
+	Plot plot("p");
+
+	EXPECT_FALSE(plot.getCursorsVisible());
+	EXPECT_EQ(plot.getCursorMode(), Plot::CursorMode::X);
+
+	/* Both directions report that they are not drawn, so nothing is drawn
+	   even before the mode is looked at. */
+	EXPECT_FALSE(plot.drawsXCursors());
+	EXPECT_FALSE(plot.drawsYCursors());
+}
+
+TEST(PlotCursorTest, theModeSaysWhichDirectionsAreDrawn)
+{
+	Plot plot("p");
+	plot.setCursorsVisible(true);
+
+	plot.setCursorMode(Plot::CursorMode::X);
+	EXPECT_TRUE(plot.drawsXCursors());
+	EXPECT_FALSE(plot.drawsYCursors());
+
+	plot.setCursorMode(Plot::CursorMode::Y);
+	EXPECT_FALSE(plot.drawsXCursors());
+	EXPECT_TRUE(plot.drawsYCursors());
+
+	plot.setCursorMode(Plot::CursorMode::XY);
+	EXPECT_TRUE(plot.drawsXCursors());
+	EXPECT_TRUE(plot.drawsYCursors());
+}
+
+TEST(PlotCursorTest, switchingTheCursorsOffStopsBothDirections)
+{
+	for (const Plot::CursorMode mode : {Plot::CursorMode::X, Plot::CursorMode::Y, Plot::CursorMode::XY})
+	{
+		Plot plot("p");
+		plot.setCursorMode(mode);
+		plot.setCursorsVisible(true);
+		plot.setCursorsVisible(false);
+
+		EXPECT_FALSE(plot.drawsXCursors()) << "mode " << static_cast<int>(mode);
+		EXPECT_FALSE(plot.drawsYCursors()) << "mode " << static_cast<int>(mode);
+	}
+}
+
+TEST(PlotCursorTest, theModeSurvivesBeingSwitchedOff)
+{
+	/* A user who switched the cursors off keeps the direction they had
+	   chosen, so switching them back on draws what they were looking at. */
+	Plot plot("p");
+	plot.setCursorsVisible(true);
+	plot.setCursorMode(Plot::CursorMode::XY);
+	plot.setCursorsVisible(false);
+
+	EXPECT_EQ(plot.getCursorMode(), Plot::CursorMode::XY);
+
+	plot.setCursorsVisible(true);
+	EXPECT_TRUE(plot.drawsXCursors());
+	EXPECT_TRUE(plot.drawsYCursors());
+}
+
+TEST(PlotCursorTest, theModeNamesLineUpWithTheModeValues)
+{
+	/* The combo box is filled from the names and written back through the
+	   index, so the two arrays have to agree in order and length. */
+	EXPECT_EQ(Plot::cursorModeNames[0], std::string("X"));
+	EXPECT_EQ(Plot::cursorModeNames[1], std::string("Y"));
+	EXPECT_EQ(Plot::cursorModeNames[2], std::string("X+Y"));
+
+	EXPECT_EQ(Plot::cursorModeToIndex(Plot::CursorMode::X), 0u);
+	EXPECT_EQ(Plot::cursorModeToIndex(Plot::CursorMode::Y), 1u);
+	EXPECT_EQ(Plot::cursorModeToIndex(Plot::CursorMode::XY), 2u);
+}
+
+TEST(PlotCursorTest, aCorruptModeNumberFallsBackToTheFirstMode)
+{
+	/* The number comes out of a file that may have been written by a newer
+	   build or edited by hand, so it is not trusted past the last mode. */
+	EXPECT_EQ(Plot::cursorModeFromIndex(0u), Plot::CursorMode::X);
+	EXPECT_EQ(Plot::cursorModeFromIndex(1u), Plot::CursorMode::Y);
+	EXPECT_EQ(Plot::cursorModeFromIndex(2u), Plot::CursorMode::XY);
+
+	EXPECT_EQ(Plot::cursorModeFromIndex(3u), Plot::CursorMode::X);
+	EXPECT_EQ(Plot::cursorModeFromIndex(999u), Plot::CursorMode::X);
+}
+
+TEST(PlotCursorTest, bothDirectionsHaveTheirOwnPairOfCursors)
+{
+	/* A single line can say where something is; only two of them can say how
+	   far apart two things are. Each direction therefore carries its own
+	   pair, and the four are distinct. */
+	Plot plot("p");
+
+	plot.markerX0.setValue(1.0);
+	plot.markerX1.setValue(2.0);
+	plot.markerY0.setValue(3.0);
+	plot.markerY1.setValue(4.0);
+
+	EXPECT_EQ(plot.markerX0.getValue(), 1.0);
+	EXPECT_EQ(plot.markerX1.getValue(), 2.0);
+	EXPECT_EQ(plot.markerY0.getValue(), 3.0);
+	EXPECT_EQ(plot.markerY1.getValue(), 4.0);
 }

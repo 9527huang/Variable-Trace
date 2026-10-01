@@ -486,6 +486,94 @@ TEST_F(ProjectHandlerTest, aPlotWrittenBeforeLabelsExistedKeepsTheAutomaticOnes)
 	EXPECT_EQ(plots.getPlot("old")->getEffectiveXAxisLabel(), "time[s]");
 }
 
+TEST_F(ProjectHandlerTest, roundTripKeepsTheCursors)
+{
+	VariableHandler variableHandler;
+	PlotHandler plotHandler;
+	PlotGroupHandler plotGroupHandler;
+	ProjectHandler handler(&variableHandler, &plotHandler, &plotGroupHandler, logger.get());
+
+	auto measured = plotHandler.addPlot("measured");
+	measured->setCursorsVisible(true);
+	measured->setCursorMode(Plot::CursorMode::XY);
+	measured->markerX0.setValue(1.5);
+	measured->markerX1.setValue(2.5);
+	measured->markerY0.setValue(-3.5);
+	measured->markerY1.setValue(4.5);
+
+	/* A plot that was never measured with is the usual case, and it has to
+	   come back without cursors rather than with a default pair. */
+	auto untouched = plotHandler.addPlot("untouched");
+
+	ProjectData data;
+	const std::string file = path("cursors.mcvproj");
+	ASSERT_TRUE(handler.save(file, data));
+
+	VariableHandler loadedVariables;
+	PlotHandler loadedPlots;
+	PlotGroupHandler loadedGroups;
+	ProjectHandler reader(&loadedVariables, &loadedPlots, &loadedGroups, logger.get());
+
+	ProjectData loaded;
+	ASSERT_EQ(reader.open(file, loaded), ProjectHandler::OpenResult::Ok);
+
+	ASSERT_TRUE(loadedPlots.checkIfPlotExists("measured"));
+	const auto restored = loadedPlots.getPlot("measured");
+	EXPECT_TRUE(restored->getCursorsVisible());
+	EXPECT_EQ(restored->getCursorMode(), Plot::CursorMode::XY);
+	EXPECT_EQ(restored->markerX0.getValue(), 1.5);
+	EXPECT_EQ(restored->markerX1.getValue(), 2.5);
+	EXPECT_EQ(restored->markerY0.getValue(), -3.5);
+	EXPECT_EQ(restored->markerY1.getValue(), 4.5);
+
+	ASSERT_TRUE(loadedPlots.checkIfPlotExists("untouched"));
+	EXPECT_FALSE(loadedPlots.getPlot("untouched")->getCursorsVisible());
+	EXPECT_EQ(loadedPlots.getPlot("untouched")->getCursorMode(), Plot::CursorMode::X);
+}
+
+TEST_F(ProjectHandlerTest, aPlotWrittenBeforeCursorsExistedOpensUnmeasured)
+{
+	/* Version 4 files carry no cursor keys, so a missing switch reads back as
+	   cursors that are off - the same as a new plot. */
+	writeFile(path("no-cursors.mcvproj"),
+			  R"({"formatVersion": 4, "plots": [)"
+			  R"({"name": "old", "type": 0, "xAxisLabel": "", "yAxisLabel": "", "series": []})"
+			  R"(]})");
+
+	VariableHandler variables;
+	PlotHandler plots;
+	PlotGroupHandler groups;
+	ProjectHandler reader(&variables, &plots, &groups, logger.get());
+
+	ProjectData loaded;
+	ASSERT_EQ(reader.open(path("no-cursors.mcvproj"), loaded), ProjectHandler::OpenResult::Ok);
+
+	ASSERT_TRUE(plots.checkIfPlotExists("old"));
+	EXPECT_FALSE(plots.getPlot("old")->getCursorsVisible());
+	EXPECT_EQ(plots.getPlot("old")->getCursorMode(), Plot::CursorMode::X);
+}
+
+TEST_F(ProjectHandlerTest, aCursorModeOutOfRangeFallsBackToTheFirst)
+{
+	/* The number comes out of a file that may have been written by a newer
+	   build or edited by hand, so it is not trusted past the last mode. */
+	writeFile(path("bad-mode.mcvproj"),
+			  R"({"formatVersion": 5, "plots": [)"
+			  R"({"name": "p", "type": 0, "cursorsVisible": true, "cursorMode": 77, "series": []})"
+			  R"(]})");
+
+	VariableHandler variables;
+	PlotHandler plots;
+	PlotGroupHandler groups;
+	ProjectHandler reader(&variables, &plots, &groups, logger.get());
+
+	ProjectData loaded;
+	ASSERT_EQ(reader.open(path("bad-mode.mcvproj"), loaded), ProjectHandler::OpenResult::Ok);
+
+	ASSERT_TRUE(plots.checkIfPlotExists("p"));
+	EXPECT_EQ(plots.getPlot("p")->getCursorMode(), Plot::CursorMode::X);
+}
+
 TEST_F(ProjectHandlerTest, fractionalVariableKeepsItsBaseReference)
 {
 	VariableHandler variableHandler;
