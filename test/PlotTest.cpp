@@ -338,3 +338,39 @@ TEST(CursorReadingTest, aZeroSpanIsRecognisedAsOne)
 	EXPECT_TRUE(Plot::cursorsShareAPosition(0.0, 0.0));
 	EXPECT_TRUE(Plot::cursorsShareAPosition(-2.0, -2.0));
 }
+
+/*
+ * Which side of its line a reading is written on. The middle of a plot is
+ * where the data is, so a reading goes on the far side of its line and lands
+ * over the margin. Every line is asked separately: a pair straddling the
+ * middle has each of its readings on the outside, which is a different side
+ * for each of them.
+ */
+
+TEST(CursorReadingTest, aReadingGoesToTheSideAwayFromTheMiddle)
+{
+	/* A line left of the middle sends its text left, one right of it sends
+	   its text right. */
+	EXPECT_EQ(Plot::readingSide(2.0, 0.0, 12.0), -1.0);
+	EXPECT_EQ(Plot::readingSide(10.0, 0.0, 12.0), 1.0);
+
+	/* The default pair sits at a third and two thirds, which is one line
+	   each side of the middle, so the two readings go opposite ways. This
+	   is what the two lines of a pair look like on a fresh plot. */
+	EXPECT_EQ(Plot::readingSide(4.0, 0.0, 12.0), -1.0);
+	EXPECT_EQ(Plot::readingSide(8.0, 0.0, 12.0), 1.0);
+
+	/* A range that straddles zero behaves the same way: it is the middle
+	   of the range that counts, not the sign of the value. */
+	EXPECT_EQ(Plot::readingSide(-0.05, -0.1, 0.1), -1.0);
+	EXPECT_EQ(Plot::readingSide(0.05, -0.1, 0.1), 1.0);
+}
+
+TEST(CursorReadingTest, aLineOnTheMiddleGoesOutwards)
+{
+	/* Exactly on the middle there is no side to prefer, so it falls to the
+	   right or upward rather than flickering between the two from frame to
+	   frame. */
+	EXPECT_EQ(Plot::readingSide(6.0, 0.0, 12.0), 1.0);
+	EXPECT_EQ(Plot::readingSide(0.0, 0.0, 0.0), 1.0);
+}
