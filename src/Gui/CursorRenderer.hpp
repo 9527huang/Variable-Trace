@@ -1,6 +1,7 @@
 #ifndef _CURSORRENDERER_HPP
 #define _CURSORRENDERER_HPP
 
+#include <cmath>
 #include <string>
 
 #include "GuiHelper.hpp"
@@ -24,11 +25,17 @@
 class CursorRenderer
 {
    public:
-	/* The colour a cursor is drawn in. The two directions are different
-	   colours so that a plot carrying both stays readable, and each direction
-	   keeps one colour for both of its lines with the second line dimmed. */
-	static constexpr ImVec4 xCursorColour{1.0f, 0.0f, 0.0f, 1.0f};
-	static constexpr ImVec4 yCursorColour{0.0f, 1.0f, 1.0f, 1.0f};
+	/* Every cursor is drawn in the same white. Directions are told apart by
+	   running across the plot or up it, and the two lines of a direction by
+	   their weight, so no colour is spent on saying either. */
+	static constexpr ImVec4 cursorColour{1.0f, 1.0f, 1.0f, 1.0f};
+
+	/* The two lines of a pair are drawn at different weights: the first of
+	   them thin and the second thick. That is what tells them apart once
+	   they are both white, and it also matches how the two read - the second
+	   line is the one the span is measured to. */
+	static constexpr float thinCursorWeight = 1.0f;
+	static constexpr float thickCursorWeight = 2.0f;
 
 	/**
 	 * @brief Draws one cursor line and takes back the place it was dragged to
@@ -36,25 +43,33 @@ class CursorRenderer
 	 * @param id unique per plot, so that dragging one cursor does not move another
 	 * @param marker the cursor being drawn
 	 * @param vertical true for an X cursor, false for a Y cursor
-	 * @param colour the colour of this cursor's line
+	 * @param weight how thick to draw the line
+	 * @param limits what the plot currently shows, which is how far a line reaches
 	 */
-	static void drawCrosshair(uint32_t id, Plot::Marker& marker, bool vertical, const ImVec4& colour)
+	static void drawCrosshair(uint32_t id, Plot::Marker& marker, bool vertical, float weight, const ImPlotRect& limits)
 	{
-		ImPlot::PushStyleVar(ImPlotStyleVar_LineWeight, 1.0f);
-
 		/* The line is drawn from a copy, because ImPlot moves the value it is
 		   given as the user drags, and the result has to be written back to
 		   the marker or the cursor would return to where it was. */
 		double position = marker.getValue();
 
+		/* ImPlot is left to own the dragging, because it has the hit test,
+		   the resize cursor and the write-back already, and none of that has
+		   anything to do with how the line looks. Its own line is asked for
+		   in a fully transparent colour so that only the behaviour is taken
+		   from it: it can only draw a solid line, and these are dashed. A
+		   colour is auto only when its alpha is -1, so a zero alpha here is
+		   drawn as nothing rather than replaced by the text colour. */
+		const ImVec4 invisibleLine(0.0f, 0.0f, 0.0f, 0.0f);
+
 		if (vertical)
-			ImPlot::DragLineX(static_cast<int>(id), &position, colour);
+			ImPlot::DragLineX(static_cast<int>(id), &position, invisibleLine, weight);
 		else
-			ImPlot::DragLineY(static_cast<int>(id), &position, colour);
+			ImPlot::DragLineY(static_cast<int>(id), &position, invisibleLine, weight);
 
 		marker.setValue(position);
 
-		ImPlot::PopStyleVar();
+		drawDashedCrosshair(position, vertical, weight, limits);
 	}
 
 	/**
@@ -203,6 +218,66 @@ class CursorRenderer
 	}
 
    private:
+	/* How long a dash is and how long the space after it is, in the units the
+	   drawing uses. The two are close enough that the pattern reads as a
+	   broken line at a glance rather than as separate strokes. */
+	static constexpr float dashLength = 6.0f;
+	static constexpr float dashGap = 4.0f;
+
+	/* One cursor line, broken into dashes.
+
+	   The draw list only offers solid lines, so the dashes are laid out here.
+	   They are measured from the first end of the line, so a line that is
+	   dragged sideways keeps its pattern in the same place instead of the
+	   dashes crawling along it frame by frame. */
+	static void drawDashedCrosshair(double position, bool vertical, float weight, const ImPlotRect& limits)
+	{
+		ImVec2 from;
+		ImVec2 to;
+
+		if (vertical)
+		{
+			const float x = ImPlot::PlotToPixels(position, 0.0, IMPLOT_AUTO, IMPLOT_AUTO).x;
+
+			from = ImVec2(x, ImPlot::PlotToPixels(0.0, limits.Y.Max, IMPLOT_AUTO, IMPLOT_AUTO).y);
+			to = ImVec2(x, ImPlot::PlotToPixels(0.0, limits.Y.Min, IMPLOT_AUTO, IMPLOT_AUTO).y);
+		}
+		else
+		{
+			const float y = ImPlot::PlotToPixels(0.0, position, IMPLOT_AUTO, IMPLOT_AUTO).y;
+
+			from = ImVec2(ImPlot::PlotToPixels(limits.X.Min, 0.0, IMPLOT_AUTO, IMPLOT_AUTO).x, y);
+			to = ImVec2(ImPlot::PlotToPixels(limits.X.Max, 0.0, IMPLOT_AUTO, IMPLOT_AUTO).x, y);
+		}
+
+		const float dx = to.x - from.x;
+		const float dy = to.y - from.y;
+		const float length = std::sqrt(dx * dx + dy * dy);
+
+		if (length <= 0.0f)
+			return;
+
+		const float unitX = dx / length;
+		const float unitY = dy / length;
+		const float stride = dashLength + dashGap;
+		const ImU32 colour = ImGui::ColorConvertFloat4ToU32(cursorColour);
+		ImDrawList* drawList = ImPlot::GetPlotDrawList();
+
+		/* The dashes are clipped to the plot so that a cursor dragged to the
+		   edge does not draw over the axis labels. */
+		ImPlot::PushPlotClipRect();
+
+		for (float start = 0.0f; start < length; start += stride)
+		{
+			const float remaining = length - start;
+			const float stop = start + (remaining < dashLength ? remaining : dashLength);
+
+			drawList->AddLine(ImVec2(from.x + unitX * start, from.y + unitY * start), ImVec2(from.x + unitX * stop, from.y + unitY * stop), colour, weight);
+		}
+
+		ImPlot::PopPlotClipRect();
+	}
+
 	/* The ids are chosen so that the two cursors of a direction never share
 	   one, and so that a plot carrying both directions does not have an X
 	   cursor and a Y cursor fighting over the same id. */
@@ -211,8 +286,8 @@ class CursorRenderer
 		placeIfUntouched(plot->markerX0, limits.X.Min + (limits.X.Max - limits.X.Min) / 3.0);
 		placeIfUntouched(plot->markerX1, limits.X.Min + 2.0 * (limits.X.Max - limits.X.Min) / 3.0);
 
-		drawCrosshair(idBase + 0, plot->markerX0, true, xCursorColour);
-		drawCrosshair(idBase + 1, plot->markerX1, true, ImVec4(xCursorColour.x, xCursorColour.y, xCursorColour.z, 0.7f));
+		drawCrosshair(idBase + 0, plot->markerX0, true, thinCursorWeight * GuiHelper::contentScale, limits);
+		drawCrosshair(idBase + 1, plot->markerX1, true, thickCursorWeight * GuiHelper::contentScale, limits);
 
 		drawReadings(plot->markerX0, plot->markerX1, "x0", "x1", "dx", true, limits);
 	}
@@ -222,8 +297,8 @@ class CursorRenderer
 		placeIfUntouched(plot->markerY0, limits.Y.Min + (limits.Y.Max - limits.Y.Min) / 3.0);
 		placeIfUntouched(plot->markerY1, limits.Y.Min + 2.0 * (limits.Y.Max - limits.Y.Min) / 3.0);
 
-		drawCrosshair(idBase + 0, plot->markerY0, false, yCursorColour);
-		drawCrosshair(idBase + 1, plot->markerY1, false, ImVec4(yCursorColour.x, yCursorColour.y, yCursorColour.z, 0.7f));
+		drawCrosshair(idBase + 0, plot->markerY0, false, thinCursorWeight * GuiHelper::contentScale, limits);
+		drawCrosshair(idBase + 1, plot->markerY1, false, thickCursorWeight * GuiHelper::contentScale, limits);
 
 		drawReadings(plot->markerY0, plot->markerY1, "y0", "y1", "dy", false, limits, run);
 	}
