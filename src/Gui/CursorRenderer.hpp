@@ -142,7 +142,7 @@ class CursorRenderer
 			   and one right of the middle puts it on its right. */
 			const auto sideOf = [&](const Plot::Marker& marker)
 			{
-				return Plot::readingSide(marker.getValue(), limits.X.Min, limits.X.Max);
+				return Plot::readingOffsetSignAlongX(marker.getValue(), limits.X.Min, limits.X.Max);
 			};
 
 			/* The three of them belong to the pair, so they are stacked under
@@ -159,26 +159,33 @@ class CursorRenderer
 		}
 		else
 		{
-			/* A Y cursor below the middle puts its text below itself, and
-			   one above the middle puts it above. */
+			/* A Y cursor below the middle moves its text down, away from
+			   the centre, and one above the middle moves it up. */
 			const auto sideOf = [&](const Plot::Marker& marker)
 			{
-				return Plot::readingSide(marker.getValue(), limits.Y.Min, limits.Y.Max);
+				return Plot::readingOffsetSignAlongY(marker.getValue(), limits.Y.Min, limits.Y.Max);
 			};
 
-			/* The stack of three readings runs the same way as the line's
-			   own side of the middle, so it moves away from the centre along
-			   with the line it belongs to. */
-			ImPlot::Annotation(limits.X.Min, first.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(first) * step)), true, "%s = %s", firstLabel, formatValue(first.getValue()).c_str());
-			ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * step)), true, "%s = %s", secondLabel, formatValue(second.getValue()).c_str());
-			ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * (step + lineHeight))), true, "%s = %s", differenceLabel, formatValue(gap).c_str());
+			/* Both readings are written in one column against the right
+			   edge of the plot, so that they line up with each other and
+			   with the numbers on the vertical axis. A reading on the left
+			   edge would sit among the axis ticks instead. Which of the two
+			   cursors is the upper one is a matter of where the user
+			   dragged them, so it is not assumed here: each reading carries
+			   its own direction away from the middle, and that is what
+			   keeps them apart. */
+			const double readingColumn = limits.X.Max;
+
+			ImPlot::Annotation(readingColumn, first.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(first) * step)), true, "%s = %s", firstLabel, formatValue(first.getValue()).c_str());
+			ImPlot::Annotation(readingColumn, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * step)), true, "%s = %s", secondLabel, formatValue(second.getValue()).c_str());
+			ImPlot::Annotation(readingColumn, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * (step + lineHeight))), true, "%s = %s", differenceLabel, formatValue(gap).c_str());
 
 			/* A slope is only a number once there is a run to divide the
 			   rise by, which is what the X cursors of the same plot give.
 			   Without them the reading has nothing behind it, so the line is
 			   left out rather than filled with a figure that means nothing. */
 			if (run != 0.0)
-				ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * (step + 2.0 * lineHeight))), true, "dy/dx = %s", Plot::formatCursorSlope(gap, run).c_str());
+				ImPlot::Annotation(readingColumn, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * (step + 2.0 * lineHeight))), true, "dy/dx = %s", Plot::formatCursorSlope(gap, run).c_str());
 		}
 	}
 

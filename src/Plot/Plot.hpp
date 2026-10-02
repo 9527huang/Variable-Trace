@@ -250,19 +250,28 @@ class Plot
 	static bool cursorsShareAPosition(double first, double second);
 
 	/* Which way a cursor's reading is pushed, away from the middle of the
-	   plot, as a sign: -1 to the left or downwards, +1 to the right or
-	   upwards.
+	   plot, as the sign of a pixel offset.
 
 	   The middle of a plot is where its data is, so a reading is put on the
 	   far side of its line and sits over the margin instead of over the
 	   trace. A line left of the middle goes left, one right of it goes
-	   right; the same holds up and down.
+	   right; the same holds below and above.
 
 	   Each line is asked separately rather than the pair once, because the
 	   two lines are often on opposite sides of the middle, and then both of
 	   their readings belong on the outside - which is the far side for each
-	   of them in turn. */
-	static double readingSide(double position, double low, double high);
+	   of them in turn.
+
+	   The two axes get a function each because a pixel offset does not grow
+	   the same way along both of them: to the right and downwards. A line in
+	   the lower half of a plot moves its reading down, which is a larger y,
+	   while the same rule along the bottom moves it to a smaller x. Keeping
+	   the two apart is what stops one of them being converted wrongly. */
+	static double readingOffsetSignAlongX(double position, double low, double high);
+
+	/* As above, along the vertical axis: -1 pushes the reading up and +1
+	   pushes it down. */
+	static double readingOffsetSignAlongY(double position, double low, double high);
 
 	int32_t statisticsSeries = 0;
 

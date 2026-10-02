@@ -393,9 +393,24 @@ bool Plot::cursorsShareAPosition(double first, double second)
 	return first == second;
 }
 
-double Plot::readingSide(double position, double low, double high)
+double Plot::readingOffsetSignAlongX(double position, double low, double high)
 {
+	/* Pixel offsets grow to the right, and so does the position along this
+	   axis, so being left of the middle is the same as a negative offset.
+	   A position exactly on the middle takes the other branch, which sends
+	   the reading rightwards; either way would do, but it has to be one of
+	   them or the text would flicker between the two from frame to frame. */
 	return position < (low + high) * 0.5 ? -1.0 : 1.0;
+}
+
+double Plot::readingOffsetSignAlongY(double position, double low, double high)
+{
+	/* Pixel offsets grow downwards while the position along this axis grows
+	   upwards, so the sign is the other way round from the horizontal one:
+	   a line in the lower half is moved further down, which is larger y.
+	   A position exactly on the middle is sent downwards, so that both
+	   axes settle on the direction a pixel offset grows in. */
+	return position > (low + high) * 0.5 ? -1.0 : 1.0;
 }
 
 std::string Plot::formatCursorSlope(double rise, double run)
