@@ -340,37 +340,66 @@ TEST(CursorReadingTest, aZeroSpanIsRecognisedAsOne)
 }
 
 /*
- * Which side of its line a reading is written on. The middle of a plot is
- * where the data is, so a reading goes on the far side of its line and lands
- * over the margin. Every line is asked separately: a pair straddling the
- * middle has each of its readings on the outside, which is a different side
- * for each of them.
+ * Which way a reading is pushed to get away from the middle of the plot. The
+ * middle is where the data is, so a reading goes on the far side of its line
+ * and lands over the margin. Every line is asked separately: a pair that
+ * straddles the middle has each of its readings on the outside, which is a
+ * different side for each of them.
+ *
+ * The answer is the sign of a pixel offset, and the two axes do not grow the
+ * same way: a pixel offset grows to the right and downwards. A line in the
+ * lower half therefore moves its reading to a larger y, while the same rule
+ * along the bottom moves it to a smaller x. The two functions are kept apart
+ * so that the conversion cannot be made wrongly, and these cases pin the
+ * difference.
  */
 
-TEST(CursorReadingTest, aReadingGoesToTheSideAwayFromTheMiddle)
+TEST(CursorReadingTest, aReadingAlongTheBottomPushesAwayFromTheMiddle)
 {
 	/* A line left of the middle sends its text left, one right of it sends
 	   its text right. */
-	EXPECT_EQ(Plot::readingSide(2.0, 0.0, 12.0), -1.0);
-	EXPECT_EQ(Plot::readingSide(10.0, 0.0, 12.0), 1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongX(2.0, 0.0, 12.0), -1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongX(10.0, 0.0, 12.0), 1.0);
 
 	/* The default pair sits at a third and two thirds, which is one line
-	   each side of the middle, so the two readings go opposite ways. This
-	   is what the two lines of a pair look like on a fresh plot. */
-	EXPECT_EQ(Plot::readingSide(4.0, 0.0, 12.0), -1.0);
-	EXPECT_EQ(Plot::readingSide(8.0, 0.0, 12.0), 1.0);
+	   each side of the middle, so the two readings go opposite ways. */
+	EXPECT_EQ(Plot::readingOffsetSignAlongX(4.0, 0.0, 12.0), -1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongX(8.0, 0.0, 12.0), 1.0);
 
 	/* A range that straddles zero behaves the same way: it is the middle
 	   of the range that counts, not the sign of the value. */
-	EXPECT_EQ(Plot::readingSide(-0.05, -0.1, 0.1), -1.0);
-	EXPECT_EQ(Plot::readingSide(0.05, -0.1, 0.1), 1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongX(-0.05, -0.1, 0.1), -1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongX(0.05, -0.1, 0.1), 1.0);
+}
+
+TEST(CursorReadingTest, aReadingUpTheSidePushesAwayFromTheMiddleTooButDownwards)
+{
+	/* A line in the lower half moves its text down. Down the screen is a
+	   larger pixel offset, so the sign there is positive - the opposite of
+	   what the same position gives along the bottom, and getting this
+	   backwards is what puts the text over the trace instead of beside it. */
+	EXPECT_EQ(Plot::readingOffsetSignAlongY(-0.05, -0.1, 0.1), 1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongY(0.05, -0.1, 0.1), -1.0);
+
+	/* The third-and-two-thirds pair used for the vertical axis, which is
+	   what a fresh plot shows: the lower line sends its text down and the
+	   upper one sends it up, so the two readings sit on the outside. */
+	EXPECT_EQ(Plot::readingOffsetSignAlongY(-0.0333333, -0.1, 0.1), 1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongY(0.0333333, -0.1, 0.1), -1.0);
+
+	/* The two axes disagree on purpose. Same relative position, opposite
+	   sign, because a pixel offset grows rightwards and downwards. */
+	EXPECT_EQ(Plot::readingOffsetSignAlongX(4.0, 0.0, 12.0), -1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongY(4.0, 0.0, 12.0), 1.0);
 }
 
 TEST(CursorReadingTest, aLineOnTheMiddleGoesOutwards)
 {
-	/* Exactly on the middle there is no side to prefer, so it falls to the
-	   right or upward rather than flickering between the two from frame to
-	   frame. */
-	EXPECT_EQ(Plot::readingSide(6.0, 0.0, 12.0), 1.0);
-	EXPECT_EQ(Plot::readingSide(0.0, 0.0, 0.0), 1.0);
+	/* Exactly on the middle there is no side to prefer, so the reading is
+	   sent the way a pixel offset grows rather than flickering from frame
+	   to frame: rightwards along the bottom, downwards up the side. */
+	EXPECT_EQ(Plot::readingOffsetSignAlongX(6.0, 0.0, 12.0), 1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongY(6.0, 0.0, 12.0), 1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongX(0.0, 0.0, 0.0), 1.0);
+	EXPECT_EQ(Plot::readingOffsetSignAlongY(0.0, 0.0, 0.0), 1.0);
 }
