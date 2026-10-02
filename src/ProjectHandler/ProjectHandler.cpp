@@ -170,6 +170,7 @@ json ProjectHandler::serializePlot(const std::shared_ptr<Plot>& plt) const
 	   reads back an unknown number falls back to the first mode. */
 	entry["cursorsVisible"] = plt->getCursorsVisible();
 	entry["cursorMode"] = Plot::cursorModeToIndex(plt->getCursorMode());
+	entry["statisticsVisible"] = plt->getStatisticsVisible();
 	entry["cursorValues"] = json::object({{"x0", plt->markerX0.getValue()},
 										  {"x1", plt->markerX1.getValue()},
 										  {"y0", plt->markerY0.getValue()},
@@ -494,6 +495,7 @@ void ProjectHandler::deserializePlots(const json& plots)
 		   as a new plot, so an older project opens looking as it was left. */
 		plot->setCursorsVisible(entry.value("cursorsVisible", false));
 		plot->setCursorMode(Plot::cursorModeFromIndex(entry.value("cursorMode", 0u)));
+		plot->setStatisticsVisible(entry.value("statisticsVisible", false));
 
 		if (entry.contains("cursorValues") && entry.at("cursorValues").is_object())
 		{

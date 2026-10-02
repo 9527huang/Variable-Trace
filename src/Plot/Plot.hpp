@@ -139,6 +139,13 @@ class Plot
 	CursorMode getCursorMode() const { return cursorMode; }
 	void setCursorMode(CursorMode newMode) { cursorMode = newMode; }
 
+	/* Whether the measurements window is open for this plot. It is the row's
+	   switch rather than a property of the chosen series, so that the window
+	   can be opened before a series is picked - which is the order the two
+	   are used in: open it, look at what is on offer, then choose. */
+	bool getStatisticsVisible() const { return statisticsVisible; }
+	void setStatisticsVisible(bool newVisible) { statisticsVisible = newVisible; }
+
 	/* Whether the cursors of each direction are drawn, as a pair with the
 	   measurements that go with them. A direction whose cursors are hidden
 	   is not drawn at all, so the drawing code asks once instead of testing
@@ -291,6 +298,7 @@ class Plot
 
 	bool cursorsVisible = false;
 	CursorMode cursorMode = CursorMode::X;
+	bool statisticsVisible = false;
 };
 
 #endif

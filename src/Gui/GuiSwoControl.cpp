@@ -87,8 +87,21 @@ void Gui::drawPlotsTreeSwo()
 	ImGui::HelpMarker("Uncheck a channel to disable it and free some of the SWO pin bandwidth.");
 	ImGui::Separator();
 
+	/* The controls column is sized so that a label and two controls fit on
+	   one line, the same way as in the plots tree, and the channel list takes
+	   what is left. */
+	const float available = ImGui::GetContentRegionAvail().x;
+	const float spacing = ImGui::GetStyle().ItemSpacing.x;
+	const float panelWidth = 195.0f * GuiHelper::contentScale;
+	const float minimumTree = 120.0f * GuiHelper::contentScale;
+
+	float treeWidth = available - panelWidth - spacing;
+
+	if (treeWidth < minimumTree)
+		treeWidth = minimumTree;
+
 	ImGui::BeginChild("Plot Tree", ImVec2(-1, windowHeight));
-	ImGui::BeginChild("left pane", ImVec2(150 * GuiHelper::contentScale, -1), true);
+	ImGui::BeginChild("left pane", ImVec2(treeWidth, -1), true);
 
 	auto state = traceDataHandler->getState();
 	int32_t iter = 0;
@@ -136,17 +149,21 @@ void Gui::drawPlotsTreeSwo()
 		ImGui::Text("type       ");
 		ImGui::SameLine();
 		ImGui::Combo("##combo2", &traceVarTypeCombo, traceVarTypes, IM_ARRAYSIZE(traceVarTypes));
-		statisticsWindow.drawAnalog(plt);
+		statisticsWindow.drawAnalog(plt, state == DataHandlerBase::State::RUN);
 	}
 	else
-		statisticsWindow.drawDigital(plt);
+		statisticsWindow.drawDigital(plt, state == DataHandlerBase::State::RUN);
 
 	/* Cursors are put away while the trace is running, for the same reason as
 	   on the variable side: a measurement of data that is still arriving is a
-	   measurement of nothing. The label sits above the controls because this
-	   panel is as narrow as the one in the plots tree. */
+	   measurement of nothing. The two rows below share the label column the
+	   alias, domain and type rows already use, so every switch in this panel
+	   stands in the same place. */
+	static constexpr size_t alignment = 11;
+
 	bool cursorsVisible = (traceDataHandler->getState() == DataHandlerBase::State::RUN) ? false : plt->getCursorsVisible();
-	ImGui::Text("Cursors:");
+	GuiHelper::drawTextAlignedToSize("Cursors:", alignment);
+	ImGui::SameLine();
 	if (ImGui::Checkbox("##cursors", &cursorsVisible))
 	{
 		plt->setCursorsVisible(cursorsVisible);
@@ -155,17 +172,26 @@ void Gui::drawPlotsTreeSwo()
 			CursorRenderer::resetCursors(plt.get());
 	}
 
-	ImGui::SameLine();
-
 	/* As in the plots tree: the direction is drawn only once there are
-	   cursors for it to point at. */
+	   cursors for it to point at, and the same-line call is inside the branch
+	   so that nothing else is pulled onto the switch's line when it is not. */
 	if (cursorsVisible)
 	{
+		ImGui::SameLine();
+
 		int32_t cursorMode = static_cast<int32_t>(Plot::cursorModeToIndex(plt->getCursorMode()));
 		ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
 		if (ImGui::Combo("##cursorMode", &cursorMode, Plot::cursorModeNames, IM_ARRAYSIZE(Plot::cursorModeNames)))
 			plt->setCursorMode(Plot::cursorModeFromIndex(static_cast<uint32_t>(cursorMode)));
 	}
+
+	/* Put away while running for the same reason as the cursors: a window
+	   that measures a trace still being written is measuring nothing. */
+	bool statisticsVisible = (traceDataHandler->getState() == DataHandlerBase::State::RUN) ? false : plt->getStatisticsVisible();
+	GuiHelper::drawTextAlignedToSize("Statistics:", alignment);
+	ImGui::SameLine();
+	if (ImGui::Checkbox("##statistics", &statisticsVisible))
+		plt->setStatisticsVisible(statisticsVisible);
 	ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX(), ImGui::GetWindowSize().y - 25 * GuiHelper::contentScale / 2.0f - ImGui::GetFrameHeightWithSpacing()));
 	// drawExportPlotToCSVButton(plt);
 	ImGui::PopID();

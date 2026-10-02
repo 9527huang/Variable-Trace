@@ -45,8 +45,23 @@ class PlotsTree
 		if (!plotGroupHandler->checkIfGroupExists(selectedGroup))
 			selectedGroup = plotGroupHandler->getActiveGroup()->getName();
 
+		/* The controls column has to be wide enough for a label and two
+		   controls to share one line, which is how the rows below are laid
+		   out. It is given that width and the tree takes what is left, so the
+		   rows stay on one line whatever the dock has been resized to. The
+		   tree keeps a floor so it cannot be squeezed away entirely. */
+		const float available = ImGui::GetContentRegionAvail().x;
+		const float spacing = ImGui::GetStyle().ItemSpacing.x;
+		const float panelWidth = 195.0f * GuiHelper::contentScale;
+		const float minimumTree = 120.0f * GuiHelper::contentScale;
+
+		float treeWidth = available - panelWidth - spacing;
+
+		if (treeWidth < minimumTree)
+			treeWidth = minimumTree;
+
 		ImGui::BeginChild("Plot Tree", ImVec2(-1, windowHeight));
-		ImGui::BeginChild("left pane", ImVec2(200 * GuiHelper::contentScale, -1), true);
+		ImGui::BeginChild("left pane", ImVec2(treeWidth, -1), true);
 
 		/* Only the groups without a parent start a branch; the rest are reached
 		   by recursing, which is what makes the tree as deep as the user built
@@ -85,6 +100,7 @@ class PlotsTree
 		if (viewerDataHandler->getState() == ViewerDataHandler::State::RUN)
 		{
 			plt->setCursorsVisible(false);
+			plt->setStatisticsVisible(false);
 			plt->statisticsSeries = 0;
 		}
 
@@ -94,6 +110,7 @@ class PlotsTree
 		   another variable gets its slope reading out of the pair of
 		   vertical cursors, so the row is not limited to the time plots. */
 		drawCursorSettings(plt);
+		drawStatisticsSettings(plt);
 		statisticsWindow.drawAnalog(plt);
 		ImGui::PopID();
 
@@ -140,21 +157,18 @@ class PlotsTree
 		ImGui::EndChild();
 	}
 
-	/* The cursors panel.
+	/* The cursors panel and the statistics row.
 
-	   One switch turns them on and a combo says which directions are drawn,
-	   because the two are not independent questions: an X cursor and its
-	   readings are one thing, and switching the whole set on without saying
-	   which set it is would leave the answer to a default nobody chose. The
-	   mode is kept in the plot, so the panel only presents it.
+	   Each pairs a label with its controls on one line, which is how the same
+	   panel reads upstream. The label column is measured in characters rather
+	   than pixels because that is what the helper pads with, and both rows
+	   share one so that their switches stand in the same place. */
+	static constexpr size_t alignment = 11;
 
-	   The width of this panel is set by the tree beside it and does not grow
-	   with the window, so a label and two controls do not fit on one line.
-	   The label therefore goes above and the controls share the line below,
-	   which is how the same panel is laid out upstream. */
 	void drawCursorSettings(const std::shared_ptr<Plot>& plt)
 	{
-		ImGui::Text("Cursors:");
+		GuiHelper::drawTextAlignedToSize("Cursors:", alignment);
+		ImGui::SameLine();
 
 		bool visible = plt->getCursorsVisible();
 		if (ImGui::Checkbox("##cursors", &visible))
@@ -168,19 +182,34 @@ class PlotsTree
 				CursorRenderer::resetCursors(plt.get());
 		}
 
-		ImGui::SameLine();
-
 		/* The direction only has a meaning once there are cursors to point
 		   it at, so it is drawn only then. The reference build does the
 		   same, and it keeps the row down to one control until the user has
-		   asked for something that needs a second. */
+		   asked for something that needs a second.
+
+		   The same-line call belongs inside the branch along with the combo.
+		   Left standing on its own, it waits for an item that the branch may
+		   never draw, and then the next row - the statistics switch - is
+		   pulled up onto the switch's line. */
 		if (visible)
 		{
+			ImGui::SameLine();
+
 			int32_t mode = static_cast<int32_t>(Plot::cursorModeToIndex(plt->getCursorMode()));
 			ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
 			if (ImGui::Combo("##cursorMode", &mode, Plot::cursorModeNames, IM_ARRAYSIZE(Plot::cursorModeNames)))
 				plt->setCursorMode(Plot::cursorModeFromIndex(static_cast<uint32_t>(mode)));
 		}
+	}
+
+	void drawStatisticsSettings(const std::shared_ptr<Plot>& plt)
+	{
+		GuiHelper::drawTextAlignedToSize("Statistics:", alignment);
+		ImGui::SameLine();
+
+		bool visible = plt->getStatisticsVisible();
+		if (ImGui::Checkbox("##statistics", &visible))
+			plt->setStatisticsVisible(visible);
 	}
 
 	void drawAddPlotButton()

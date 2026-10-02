@@ -574,6 +574,66 @@ TEST_F(ProjectHandlerTest, aCursorModeOutOfRangeFallsBackToTheFirst)
 	EXPECT_EQ(plots.getPlot("p")->getCursorMode(), Plot::CursorMode::X);
 }
 
+TEST_F(ProjectHandlerTest, roundTripKeepsTheStatisticsSwitch)
+{
+	VariableHandler variableHandler;
+	PlotHandler plotHandler;
+	PlotGroupHandler plotGroupHandler;
+	ProjectHandler handler(&variableHandler, &plotHandler, &plotGroupHandler, logger.get());
+
+	auto measured = plotHandler.addPlot("measured");
+	measured->setStatisticsVisible(true);
+
+	/* The usual case is a plot whose measurements were never opened, and it
+	   has to come back closed rather than open. */
+	auto untouched = plotHandler.addPlot("untouched");
+
+	ProjectData data;
+	const std::string file = path("statistics.mcvproj");
+	ASSERT_TRUE(handler.save(file, data));
+
+	VariableHandler loadedVariables;
+	PlotHandler loadedPlots;
+	PlotGroupHandler loadedGroups;
+	ProjectHandler reader(&loadedVariables, &loadedPlots, &loadedGroups, logger.get());
+
+	ProjectData loaded;
+	ASSERT_EQ(reader.open(file, loaded), ProjectHandler::OpenResult::Ok);
+
+	ASSERT_TRUE(loadedPlots.checkIfPlotExists("measured"));
+	EXPECT_TRUE(loadedPlots.getPlot("measured")->getStatisticsVisible());
+
+	ASSERT_TRUE(loadedPlots.checkIfPlotExists("untouched"));
+	EXPECT_FALSE(loadedPlots.getPlot("untouched")->getStatisticsVisible());
+}
+
+TEST_F(ProjectHandlerTest, aPlotWrittenBeforeTheSwitchExistedOpensClosed)
+{
+	/* Version 5 files carry the cursors but no key for the measurements
+	   window, and a missing switch reads back as one that was never turned
+	   on - the same as a new plot. */
+	writeFile(path("no-statistics.mcvproj"),
+			  R"({"formatVersion": 5, "plots": [)"
+			  R"({"name": "old", "type": 0, "cursorsVisible": true, "cursorMode": 2, "series": []})"
+			  R"(]})");
+
+	VariableHandler variables;
+	PlotHandler plots;
+	PlotGroupHandler groups;
+	ProjectHandler reader(&variables, &plots, &groups, logger.get());
+
+	ProjectData loaded;
+	ASSERT_EQ(reader.open(path("no-statistics.mcvproj"), loaded), ProjectHandler::OpenResult::Ok);
+
+	ASSERT_TRUE(plots.checkIfPlotExists("old"));
+	EXPECT_FALSE(plots.getPlot("old")->getStatisticsVisible());
+
+	/* What the same file does carry is still read: the missing key must not
+	   take the rest of the plot with it. */
+	EXPECT_TRUE(plots.getPlot("old")->getCursorsVisible());
+	EXPECT_EQ(plots.getPlot("old")->getCursorMode(), Plot::CursorMode::XY);
+}
+
 TEST_F(ProjectHandlerTest, fractionalVariableKeepsItsBaseReference)
 {
 	VariableHandler variableHandler;

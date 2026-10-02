@@ -107,8 +107,10 @@ class ProjectHandler
    public:
 	/* Raised whenever a section was added that an older build would drop without
 	   saying so. Version 2 added the enum labels of a variable and the parent of
-	   a group, version 3 the write plans, version 4 the axis labels of a plot. */
-	static constexpr uint32_t formatVersion = 5;
+	   a group, version 3 the write plans, version 4 the axis labels of a plot,
+	   version 5 the cursors and version 6 the switch of the measurements
+	   window. */
+	static constexpr uint32_t formatVersion = 6;
 	static constexpr const char* fileExtension = "mcvproj";
 	static constexpr const char* legacyFileExtension = "cfg";
 	static constexpr const char* applicationName = "Variable-Trace";
