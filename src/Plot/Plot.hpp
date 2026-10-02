@@ -249,6 +249,21 @@ class Plot
 	   divide by it are not numbers. */
 	static bool cursorsShareAPosition(double first, double second);
 
+	/* Which way a cursor's reading is pushed, away from the middle of the
+	   plot, as a sign: -1 to the left or downwards, +1 to the right or
+	   upwards.
+
+	   The middle of a plot is where its data is, so a reading is put on the
+	   far side of its line and sits over the margin instead of over the
+	   trace. A line left of the middle goes left, one right of it goes
+	   right; the same holds up and down.
+
+	   Each line is asked separately rather than the pair once, because the
+	   two lines are often on opposite sides of the middle, and then both of
+	   their readings belong on the outside - which is the far side for each
+	   of them in turn. */
+	static double readingSide(double position, double low, double high);
+
 	int32_t statisticsSeries = 0;
 
    private:

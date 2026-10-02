@@ -393,6 +393,11 @@ bool Plot::cursorsShareAPosition(double first, double second)
 	return first == second;
 }
 
+double Plot::readingSide(double position, double low, double high)
+{
+	return position < (low + high) * 0.5 ? -1.0 : 1.0;
+}
+
 std::string Plot::formatCursorSlope(double rise, double run)
 {
 	/* A vertical pair of cursors has no run to divide by, so the slope is

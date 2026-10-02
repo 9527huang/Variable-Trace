@@ -123,49 +123,62 @@ class CursorRenderer
 
 		/* A reading is text, so it is put next to the line it belongs to
 		   rather than in the middle of the plot. Which side it goes on is
-		   decided per line, and not once for the pair: a cursor sitting near
-		   the far edge has to put its text on the inside or it runs off the
-		   canvas, and the two cursors of a pair are often on opposite sides
-		   of the middle. */
+		   the side away from the middle, because the middle of the plot is
+		   where the data is: a reading pushed outward sits over the frame
+		   and the empty margin instead of over the trace.
+
+		   The side is decided per line rather than once for the pair. The
+		   two lines of a pair are often on opposite sides of the middle,
+		   and then both of their readings belong on the outside, which is
+		   the far side for each of them in turn. Which line is the outer
+		   one is a matter of where the user dragged them, so it is read off
+		   the positions rather than assumed from the names. */
 		const double step = 10.0 * GuiHelper::contentScale;
 		const double lineHeight = 18.0 * GuiHelper::contentScale;
 
 		if (vertical)
 		{
+			/* An X cursor left of the middle puts its text on its left,
+			   and one right of the middle puts it on its right. */
 			const auto sideOf = [&](const Plot::Marker& marker)
 			{
-				return marker.getValue() < (limits.X.Min + limits.X.Max) * 0.5 ? 1.0 : -1.0;
+				return Plot::readingSide(marker.getValue(), limits.X.Min, limits.X.Max);
 			};
 
-			/* Every reading of a time cursor sits along the top of the plot,
-			   which is the one strip no curve reaches into and where the
-			   numbers can be read without covering the trace. The three of
-			   them belong to the pair, so they are stacked under the second
-			   line: the second cursor's place, the distance to the first one,
-			   and the rate that distance stands for. */
+			/* The three of them belong to the pair, so they are stacked under
+			   the second line: the second cursor's place, the distance to the
+			   first one, and the rate that distance stands for. The stack
+			   runs further out than the line itself, so it never turns back
+			   over the trace; a line on the left stacks downward from the
+			   top, and one on the right stacks upward from it. */
 			ImPlot::Annotation(first.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(first) * step), 0.0f), true, "%s = %s", firstLabel, Plot::formatCursorMilliseconds(first.getValue()).c_str());
 
 			ImPlot::Annotation(second.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(second) * step), 0.0f), true, "%s = %s", secondLabel, Plot::formatCursorMilliseconds(second.getValue()).c_str());
-			ImPlot::Annotation(second.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(second) * step), static_cast<float>(lineHeight)), true, "%s = %s", differenceLabel, Plot::formatCursorMilliseconds(gap).c_str());
-			ImPlot::Annotation(second.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(second) * step), static_cast<float>(2.0 * lineHeight)), true, "1/dt = %s Hz", Plot::formatCursorRate(gap).c_str());
+			ImPlot::Annotation(second.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(second) * step), static_cast<float>(sideOf(second) * lineHeight)), true, "%s = %s", differenceLabel, Plot::formatCursorMilliseconds(gap).c_str());
+			ImPlot::Annotation(second.getValue(), limits.Y.Max, ImVec4(0, 0, 0, 0), ImVec2(static_cast<float>(sideOf(second) * step), static_cast<float>(sideOf(second) * 2.0 * lineHeight)), true, "1/dt = %s Hz", Plot::formatCursorRate(gap).c_str());
 		}
 		else
 		{
+			/* A Y cursor below the middle puts its text below itself, and
+			   one above the middle puts it above. */
 			const auto sideOf = [&](const Plot::Marker& marker)
 			{
-				return marker.getValue() < (limits.Y.Min + limits.Y.Max) * 0.5 ? 1.0 : -1.0;
+				return Plot::readingSide(marker.getValue(), limits.Y.Min, limits.Y.Max);
 			};
 
+			/* The stack of three readings runs the same way as the line's
+			   own side of the middle, so it moves away from the centre along
+			   with the line it belongs to. */
 			ImPlot::Annotation(limits.X.Min, first.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(first) * step)), true, "%s = %s", firstLabel, formatValue(first.getValue()).c_str());
 			ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * step)), true, "%s = %s", secondLabel, formatValue(second.getValue()).c_str());
-			ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * step - lineHeight)), true, "%s = %s", differenceLabel, formatValue(gap).c_str());
+			ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * (step + lineHeight))), true, "%s = %s", differenceLabel, formatValue(gap).c_str());
 
 			/* A slope is only a number once there is a run to divide the
 			   rise by, which is what the X cursors of the same plot give.
 			   Without them the reading has nothing behind it, so the line is
 			   left out rather than filled with a figure that means nothing. */
 			if (run != 0.0)
-				ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * step - 2.0 * lineHeight)), true, "dy/dx = %s", Plot::formatCursorSlope(gap, run).c_str());
+				ImPlot::Annotation(limits.X.Max, second.getValue(), ImVec4(0, 0, 0, 0), ImVec2(0.0f, static_cast<float>(sideOf(second) * (step + 2.0 * lineHeight))), true, "dy/dx = %s", Plot::formatCursorSlope(gap, run).c_str());
 		}
 	}
 
