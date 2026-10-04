@@ -4,6 +4,10 @@ build_dbg/*
 .cache/*
 src/gitversion.hpp
 
+# runtime window layout, kept per user under the application data directory
+# (%APPDATA%/Variable-Trace on Windows). it is rewritten on every exit.
+imgui.ini
+
 # local tooling caches
 .codegraph/
 .workbuddy/

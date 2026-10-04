@@ -20,6 +20,8 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
+#include "../commons.hpp"
+
 #include "McpBridge.hpp"
 #include "McpContext.hpp"
 #include "McpServer.hpp"
@@ -112,6 +114,21 @@ void Gui::mainThread(std::string externalPath)
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.Fonts->AddFontDefault(&cfg);
 	io.FontGlobalScale = globalConfig->getSettings().fontScale;
+
+	/* Keep the window layout next to the logs rather than beside the executable.
+	 *
+	 * Left alone, ImGui opens "imgui.ini" and resolves it against the process
+	 * working directory. The layout then depends on where the program was
+	 * started from - a shortcut, a build directory and an installed copy each
+	 * get their own file, and the first run in a directory that has none starts
+	 * from a layout with the panes unassigned. It also means the layout cannot
+	 * be found again once the directory changes.
+	 *
+	 * The string has to outlive the frame loop, because ImGui keeps the pointer
+	 * instead of copying it, hence static. */
+	static const std::string iniPath = getApplicationDataDirectory() + "/imgui.ini";
+	if (!getApplicationDataDirectory().empty())
+		io.IniFilename = iniPath.c_str();
 
 	applyTheme();
 
