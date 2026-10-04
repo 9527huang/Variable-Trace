@@ -105,6 +105,19 @@ void drawInputText(const char* id, T variable, std::function<void(std::string)> 
 			valueChanged(str);
 }
 
+/* A number written in fixed point with its unit appended.
+ *
+ * Kept apart from the drawing below because a table cell cannot use it: the row
+ * macro pairs a label and a value on one line, which is the one thing a cell
+ * must not do - the value has to go into its own column. */
+template <typename T>
+std::string formatNumber(T number, std::string unit = "", size_t decimalPlaces = 5)
+{
+	std::ostringstream formattedNum;
+	formattedNum << std::fixed << std::setprecision(decimalPlaces) << number;
+	return formattedNum.str() + unit;
+}
+
 template <typename T>
 void drawDescriptionWithNumber(const char* description, T number, std::string unit = "", size_t decimalPlaces = 5, float threshold = std::nan(""), ImVec4 thresholdExceededColor = {0.0f, 0.0f, 0.0f, 1.0f})
 {
@@ -113,9 +126,7 @@ void drawDescriptionWithNumber(const char* description, T number, std::string un
 	else
 		ImGui::Text("%s", description);
 	ImGui::SameLine();
-	std::ostringstream formattedNum;
-	formattedNum << std::fixed << std::setprecision(decimalPlaces) << number;
-	ImGui::Text("%s", (formattedNum.str() + unit).c_str());
+	ImGui::Text("%s", formatNumber(number, unit, decimalPlaces).c_str());
 }
 
 template <typename T>
