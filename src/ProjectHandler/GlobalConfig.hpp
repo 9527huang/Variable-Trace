@@ -27,6 +27,12 @@ class GlobalConfig
 		bool autoSaveEnabled = true;
 		uint32_t autoSaveIntervalSeconds = 120;
 		float fontScale = 1.0f;
+
+		/* "dark" or "light". Stored as a name rather than an index so that
+		   adding a third theme later cannot silently turn an existing setting
+		   into a different one. */
+		std::string theme = "dark";
+
 		std::vector<std::string> recentProjects{};
 
 		/* The API server is off until it is switched on. It accepts connections

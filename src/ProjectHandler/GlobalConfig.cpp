@@ -70,7 +70,14 @@ bool GlobalConfig::load()
 	{
 		const auto& interface = root.at("interface");
 		settings.fontScale = interface.value("fontScale", settings.fontScale);
+		settings.theme = interface.value("theme", settings.theme);
 	}
+
+	/* An unrecognised name would leave the interface in whichever palette the
+	   default happens to be, which is at least readable; the alternative is to
+	   keep a value nothing can draw. */
+	if (settings.theme != "dark" && settings.theme != "light")
+		settings.theme = "dark";
 
 	if (root.contains("recentProjects") && root.at("recentProjects").is_array())
 	{
@@ -144,7 +151,7 @@ bool GlobalConfig::save()
 	json root;
 	root["formatVersion"] = formatVersion;
 	root["autoSave"] = {{"enabled", settings.autoSaveEnabled}, {"intervalSeconds", settings.autoSaveIntervalSeconds}};
-	root["interface"] = {{"fontScale", settings.fontScale}};
+	root["interface"] = {{"fontScale", settings.fontScale}, {"theme", settings.theme}};
 	root["api"] = {{"enabled", settings.mcpEnabled},
 				   {"preferredPort", settings.mcpPreferredPort},
 				   {"writesEnabled", settings.apiWritesEnabled}};

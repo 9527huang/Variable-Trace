@@ -85,6 +85,11 @@ class Gui
 	bool showFlashOutputWindow = false;
 	bool showWritePlannerWindow = false;
 
+	/* The combo works on an index while the settings hold a name, so the two
+	   have to be kept in step. Reset from the settings each time the window is
+	   opened, so an edit made through the API or a config file shows up too. */
+	int themeIndex = 0;
+
 	IFileHandler* fileHandler;
 	PlotHandler* tracePlotHandler;
 	ViewerDataHandler* viewerDataHandler;
@@ -262,6 +267,11 @@ class Gui
 	void drawAboutWindow();
 	void drawPreferencesWindow();
 	void acqusitionSettingsTrace();
+
+	/* Reads the theme from the global settings and installs it. Called once
+	   before the first frame and again whenever the theme is switched, so the
+	   two paths cannot drift apart. */
+	void applyTheme();
 
 	void drawPlots();
 	void drawPlotCurve(std::shared_ptr<Plot> plot);

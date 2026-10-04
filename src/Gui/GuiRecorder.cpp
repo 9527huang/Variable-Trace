@@ -208,7 +208,7 @@ void Gui::drawRecorderWindow()
 
 	if (!probeOpen)
 	{
-		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight);
+		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
 		GuiHelper::drawCenteredText("The acquisition is stopped. Start it first, the recorder uses that connection.");
 		ImGui::PopStyleColor();
 	}
@@ -269,7 +269,7 @@ void Gui::drawRecorderWindow()
 
 	if (!groupUsable)
 	{
-		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight);
+		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
 		ImGui::TextWrapped("%s", groupError.c_str());
 		ImGui::PopStyleColor();
 	}
@@ -506,7 +506,7 @@ void Gui::drawRecorderWindow()
 
 	if (!errorMessage.empty())
 	{
-		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight);
+		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
 		ImGui::TextWrapped("%s", errorMessage.c_str());
 		ImGui::PopStyleColor();
 	}

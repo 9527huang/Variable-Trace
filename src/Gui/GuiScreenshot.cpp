@@ -397,10 +397,10 @@ void Gui::drawPlotExportDialog()
 		/* A run that writes every plot to one name is legal and occasionally
 		   what somebody wants, so it is allowed and said out loud. */
 		if (!settings.incrementFileName && count > 1)
-			ImGui::TextColored(GuiHelper::orangeLight, "%s", repeatedNameWarning);
+			ImGui::TextColored(GuiHelper::orangeLight(), "%s", repeatedNameWarning);
 
 		if (!plotExportError.empty())
-			ImGui::TextColored(GuiHelper::redLight, "%s", plotExportError.c_str());
+			ImGui::TextColored(GuiHelper::redLight(), "%s", plotExportError.c_str());
 
 		ImGui::PopTextWrapPos();
 

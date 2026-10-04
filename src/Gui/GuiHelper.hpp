@@ -19,30 +19,204 @@ namespace GuiHelper
  * units; inside a header a plain `static` would give each file its own copy, and
  * the file that does the writing is not the file that does most of the reading.
  *
- * The colours below are constant, so a copy each would only waste space, but
- * they follow the same rule so that a later change cannot reintroduce the
- * split. */
+ * The colours below follow the same rule, because they are read in far more
+ * files than the one that sets them. */
 inline float contentScale = 1.0f;
 
-inline ImVec4 white = (ImVec4)ImColor::HSV(0.0f, 0.0f, 1.0f);
+/* ---------------------------------------------------------------------------
+ * Theme
+ *
+ * Two palettes rather than one, because the same green that reads as "running"
+ * on a dark panel reads as "washed out" on a light one. The names of the
+ * colours do not change with the theme, so a call site asks for `green` and the
+ * palette decides which green that is. Nothing outside this file has to know
+ * which theme is active.
+ *
+ * Every colour is a function rather than a variable: a variable would be
+ * captured once at the point it is declared and would keep its dark value after
+ * the theme changed.
+ * ------------------------------------------------------------------------- */
 
-inline ImVec4 green = (ImVec4)ImColor::HSV(0.365f, 0.94f, 0.37f);
-inline ImVec4 greenLight = (ImVec4)ImColor::HSV(0.365f, 0.94f, 0.57f);
-inline ImVec4 greenLightDim = (ImVec4)ImColor::HSV(0.365f, 0.94f, 0.47f);
+enum class Theme
+{
+	Dark,
+	Light
+};
 
-inline ImVec4 red = (ImVec4)ImColor::HSV(0.0f, 0.95f, 0.72f);
-inline ImVec4 redLight = (ImVec4)ImColor::HSV(0.0f, 0.95f, 0.92f);
-inline ImVec4 redLightDim = (ImVec4)ImColor::HSV(0.0f, 0.95f, 0.82f);
+/* Set by Gui::applyTheme, which is the only writer. The default matches the
+   palette the application ships with, so a file that draws before the first
+   applyTheme call still gets a readable colour. */
+inline Theme currentTheme = Theme::Dark;
 
-inline ImVec4 orange = (ImVec4)ImColor::HSV(0.116f, 0.97f, 0.72f);
-inline ImVec4 orangeLight = (ImVec4)ImColor::HSV(0.116f, 0.97f, 0.92f);
-inline ImVec4 orangeLightDim = (ImVec4)ImColor::HSV(0.116f, 0.97f, 0.82f);
+/* Which theme a stored name refers to. Unknown names fall back to dark, so a
+   config written by a newer build cannot leave the interface unreadable. */
+inline Theme themeFromName(const std::string& name)
+{
+	return name == "light" ? Theme::Light : Theme::Dark;
+}
+
+inline const char* themeToName(Theme theme)
+{
+	return theme == Theme::Light ? "light" : "dark";
+}
+
+inline ImVec4 themed(ImVec4 dark, ImVec4 light)
+{
+	return currentTheme == Theme::Light ? light : dark;
+}
+
+inline ImVec4 white()
+{
+	return (ImVec4)ImColor::HSV(0.0f, 0.0f, 1.0f);
+}
+
+/* Status colours.
+ *
+ * Two roles have to be served by the same value. Each of these is the face of a
+ * button, where the text drawn on top is `ImGuiCol_Text`; every one of them is
+ * also used on its own as a text colour. On a dark panel one bright value does
+ * both, because the panel behind it is black either way.
+ *
+ * A light panel separates the two roles. As a face the colour sits behind dark
+ * text, so it wants to be clear and mid toned rather than dark, or the button
+ * turns into a brown smear. As text it sits on white, so it wants the dark end
+ * or it fades out. The light column therefore moves each colour to a mid tone
+ * with enough saturation to carry dark text, and the two `Light` variants --
+ * which are read as text more often than they are used as a face -- go the
+ * other way and darken. */
+inline ImVec4 green()
+{
+	return themed((ImVec4)ImColor::HSV(0.365f, 0.94f, 0.37f), (ImVec4)ImColor::HSV(0.365f, 0.62f, 0.78f));
+}
+
+inline ImVec4 greenLight()
+{
+	return themed((ImVec4)ImColor::HSV(0.365f, 0.94f, 0.57f), (ImVec4)ImColor::HSV(0.365f, 0.72f, 0.34f));
+}
+
+inline ImVec4 greenLightDim()
+{
+	return themed((ImVec4)ImColor::HSV(0.365f, 0.94f, 0.47f), (ImVec4)ImColor::HSV(0.365f, 0.72f, 0.44f));
+}
+
+inline ImVec4 red()
+{
+	return themed((ImVec4)ImColor::HSV(0.0f, 0.95f, 0.72f), (ImVec4)ImColor::HSV(0.0f, 0.58f, 0.90f));
+}
+
+/* Read as text far more often than it is used as a face, so on a light panel
+   this one goes down to a deep red rather than up to a pale pink. */
+inline ImVec4 redLight()
+{
+	return themed((ImVec4)ImColor::HSV(0.0f, 0.95f, 0.92f), (ImVec4)ImColor::HSV(0.0f, 0.85f, 0.55f));
+}
+
+inline ImVec4 redLightDim()
+{
+	return themed((ImVec4)ImColor::HSV(0.0f, 0.95f, 0.82f), (ImVec4)ImColor::HSV(0.0f, 0.85f, 0.66f));
+}
+
+/* The hue is pulled towards yellow on the light panel. The dark value leans
+   amber; at a mid tone the same hue turns olive, which is the one reading a
+   stop button must not have. */
+inline ImVec4 orange()
+{
+	return themed((ImVec4)ImColor::HSV(0.116f, 0.97f, 0.72f), (ImVec4)ImColor::HSV(0.085f, 0.88f, 0.97f));
+}
+
+inline ImVec4 orangeLight()
+{
+	return themed((ImVec4)ImColor::HSV(0.116f, 0.97f, 0.92f), (ImVec4)ImColor::HSV(0.085f, 0.92f, 0.52f));
+}
+
+inline ImVec4 orangeLightDim()
+{
+	return themed((ImVec4)ImColor::HSV(0.116f, 0.97f, 0.82f), (ImVec4)ImColor::HSV(0.085f, 0.92f, 0.62f));
+}
 
 /* The half of a two part readout that carries a name rather than a state. It
    stays neutral so that the coloured half next to it is the one that is read as
-   the state. */
-inline ImVec4 neutral = (ImVec4)ImColor::HSV(0.0f, 0.0f, 0.28f);
-inline ImVec4 neutralLight = (ImVec4)ImColor::HSV(0.0f, 0.0f, 0.40f);
+   the state. Both halves are button faces, so on a light panel this has to be
+   dark enough to stand out from the panel it sits on while still carrying dark
+   text, which puts it in the middle of the range rather than at the top. */
+inline ImVec4 neutral()
+{
+	return themed((ImVec4)ImColor::HSV(0.0f, 0.0f, 0.28f), (ImVec4)ImColor::HSV(0.0f, 0.0f, 0.72f));
+}
+
+inline ImVec4 neutralLight()
+{
+	return themed((ImVec4)ImColor::HSV(0.0f, 0.0f, 0.40f), (ImVec4)ImColor::HSV(0.0f, 0.0f, 0.60f));
+}
+
+/* A line drawn over the plot area. The white the cursors use on a dark plot is
+   invisible on a light one, so the light palette takes it to near black. */
+inline ImVec4 cursorLine()
+{
+	return themed((ImVec4)ImColor::HSV(0.0f, 0.0f, 1.0f), (ImVec4)ImColor::HSV(0.0f, 0.0f, 0.15f));
+}
+
+/* The trigger level, which is a marker rather than a value: it has to be seen
+   at a glance against the trace it cuts across. Yellow disappears into a white
+   plot, so the light palette uses a darker amber. */
+inline ImVec4 triggerLine()
+{
+	return themed((ImVec4)ImColor::HSV(0.14f, 1.0f, 1.0f), (ImVec4)ImColor::HSV(0.09f, 1.0f, 0.60f));
+}
+
+/* The band dragged across a plot to mark a span. It is a translucent fill laid
+   over the traces, so on a light plot the same cyan washes them out and the
+   fill has to be darker to stay visible. */
+inline ImVec4 dragSelection()
+{
+	return themed(ImVec4(0.15f, 0.96f, 0.9f, 0.45f), ImVec4(0.05f, 0.55f, 0.62f, 0.30f));
+}
+
+/* The colour a trace is drawn in, given the colour that is stored for it.
+ *
+ * A variable is handed a random colour when it is created, over the whole
+ * 32 bit range, so nothing stops it from being a pale yellow or a near white.
+ * On a dark plot that is already a gamble; on a light one such a trace
+ * disappears.
+ *
+ * The stored value is left alone. Lowering the brightness for drawing only
+ * means the project file keeps the colour the user picked or was given, the
+ * colour picker in the variable table and the plot tree keeps showing that
+ * colour, and a project moved between themes keeps its identity. What changes
+ * is only how it is put on the plot.
+ *
+ * The adjustment is a ceiling on brightness rather than a fixed darkening, so a
+ * colour that is already dark comes through untouched and a light one is pulled
+ * down until it separates from the white behind it. Saturation is nudged up as
+ * the brightness comes down, which keeps a pastel from turning grey.
+ *
+ * Takes the four components rather than an ImVec4 because the value comes from
+ * Variable::Color at most call sites, which is a plain struct with r/g/b/a. */
+inline ImVec4 traceColor(float r, float g, float b, float a = 1.0f)
+{
+	if (currentTheme != Theme::Light)
+		return ImVec4(r, g, b, a);
+
+	const float brightnessMax = 0.55f;
+
+	float hue = 0.0f;
+	float saturation = 0.0f;
+	float brightness = 0.0f;
+	ImGui::ColorConvertRGBtoHSV(r, g, b, hue, saturation, brightness);
+
+	if (brightness <= brightnessMax)
+		return ImVec4(r, g, b, a);
+
+	/* A colour with no saturation is grey, and raising the saturation of grey
+	   only introduces a hue that was never asked for. */
+	if (saturation > 0.0f)
+		saturation = saturation + (1.0f - saturation) * 0.55f;
+
+	ImVec4 adjusted = (ImVec4)ImColor::HSV(hue, saturation, brightnessMax);
+	adjusted.w = a;
+
+	return adjusted;
+}
 
 /**
  * @brief Convert int32_t to hexadecilam string
@@ -118,11 +292,22 @@ std::string formatNumber(T number, std::string unit = "", size_t decimalPlaces =
 	return formattedNum.str() + unit;
 }
 
+/* Marks the half of a reading that has crossed a threshold. On a dark panel
+   this is the default text colour, so the caller passes the colour it wants and
+   the default here only has to work for the palette in use at the time. */
 template <typename T>
-void drawDescriptionWithNumber(const char* description, T number, std::string unit = "", size_t decimalPlaces = 5, float threshold = std::nan(""), ImVec4 thresholdExceededColor = {0.0f, 0.0f, 0.0f, 1.0f})
+void drawDescriptionWithNumber(const char* description, T number, std::string unit = "", size_t decimalPlaces = 5, float threshold = std::nan(""), ImVec4 thresholdExceededColor = ImVec4(-1.0f, -1.0f, -1.0f, 1.0f))
 {
 	if (threshold != std::nan("") && number > threshold)
+	{
+		/* A negative alpha tells the caller apart from a colour it chose
+		   itself. Read here rather than in the default argument so that the
+		   theme is the one in force when the row is drawn. */
+		if (thresholdExceededColor.x < 0.0f)
+			thresholdExceededColor = redLight();
+
 		ImGui::TextColored(thresholdExceededColor, "%s", description);
+	}
 	else
 		ImGui::Text("%s", description);
 	ImGui::SameLine();

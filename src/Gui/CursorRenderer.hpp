@@ -25,10 +25,15 @@
 class CursorRenderer
 {
    public:
-	/* Every cursor is drawn in the same white. Directions are told apart by
-	   running across the plot or up it, and the two lines of a direction by
-	   their weight, so no colour is spent on saying either. */
-	static constexpr ImVec4 cursorColour{1.0f, 1.0f, 1.0f, 1.0f};
+	/* Every cursor is drawn in the same colour, which is the one that stands
+	   out against the plot background: white on a dark theme, near black on a
+	   light one. Directions are told apart by running across the plot or up
+	   it, and the two lines of a direction by their weight, so no colour is
+	   spent on saying either. */
+	static ImVec4 cursorColour()
+	{
+		return GuiHelper::cursorLine();
+	}
 
 	/* The two lines of a pair are drawn at different weights: the first of
 	   them thin and the second thick. That is what tells them apart once
@@ -260,7 +265,7 @@ class CursorRenderer
 		const float unitX = dx / length;
 		const float unitY = dy / length;
 		const float stride = dashLength + dashGap;
-		const ImU32 colour = ImGui::ColorConvertFloat4ToU32(cursorColour);
+		const ImU32 colour = ImGui::ColorConvertFloat4ToU32(cursorColour());
 		ImDrawList* drawList = ImPlot::GetPlotDrawList();
 
 		/* The dashes are clipped to the plot so that a cursor dragged to the

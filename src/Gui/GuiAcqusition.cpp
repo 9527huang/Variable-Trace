@@ -13,7 +13,7 @@ void Gui::drawAcqusitionSettingsScope(ActiveViewType type)
 
 	ImGui::Dummy(ImVec2(-1, 5));
 
-	ImGui::PushStyleColor(ImGuiCol_Text, isVariableViewer ? GuiHelper::greenLight : GuiHelper::orangeLight);
+	ImGui::PushStyleColor(ImGuiCol_Text, isVariableViewer ? GuiHelper::greenLight() : GuiHelper::orangeLight());
 	GuiHelper::drawCenteredText(isVariableViewer ? "These settings belong to the VARIABLE VIEWER" : "These settings belong to the TRACE VIEWER");
 	GuiHelper::drawCenteredText(isVariableViewer ? "Debug probe, SWD speed and Target name here drive the RAM variable acquisition."
 	                                            : "Debug probe, SWD speed and Target name here drive the SWO trace acquisition only.");
@@ -192,7 +192,7 @@ void Gui::drawDebugProbes()
 
 		if (probeSettings.device.empty())
 		{
-			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight);
+			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
 			GuiHelper::drawCenteredText("Target name is empty, the J-Link cannot connect. Enter the device name, e.g. STM32F103C8.");
 			ImGui::PopStyleColor();
 		}
@@ -316,14 +316,14 @@ void Gui::drawElfSettings(ViewerDataHandler::Settings& settings)
 			ImGui::TextUnformatted("OK");
 		else
 		{
-			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight);
+			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
 			ImGui::TextUnformatted("NOT FOUND. Please set the ofd2000 path manually");
 			ImGui::PopStyleColor();
 		}
 	}
 	else if (!LibDwarfParser::isCompiledIn())
 	{
-		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight);
+		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
 		GuiHelper::drawCenteredText("This build was compiled without the DWARF library, so this parser cannot read a file.");
 		ImGui::PopStyleColor();
 	}
@@ -453,7 +453,7 @@ void Gui::drawTraceProbes()
 
 		if (probeSettings.device.empty())
 		{
-			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight);
+			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
 			GuiHelper::drawCenteredText("Target name is empty, the J-Link cannot connect. Enter the device name, e.g. STM32F103C8.");
 			ImGui::PopStyleColor();
 		}

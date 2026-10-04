@@ -163,7 +163,7 @@ class VariableTableWindow
 				if (var->getIsFound())
 					ImGui::Text("%s", ("0x" + std::string(GuiHelper::intToHexString(var->getAddress()))).c_str());
 				else
-					ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "NOT FOUND!");
+					ImGui::TextColored(GuiHelper::redLight(), "NOT FOUND!");
 
 				ImGui::TableSetColumnIndex(2);
 				ImGui::Text("%s", var->getTypeStr().c_str());
@@ -224,7 +224,7 @@ class VariableTableWindow
 
 		if (elfChanged)
 		{
-			ImVec4 color = ImColor::HSV(0.1f, 0.97f, 0.72f);
+			ImVec4 color = GuiHelper::orange();
 			snprintf(buttonText, textSize, "Click to reload *.elf/*.axf changes!");
 			ImGui::PushStyleColor(ImGuiCol_Button, color);
 			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, color);

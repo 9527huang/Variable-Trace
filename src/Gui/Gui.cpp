@@ -113,11 +113,7 @@ void Gui::mainThread(std::string externalPath)
 	io.Fonts->AddFontDefault(&cfg);
 	io.FontGlobalScale = globalConfig->getSettings().fontScale;
 
-	ImGui::StyleColorsDark();
-	ImPlot::StyleColorsDark();
-
-	ImGui::GetStyle().ScaleAllSizes(GuiHelper::contentScale);
-	ImGui::GetStyle().Colors[ImGuiCol_PopupBg] = ImVec4(0.1f, 0.1f, 0.1f, 1.0f);
+	applyTheme();
 
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
@@ -420,24 +416,24 @@ void Gui::drawConnectionIndicator()
 	const bool acquired = (handler->getStateImmediate() == DataHandlerBase::State::RUN);
 
 	const char* stateText = "Disconnected";
-	ImVec4 stateFace = GuiHelper::red;
-	ImVec4 stateFaceHovered = GuiHelper::redLight;
-	ImVec4 stateFaceActive = GuiHelper::redLightDim;
+	ImVec4 stateFace = GuiHelper::red();
+	ImVec4 stateFaceHovered = GuiHelper::redLight();
+	ImVec4 stateFaceActive = GuiHelper::redLightDim();
 
 	if (acquired)
 	{
 		stateText = "Connected";
-		stateFace = GuiHelper::green;
-		stateFaceHovered = GuiHelper::greenLight;
-		stateFaceActive = GuiHelper::greenLightDim;
+		stateFace = GuiHelper::green();
+		stateFaceHovered = GuiHelper::greenLight();
+		stateFaceActive = GuiHelper::greenLightDim();
 	}
 
 	if (transitioning)
 	{
 		stateText = acquired ? "Connecting" : "Disconnecting";
-		stateFace = GuiHelper::orange;
-		stateFaceHovered = GuiHelper::orangeLight;
-		stateFaceActive = GuiHelper::orangeLightDim;
+		stateFace = GuiHelper::orange();
+		stateFaceHovered = GuiHelper::orangeLight();
+		stateFaceActive = GuiHelper::orangeLightDim();
 	}
 
 	const float scale = GuiHelper::contentScale;
@@ -499,9 +495,9 @@ void Gui::drawConnectionIndicator()
 	   and a named half. */
 	ImGui::SameLine(0.0f, 0.0f);
 
-	ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::neutral);
-	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::neutralLight);
-	ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::neutralLight);
+	ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::neutral());
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::neutralLight());
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::neutralLight());
 
 	pressed |= ImGui::Button(probeName, ImVec2(probeWidth, height));
 	hovered |= ImGui::IsItemHovered();
@@ -741,23 +737,23 @@ void Gui::drawStartButton(DataHandlerBase* activeDataHandler)
 
 	if (state == DataHandlerBase::State::RUN)
 	{
-		ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::green);
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::greenLight);
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::greenLightDim);
+		ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::green());
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::greenLight());
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::greenLightDim());
 	}
 	else if (state == DataHandlerBase::State::STOP)
 	{
 		if (activeDataHandler->getLastReaderError() != "")
 		{
-			ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::red);
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::redLight);
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::redLightDim);
+			ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::red());
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::redLight());
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::redLightDim());
 		}
 		else
 		{
-			ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::orange);
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::orangeLight);
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::orangeLightDim);
+			ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::orange());
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::orangeLight());
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::orangeLightDim());
 		}
 	}
 
@@ -814,10 +810,52 @@ void Gui::drawAcqusitionSettingsWindow(ActiveViewType type)
 	}
 }
 
+void Gui::applyTheme()
+{
+	const GlobalConfig::Settings& settings = globalConfig->getSettings();
+
+	GuiHelper::currentTheme = GuiHelper::themeFromName(settings.theme);
+
+	if (GuiHelper::currentTheme == GuiHelper::Theme::Light)
+	{
+		ImGui::StyleColorsLight();
+		ImPlot::StyleColorsLight();
+	}
+	else
+	{
+		ImGui::StyleColorsDark();
+		ImPlot::StyleColorsDark();
+	}
+
+	ImGuiStyle& style = ImGui::GetStyle();
+
+	/* Base colours come from the preset, then get scaled. */
+	style.ScaleAllSizes(GuiHelper::contentScale);
+
+	/* The popup is the one surface the presets leave translucent, which reads
+	   as a smudge over a plot on a light background. Both palettes get an
+	   opaque popup so a menu is legible wherever it lands. */
+	style.Colors[ImGuiCol_PopupBg] = GuiHelper::currentTheme == GuiHelper::Theme::Light ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f) : ImVec4(0.1f, 0.1f, 0.1f, 1.0f);
+
+	/* ImGui's light preset draws the plot background as a 13% blue tint, which
+	   leaves a plot inside a white window looking like a separate washed panel.
+	   A plain white keeps the plot and the window reading as one surface. */
+	if (GuiHelper::currentTheme == GuiHelper::Theme::Light)
+	{
+		ImPlot::GetStyle().Colors[ImPlotCol_FrameBg] = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+		ImPlot::GetStyle().Colors[ImPlotCol_PlotBg] = ImVec4(1.0f, 1.0f, 1.0f, 0.0f);
+	}
+
+	logger->info("Interface theme applied: {}", GuiHelper::themeToName(GuiHelper::currentTheme));
+}
+
 void Gui::drawPreferencesWindow()
 {
 	if (showPreferencesWindow)
+	{
+		themeIndex = static_cast<int>(GuiHelper::themeFromName(globalConfig->getSettings().theme));
 		ImGui::OpenPopup("Preferences");
+	}
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSize(ImVec2(500 * GuiHelper::contentScale, 660 * GuiHelper::contentScale));
@@ -825,6 +863,21 @@ void Gui::drawPreferencesWindow()
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		GlobalConfig::Settings& settings = globalConfig->getSettings();
+
+		ImGui::TextUnformatted("Appearance");
+
+		ImGui::SetNextItemWidth(200 * GuiHelper::contentScale);
+
+		if (ImGui::Combo("Theme##theme", &themeIndex, "Dark\0Light\0"))
+		{
+			settings.theme = GuiHelper::themeToName(static_cast<GuiHelper::Theme>(themeIndex));
+			logger->info("Interface theme set to {}", settings.theme);
+			applyTheme();
+		}
+
+		ImGui::TextDisabled("Applies to the whole interface, including the plots.");
+
+		ImGui::Separator();
 
 		ImGui::DragFloat("font size", &io.FontGlobalScale, 0.005f, 0.8f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 		settings.fontScale = io.FontGlobalScale;
@@ -875,7 +928,7 @@ void Gui::drawPreferencesWindow()
 		else if (mcpServer->isRunning())
 			ImGui::Text("Listening on %s (%zu tools)", mcpServer->getEndpoint().c_str(), mcpServer->getToolCount());
 		else if (settings.mcpEnabled)
-			ImGui::TextColored(GuiHelper::redLight, "Not listening: %s", mcpServer->getLastError().c_str());
+			ImGui::TextColored(GuiHelper::redLight(), "Not listening: %s", mcpServer->getLastError().c_str());
 		else
 			ImGui::TextDisabled("Disabled");
 

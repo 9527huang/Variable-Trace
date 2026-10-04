@@ -130,9 +130,9 @@ void Gui::drawFlashButton()
 
 	if (running)
 	{
-		ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::green);
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::greenLight);
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::greenLightDim);
+		ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::green());
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::greenLight());
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::greenLightDim());
 	}
 
 	if (ImGui::Button(label, ImVec2(-1, 25 * GuiHelper::contentScale)))
@@ -163,7 +163,7 @@ void Gui::drawFlashOutputWindow()
 
 	if (state == FlashingService::State::Running)
 	{
-		ImGui::TextColored(GuiHelper::orangeLight, "Flashing in progress...");
+		ImGui::TextColored(GuiHelper::orangeLight(), "Flashing in progress...");
 		ImGui::SameLine();
 
 		if (ImGui::Button("Abort", ImVec2(80 * GuiHelper::contentScale, 0)))
@@ -171,13 +171,13 @@ void Gui::drawFlashOutputWindow()
 	}
 	else if (state == FlashingService::State::Success)
 	{
-		ImGui::TextColored(GuiHelper::greenLight, "Flash successful!");
+		ImGui::TextColored(GuiHelper::greenLight(), "Flash successful!");
 	}
 	else if (state != FlashingService::State::Idle)
 	{
 		/* The service words the failure: aborted by the user, cut short because
 		   it stopped printing, or an exit code. */
-		ImGui::TextColored(GuiHelper::redLight, "%s", flasher->getLastError().c_str());
+		ImGui::TextColored(GuiHelper::redLight(), "%s", flasher->getLastError().c_str());
 	}
 
 	ImGui::TextUnformatted("Flash command output:");

@@ -58,7 +58,7 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 		if (plot->trigger.getState())
 		{
 			auto triggerLevel = plot->trigger.getValue();
-			ImPlot::DragLineY(0, &triggerLevel, ImVec4(1.0, 0.9, 0.0, 1.0), 1.0f);
+			ImPlot::DragLineY(0, &triggerLevel, GuiHelper::triggerLine(), 1.0f);
 			plot->trigger.setValue(triggerLevel);
 		}
 
@@ -86,8 +86,8 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 		uint32_t size = time.getSize();
 		mtx->unlock();
 
-		ImPlot::SetNextLineStyle(ImVec4(ser->var->getColor().r, ser->var->getColor().g, ser->var->getColor().b, 1.0f));
-		ImPlot::SetNextFillStyle(ImVec4(ser->var->getColor().r, ser->var->getColor().g, ser->var->getColor().b, 1.0f), 0.25f);
+		ImPlot::SetNextLineStyle(GuiHelper::traceColor(ser->var->getColor().r, ser->var->getColor().g, ser->var->getColor().b));
+		ImPlot::SetNextFillStyle(GuiHelper::traceColor(ser->var->getColor().r, ser->var->getColor().g, ser->var->getColor().b), 0.25f);
 		ImPlot::PlotStairs(plot->getAlias().c_str(), time.getFirstElementCopy(), ser->buffer->getFirstElementCopy(), size, ImPlotStairsFlags_Shaded, offset, sizeof(double));
 
 		/* The dot marks where the first X cursor cut the trace, so it only

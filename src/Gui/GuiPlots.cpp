@@ -125,7 +125,7 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 			if (!serPtr->visible)
 				continue;
 
-			ImPlot::SetNextLineStyle(ImVec4(serPtr->var->getColor().r, serPtr->var->getColor().g, serPtr->var->getColor().b, 1.0f));
+			ImPlot::SetNextLineStyle(GuiHelper::traceColor(serPtr->var->getColor().r, serPtr->var->getColor().g, serPtr->var->getColor().b));
 			ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 2.0f);
 			ImPlot::PlotLine(key.c_str(), time.getFirstElementCopy(), serPtr->buffer->getFirstElementCopy(), size, 0, offset, sizeof(double));
 		}
@@ -213,7 +213,7 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 				name = key + " = " + Plot::formatCursorValue(value);
 			}
 
-			ImPlot::SetNextLineStyle(ImVec4(serPtr->var->getColor().r, serPtr->var->getColor().g, serPtr->var->getColor().b, 1.0f));
+			ImPlot::SetNextLineStyle(GuiHelper::traceColor(serPtr->var->getColor().r, serPtr->var->getColor().g, serPtr->var->getColor().b));
 			ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 2.0f);
 			ImPlot::PlotLine(name.c_str(), time.getFirstElementCopy(), serPtr->buffer->getFirstElementCopy(), size, ImPlotLineFlags_None, offset, sizeof(double));
 		}
@@ -261,8 +261,8 @@ void Gui::drawPlotBar(std::shared_ptr<Plot> plot)
 				continue;
 			double value = *series->buffer->getLastElement();
 
-			ImPlot::SetNextLineStyle(ImVec4(series->var->getColor().r, series->var->getColor().g, series->var->getColor().b, 1.0f));
-			ImPlot::SetNextFillStyle(ImVec4(series->var->getColor().r, series->var->getColor().g, series->var->getColor().b, 1.0f));
+			ImPlot::SetNextLineStyle(GuiHelper::traceColor(series->var->getColor().r, series->var->getColor().g, series->var->getColor().b));
+			ImPlot::SetNextFillStyle(GuiHelper::traceColor(series->var->getColor().r, series->var->getColor().g, series->var->getColor().b));
 			ImPlot::PlotBars(name.c_str(), &xs, &value, 1, barSize);
 			ImPlot::Annotation(xs, value / 2.0f, ImVec4(0, 0, 0, 0), ImVec2(0, -5 * GuiHelper::contentScale), true, "%.5f", value);
 			xs += 1.0f;
@@ -300,7 +300,7 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 			ImGui::TableNextRow();
 			ImGui::TableSetColumnIndex(0);
 			Variable::Color color = serPtr->var->getColor();
-			ImVec4 col = {color.r, color.g, color.b, color.a};
+			ImVec4 col = GuiHelper::traceColor(color.r, color.g, color.b, color.a);
 			ImGui::ColorButton("##", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoTooltip, ImVec2(10 * GuiHelper::contentScale, 10 * GuiHelper::contentScale));
 			ImGui::SameLine();
 			ImGui::Text("%s", key.c_str());
@@ -381,7 +381,7 @@ void Gui::handleDragRect(uint32_t id, Plot::DragRect& dragRect, ImPlotRect plotL
 		}
 
 		static ImPlotRect rect(0.0025, 0.0045, 0, 0.5);
-		ImPlot::DragRect(id, &markerPosX0, &plotLimits.Y.Min, &markerPosX1, &plotLimits.Y.Max, ImVec4(0.15, 0.96, 0.9, 0.45), ImPlotDragToolFlags_NoFit);
+		ImPlot::DragRect(id, &markerPosX0, &plotLimits.Y.Min, &markerPosX1, &plotLimits.Y.Max, GuiHelper::dragSelection(), ImPlotDragToolFlags_NoFit);
 		dragRect.setValueX0(markerPosX0);
 		dragRect.setValueX1(markerPosX1);
 	}

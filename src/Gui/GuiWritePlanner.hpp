@@ -160,7 +160,7 @@ class WritePlannerWindow
 		if (variable.empty() || variableHandler == nullptr || variableHandler->contains(variable))
 			ImGui::TextDisabled("(the variable this plan is for)");
 		else
-			ImGui::TextColored(GuiHelper::orange, "variable does not exist!");
+			ImGui::TextColored(GuiHelper::orange(), "variable does not exist!");
 
 		drawSteps(plan);
 		drawPreview(plan);
