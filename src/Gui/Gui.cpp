@@ -833,6 +833,20 @@ void Gui::applyTheme()
 
 	GuiHelper::currentTheme = GuiHelper::themeFromName(settings.theme);
 
+	ImGuiStyle& style = ImGui::GetStyle();
+
+	/* Put the sizes back to the defaults before a palette goes on.
+	 *
+	 * The colour presets only write style.Colors; every size field (padding,
+	 * spacing, scrollbar, rounding) keeps whatever value it already had. Scaling
+	 * after that multiplies the current numbers, so a second call scales sizes
+	 * that were scaled once already - switching the theme back and forth made
+	 * every widget grow a little on each switch. Assigning a fresh ImGuiStyle
+	 * resets the sizes to the values its constructor defines, and that
+	 * constructor also applies the dark palette, so both bands start from the
+	 * same numbers. */
+	style = ImGuiStyle();
+
 	if (GuiHelper::currentTheme == GuiHelper::Theme::Light)
 	{
 		ImGui::StyleColorsLight();
@@ -844,9 +858,8 @@ void Gui::applyTheme()
 		ImPlot::StyleColorsDark();
 	}
 
-	ImGuiStyle& style = ImGui::GetStyle();
-
-	/* Base colours come from the preset, then get scaled. */
+	/* Scaled once, from the defaults, so the outcome depends on the content
+	   scale alone and not on how often the theme has been switched. */
 	style.ScaleAllSizes(GuiHelper::contentScale);
 
 	/* The popup is the one surface the presets leave translucent, which reads
