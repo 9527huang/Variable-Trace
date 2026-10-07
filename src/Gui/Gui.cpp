@@ -33,8 +33,15 @@
 Gui::Gui(PlotHandler* plotHandler, VariableHandler* variableHandler, ConfigHandler* configHandler, ProjectHandler* projectHandler, GlobalConfig* globalConfig, PlotGroupHandler* plotGroupHandler, IFileHandler* fileHandler, PlotHandler* tracePlotHandler, ViewerDataHandler* viewerDataHandler, TraceDataHandler* traceDataHandler, std::atomic<bool>& done, std::mutex* mtx, spdlog::logger* logger, std::string& projectPath) : plotHandler(plotHandler), variableHandler(variableHandler), configHandler(configHandler), projectHandler(projectHandler), globalConfig(globalConfig), plotGroupHandler(plotGroupHandler), fileHandler(fileHandler), tracePlotHandler(tracePlotHandler), viewerDataHandler(viewerDataHandler), traceDataHandler(traceDataHandler), done(done), mtx(mtx), logger(logger)
 {
 	lastAutoSaveTime = std::chrono::steady_clock::now();
+
+	/* The recorder reads and writes whichever probe the viewer acquired, so it
+	   needs nothing beyond the logger to exist. It is built before the plots
+	   tree because that tree offers the entries that make a recorder group, and
+	   it greys them out while the recorder itself is switched off. */
+	recorderHandler = std::make_unique<recorder::RecorderHandler>(logger);
+
 	plotEditWindow = std::make_shared<PlotEditWindow>(plotHandler, plotGroupHandler, variableHandler);
-	plotsTree = std::make_shared<PlotsTree>(viewerDataHandler, plotHandler, plotGroupHandler, variableHandler, plotEditWindow, fileHandler, logger);
+	plotsTree = std::make_shared<PlotsTree>(viewerDataHandler, plotHandler, plotGroupHandler, variableHandler, plotEditWindow, fileHandler, recorderHandler.get(), logger);
 	variableTable = std::make_shared<VariableTableWindow>(viewerDataHandler, plotHandler, variableHandler, &projectElfPath, &projectConfigPath, logger);
 
 	variableHandler->renameCallback = [&](std::string oldName, std::string newName)
@@ -42,10 +49,6 @@ Gui::Gui(PlotHandler* plotHandler, VariableHandler* variableHandler, ConfigHandl
 		for (std::shared_ptr<Plot> plt : *this->plotHandler)
 			plt->renameSeries(oldName, newName);
 	};
-
-	/* The recorder reads and writes whichever probe the viewer acquired, so it
-	   needs nothing beyond the logger to exist. */
-	recorderHandler = std::make_unique<recorder::RecorderHandler>(logger);
 
 	/* The programmer is a child process, so it needs no probe either. */
 	flasher = std::make_unique<FlashingService>(logger);

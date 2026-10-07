@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Plot.hpp"
+#include "PlotHandler.hpp"
 
 class PlotGroup
 {
@@ -359,7 +360,79 @@ class PlotGroupHandler
 		return groupMap.find(name) != groupMap.end();
 	}
 
+	/* A name built from the stem that no group carries yet: the stem itself
+	   while it is free, then the stem with the first free number after it.
+	   That is how a new group is named. */
+	std::string makeFreeName(const std::string& stem) const
+	{
+		for (uint32_t index = 0;; index++)
+		{
+			const std::string candidate = stem + std::to_string(index);
+
+			if (!checkIfGroupExists(candidate))
+				return candidate;
+		}
+	}
+
+	/* A name for a copy of a group, so that a copy is recognisable as one. */
+	std::string makeFreeCopyName(const std::string& stem) const
+	{
+		for (uint32_t index = 0;; index++)
+		{
+			const std::string candidate = stem + "_copy_" + std::to_string(index);
+
+			if (!checkIfGroupExists(candidate))
+				return candidate;
+		}
+	}
+
+	/* Duplicates a group together with every plot in it and every group nested
+	   in it, as a new group of the type asked for, sitting at the top level.
+	   The type is asked for rather than taken from the source because the same
+	   call serves both "copy this group" and "copy it to the other kind of
+	   group". Returns the name the copy was given, or an empty string when
+	   there is no group by that name. */
+	std::string copyGroup(const std::string& sourceName, PlotGroup::Type type, PlotHandler& plotHandler)
+	{
+		if (!groupMap.contains(sourceName))
+			return "";
+
+		const std::string copyName = makeFreeCopyName(sourceName);
+		addGroup(copyName, type);
+		copyGroupBelow(groupMap.at(sourceName), copyName, plotHandler);
+
+		return copyName;
+	}
+
    private:
+	/* Fills a group that has already been created with copies of the plots of
+	   the source and of the groups nested in it. Every group below is created
+	   under the copy, so a copied branch does not end up pointing back at the
+	   original. */
+	void copyGroupBelow(const std::shared_ptr<PlotGroup>& source, const std::string& destinationName, PlotHandler& plotHandler)
+	{
+		const std::shared_ptr<PlotGroup> destination = groupMap.at(destinationName);
+
+		for (const auto& [plotName, entry] : *source)
+		{
+			if (entry.plot == nullptr)
+				continue;
+
+			destination->addPlot(plotHandler.addPlotCopy(*entry.plot, plotName), entry.visibility);
+		}
+
+		/* getChildNames returns a list of its own, so adding groups below while
+		   walking it cannot change what is being walked. */
+		for (const std::string& childName : getChildNames(source->getName()))
+		{
+			const std::shared_ptr<PlotGroup> child = groupMap.at(childName);
+			const std::string childCopyName = makeFreeCopyName(childName);
+
+			addGroup(childCopyName, child->getType(), destinationName);
+			copyGroupBelow(child, childCopyName, plotHandler);
+		}
+	}
+
 	std::string activeGroup = "";
 	std::map<std::string, std::shared_ptr<PlotGroup>> groupMap;
 };

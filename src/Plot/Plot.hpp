@@ -164,6 +164,19 @@ class Plot
 	bool addSeries(Variable* var);
 	std::shared_ptr<Plot::Series> getSeries(const std::string& name);
 	std::map<std::string, std::shared_ptr<Plot::Series>>& getSeriesMap();
+
+	/* The same map for a caller that only reads it. Copying a plot is such a
+	   caller: it walks the series of the plot it copies and has no business
+	   changing them. */
+	const std::map<std::string, std::shared_ptr<Plot::Series>>& getSeriesMap() const;
+
+	/* Everything that describes the plot rather than the samples that have run
+	   through it: which kind of plot it is, what its axes are called, where its
+	   cursors and its measurements window sit, and which variables it shows.
+	   The samples are left out on purpose - a copy starts collecting from the
+	   moment it appears, and carrying the buffer over would make it look like
+	   the same run was recorded twice. */
+	void copyConfigurationFrom(const Plot& source);
 	ScrollingBuffer<double>* getXAxisSeries();
 	bool removeSeries(const std::string& name);
 	bool removeAllVariables();

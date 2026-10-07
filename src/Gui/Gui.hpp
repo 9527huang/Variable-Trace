@@ -123,6 +123,15 @@ class Gui
 
 	spdlog::logger* logger;
 
+	/* The recorder runs over whichever probe is currently selected, so it holds
+	   no connection of its own and borrows the one the viewer acquired.
+
+	   Declared before the plots tree on purpose: the tree borrows it to decide
+	   whether a recorder group can be made, and members are destroyed in
+	   reverse declaration order, so this has to come first for the tree to be
+	   gone by the time the recorder is. */
+	std::unique_ptr<recorder::RecorderHandler> recorderHandler;
+
 	std::shared_ptr<PlotEditWindow> plotEditWindow;
 	std::shared_ptr<VariableTableWindow> variableTable;
 	std::shared_ptr<PlotsTree> plotsTree;
@@ -220,10 +229,6 @@ class Gui
 	std::unique_ptr<mcp::Bridge> mcpBridge;
 	std::unique_ptr<McpContext> mcpContext;
 	std::unique_ptr<mcp::Server> mcpServer;
-
-	/* The recorder runs over whichever probe is currently selected, so it holds
-	   no connection of its own and borrows the one the viewer acquired. */
-	std::unique_ptr<recorder::RecorderHandler> recorderHandler;
 
 	/* The API refresh needs an ELF parser of its own, because the one behind the
 	   variable table belongs to that window. It follows the same setting, so the

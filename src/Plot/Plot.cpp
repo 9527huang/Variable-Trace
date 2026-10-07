@@ -60,6 +60,54 @@ std::map<std::string, std::shared_ptr<Plot::Series>>& Plot::getSeriesMap()
 	return seriesMap;
 }
 
+const std::map<std::string, std::shared_ptr<Plot::Series>>& Plot::getSeriesMap() const
+{
+	return seriesMap;
+}
+
+void Plot::copyConfigurationFrom(const Plot& source)
+{
+	setType(source.getType());
+	setAlias(source.getAlias());
+	setXAxisLabel(source.getXAxisLabel());
+	setYAxisLabel(source.getYAxisLabel());
+	setCursorsVisible(source.getCursorsVisible());
+	setCursorMode(source.getCursorMode());
+	setStatisticsVisible(source.getStatisticsVisible());
+	setVisibility(source.getVisibility());
+	setDomain(source.getDomain());
+	setTraceVarType(source.getTraceVarType());
+
+	markerX0.setValue(source.markerX0.getValue());
+	markerX1.setValue(source.markerX1.getValue());
+	markerY0.setValue(source.markerY0.getValue());
+	markerY1.setValue(source.markerY1.getValue());
+
+	/* A plot drawn against another variable keeps that variable, so the copy
+	   has to point at the same one. */
+	if (Variable* xAxis = source.getXAxisVariable())
+		setXAxisVariable(xAxis);
+
+	for (const auto& [seriesName, series] : source.getSeriesMap())
+	{
+		if (series->var == nullptr)
+			continue;
+
+		/* The series is added under the name of its variable, which is also
+		   the key it is drawn under. The buffer the copy gets is its own, so
+		   the two plots fill up together instead of sharing one history. */
+		addSeries(series->var);
+
+		auto copied = seriesMap.find(series->var->getName());
+
+		if (copied == seriesMap.end())
+			continue;
+
+		copied->second->visible = series->visible;
+		copied->second->format = series->format;
+	}
+}
+
 ScrollingBuffer<double>* Plot::getXAxisSeries()
 {
 	if (type == Type::XY)

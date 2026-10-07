@@ -11,12 +11,13 @@
 #include "IFileHandler.hpp"
 #include "Plot.hpp"
 #include "PlotGroupHandler.hpp"
+#include "RecorderHandler.hpp"
 #include "ViewerDataHandler.hpp"
 
 class PlotsTree
 {
    public:
-	PlotsTree(ViewerDataHandler* viewerDataHandler, PlotHandler* plotHandler, PlotGroupHandler* plotGroupHandler, VariableHandler* variableHandler, std::shared_ptr<PlotEditWindow> plotEditWindow, IFileHandler* fileHandler, spdlog::logger* logger) : viewerDataHandler(viewerDataHandler), plotHandler(plotHandler), plotGroupHandler(plotGroupHandler), variableHandler(variableHandler), plotEditWindow(plotEditWindow), fileHandler(fileHandler), logger(logger)
+	PlotsTree(ViewerDataHandler* viewerDataHandler, PlotHandler* plotHandler, PlotGroupHandler* plotGroupHandler, VariableHandler* variableHandler, std::shared_ptr<PlotEditWindow> plotEditWindow, IFileHandler* fileHandler, recorder::RecorderHandler* recorderHandler, spdlog::logger* logger) : viewerDataHandler(viewerDataHandler), plotHandler(plotHandler), plotGroupHandler(plotGroupHandler), variableHandler(variableHandler), plotEditWindow(plotEditWindow), fileHandler(fileHandler), recorderHandler(recorderHandler), logger(logger)
 	{
 		groupEditWindow = std::make_unique<GroupEditWindow>(plotGroupHandler);
 	}
@@ -27,8 +28,6 @@ class PlotsTree
 		ImGui::Dummy(ImVec2(-1, 5));
 		GuiHelper::drawCenteredText("Plots");
 		ImGui::Separator();
-
-		drawAddPlotButton();
 
 		if (plotHandler->getPlotsCount() == 0)
 		{
@@ -66,13 +65,44 @@ class PlotsTree
 		/* Only the groups without a parent start a branch; the rest are reached
 		   by recursing, which is what makes the tree as deep as the user built
 		   it rather than one level. */
-		std::optional<std::string> groupNameToDelete;
-
 		for (const std::string& rootName : plotGroupHandler->getRootNames())
-			drawGroupNode(rootName, groupNameToDelete);
+			drawGroupNode(rootName);
 
-		if (groupNameToDelete.has_value())
-			plotGroupHandler->removeGroup(groupNameToDelete.value());
+		/* A right click that misses every row lands on the panel itself. There
+		   is still something to offer there: the groups can be made from it, so
+		   a tree that has nothing in it is not a dead end. Plots are not on
+		   offer, because a plot belongs to a group and this menu is about the
+		   panel rather than about any group. The rows keep their own menus:
+		   the flag is what sends a click on a row to the row. */
+		if (ImGui::BeginPopupContextWindow("##plot tree background", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+		{
+			const bool recorderReady = recorderHandler != nullptr && recorderHandler->isEnabled();
+
+			if (ImGui::BeginMenu("New"))
+			{
+				if (ImGui::MenuItem("Sampling group"))
+					requestNewGroup(PlotGroup::Type::Sampling);
+
+				ImGui::BeginDisabled(!recorderReady);
+
+				if (ImGui::MenuItem("Recorder group"))
+					requestNewGroup(PlotGroup::Type::Recorder);
+
+				ImGui::EndDisabled();
+
+				if (!recorderReady && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+					ImGui::SetTooltip("Please enable recorder in Acquisition settings to add a new recorder group");
+
+				ImGui::EndMenu();
+			}
+
+			ImGui::EndPopup();
+		}
+
+		/* What the menus asked for is applied once the whole tree has been
+		   walked: adding or removing a plot changes the map the walk is
+		   reading, so it cannot happen in the middle of it. */
+		applyPendingAction();
 
 		ImGui::EndChild();
 		ImGui::SameLine();
@@ -157,6 +187,10 @@ class PlotsTree
 		ImGui::EndChild();
 	}
 
+	/* Everything below is the tree's own business: the panel draws itself, and
+	   the groups and plots are made, copied and removed from here. */
+
+   private:
 	/* The cursors panel and the statistics row.
 
 	   Each pairs a label with its controls on one line, which is how the same
@@ -212,19 +246,195 @@ class PlotsTree
 			plt->setStatisticsVisible(visible);
 	}
 
-	void drawAddPlotButton()
+	/* A new plot lands in the group the menu was opened on, takes the kind the
+	   entry named, and opens the editor on itself: a plot that has just been
+	   made holds no variables yet, so there is nothing to look at until one is
+	   added. The name follows the reference build - the same stem with the
+	   first free number after it. */
+	std::shared_ptr<Plot> createPlot(const std::string& groupName, Plot::Type type)
 	{
-		if (ImGui::Button("Add plot", ImVec2(-1, 25 * GuiHelper::contentScale)))
-			addNewPlot();
+		const std::shared_ptr<PlotGroup> group = resolveGroup(groupName);
+		const std::shared_ptr<Plot> plot = plotHandler->addPlot(plotHandler->makeFreeName("new plot"));
 
-		if (ImGui::Button("Add group", ImVec2(-1, 25 * GuiHelper::contentScale)))
-			addNewGroup();
+		plot->setType(type);
+		group->addPlot(plot);
+
+		logger->info("Adding plot: {} ({})", plot->getName(), plotTypeName(type));
+
+		selectedGroup = group->getName();
+		selectedPlot = plot->getName();
+
+		plotEditWindow->setPlotToEdit(plot);
+		plotEditWindow->setShowPlotEditWindowState(true);
+
+		return plot;
+	}
+
+	/* A new group is made the kind the entry named and carries that kind in its
+	   name, so the two kinds stay apart at a glance. It goes to the top level,
+	   which is where the reference build puts one, and the editor opens on it
+	   so that it can be renamed or nested straight away. */
+	std::shared_ptr<PlotGroup> createGroup(PlotGroup::Type type)
+	{
+		const std::string stem = type == PlotGroup::Type::Recorder ? "new recorder group" : "new sampling group";
+		const std::shared_ptr<PlotGroup> group = plotGroupHandler->addGroup(plotGroupHandler->makeFreeName(stem), type);
+
+		logger->info("Adding group: {} ({})", group->getName(), group->getTypeName());
+
+		selectedGroup = group->getName();
+
+		groupEditWindow->setGroupToEdit(group);
+		groupEditWindow->setShowGroupEditWindowState(true);
+
+		return group;
+	}
+
+	/* A copy holds everything the original holds: its plots, and the groups
+	   nested in it. The kind is asked for because the same call answers both
+	   "copy this group" and "copy it to the other kind of group". */
+	void copyGroup(const std::string& name, PlotGroup::Type type)
+	{
+		const std::string copyName = plotGroupHandler->copyGroup(name, type, *plotHandler);
+
+		if (copyName.empty())
+			return;
+
+		logger->info("Copied group {} as {}", name, copyName);
+
+		selectedGroup = copyName;
+	}
+
+	/* A copy of one plot lands in the group it was copied from, with the new
+	   samples it collects from here on. */
+	void copyPlot(const std::string& groupName, const std::string& plotName)
+	{
+		if (!plotHandler->checkIfPlotExists(plotName))
+			return;
+
+		const std::shared_ptr<PlotGroup> group = resolveGroup(groupName);
+		const std::shared_ptr<Plot> copy = plotHandler->addPlotCopy(*plotHandler->getPlot(plotName), plotName);
+
+		group->addPlot(copy);
+
+		logger->info("Copied plot {} as {}", plotName, copy->getName());
+
+		selectedGroup = group->getName();
+		selectedPlot = copy->getName();
+	}
+
+	/* The group a menu was opened on, or the active one when the name no longer
+	   names anything - a group can be removed while its menu is still open. */
+	std::shared_ptr<PlotGroup> resolveGroup(const std::string& groupName)
+	{
+		return plotGroupHandler->checkIfGroupExists(groupName) ? plotGroupHandler->getGroup(groupName) : plotGroupHandler->getActiveGroup();
+	}
+
+	/* What a context menu asked for. The action is taken once the tree has been
+	   walked, because adding or removing a plot or a group changes the map the
+	   walk is reading. */
+	enum class PendingKind : uint8_t
+	{
+		None = 0,
+		NewPlot,
+		NewGroup,
+		CopyPlot,
+		CopyGroup,
+		DeletePlot,
+		DeleteGroup,
+	};
+
+	void requestNewPlot(const std::string& groupName, Plot::Type type)
+	{
+		pending = PendingKind::NewPlot;
+		pendingGroup = groupName;
+		pendingPlotType = type;
+	}
+
+	void requestNewGroup(PlotGroup::Type type)
+	{
+		pending = PendingKind::NewGroup;
+		pendingGroupType = type;
+	}
+
+	void requestCopyPlot(const std::string& groupName, const std::string& plotName)
+	{
+		pending = PendingKind::CopyPlot;
+		pendingGroup = groupName;
+		pendingPlot = plotName;
+	}
+
+	void requestCopyGroup(const std::string& groupName, PlotGroup::Type type)
+	{
+		pending = PendingKind::CopyGroup;
+		pendingGroup = groupName;
+		pendingGroupType = type;
+	}
+
+	void requestDeletePlot(const std::string& groupName, const std::string& plotName)
+	{
+		pending = PendingKind::DeletePlot;
+		pendingGroup = groupName;
+		pendingPlot = plotName;
+	}
+
+	void requestDeleteGroup(const std::string& groupName)
+	{
+		pending = PendingKind::DeleteGroup;
+		pendingGroup = groupName;
+	}
+
+	void applyPendingAction()
+	{
+		const PendingKind action = pending;
+
+		pending = PendingKind::None;
+
+		switch (action)
+		{
+			case PendingKind::NewPlot:
+				createPlot(pendingGroup, pendingPlotType);
+				break;
+
+			case PendingKind::NewGroup:
+				createGroup(pendingGroupType);
+				break;
+
+			case PendingKind::CopyPlot:
+				copyPlot(pendingGroup, pendingPlot);
+				break;
+
+			case PendingKind::CopyGroup:
+				copyGroup(pendingGroup, pendingGroupType);
+				break;
+
+			case PendingKind::DeletePlot:
+				if (plotGroupHandler->checkIfGroupExists(pendingGroup))
+					plotGroupHandler->getGroup(pendingGroup)->removePlot(pendingPlot);
+				break;
+
+			case PendingKind::DeleteGroup:
+				plotGroupHandler->removeGroup(pendingGroup);
+				break;
+
+			case PendingKind::None:
+				break;
+		}
+	}
+
+	/* The names the plot kinds are offered under in the menu. They line up with
+	   Plot::Type, which is what lets the entry be turned back into a kind. */
+	static constexpr const char* plotTypeNames[] = {"Curve", "Bar", "Table", "XY"};
+
+	static const char* plotTypeName(Plot::Type type)
+	{
+		const uint32_t index = static_cast<uint32_t>(type);
+		return index < IM_ARRAYSIZE(plotTypeNames) ? plotTypeNames[index] : "Curve";
 	}
 
 	/* Draws one group together with its plots and everything nested in it. The
 	   parameter names the group, so the same group object cannot be drawn twice
 	   even if two branches of a hand-edited file referred to it. */
-	void drawGroupNode(const std::string& name, std::optional<std::string>& groupNameToDelete)
+	void drawGroupNode(const std::string& name)
 	{
 		if (!plotGroupHandler->checkIfGroupExists(name))
 			return;
@@ -249,13 +459,7 @@ class PlotsTree
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Left) || ImGui::IsItemClicked(ImGuiMouseButton_Right))
 			selectedGroup = name;
 
-		drawMenuGroupPopup(name, [&]()
-						   { addNewGroup(name); }, [&]()
-						   { addNewPlot(name); }, [&](std::string groupToDelete)
-						   { groupNameToDelete = groupToDelete; }, [&](std::string groupToEdit)
-						   {
-							   groupEditWindow->setGroupToEdit(plotGroupHandler->getGroup(groupToEdit));
-							   groupEditWindow->setShowGroupEditWindowState(true); });
+		drawMenuGroupPopup(name);
 
 		if (state)
 		{
@@ -269,8 +473,6 @@ class PlotsTree
 				}
 				ImGui::EndDragDropTarget();
 			}
-
-			std::optional<std::string> plotNameToDelete;
 
 			for (auto& [plotId, plotElem] : *group)
 			{
@@ -293,11 +495,7 @@ class PlotsTree
 					}
 				}
 
-				drawMenuPlotPopup(plotId, [&]()
-								  { addNewPlot(name); }, [&](std::string plotToDelete)
-								  { plotNameToDelete = plotToDelete; }, [&](std::string)
-								  {plotEditWindow->setPlotToEdit(plot);
-						           plotEditWindow->setShowPlotEditWindowState(true); });
+				drawMenuPlotPopup(name, plotId, plot);
 
 				/* Drag n Drop source for plots within groups */
 				if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
@@ -313,13 +511,10 @@ class PlotsTree
 				ImGui::PopID();
 			}
 
-			if (plotNameToDelete.has_value())
-				group->removePlot(plotNameToDelete.value_or(""));
-
 			/* Children are drawn inside the expanded node, which is what puts
 			   them one level deeper than their parent. */
 			for (const std::string& childName : plotGroupHandler->getChildNames(name))
-				drawGroupNode(childName, groupNameToDelete);
+				drawGroupNode(childName);
 
 			ImGui::TreePop();
 		}
@@ -341,43 +536,6 @@ class PlotsTree
 
 		if (first != group->end() && first->second.plot != nullptr)
 			selectedPlot = first->second.plot->getName();
-	}
-
-	/* An empty group name means the active group, which is what the buttons at
-	   the top of the tree want; the context menu passes the group it was opened
-	   on so that a new plot lands where the user clicked. */
-	void addNewPlot(const std::string& groupName = "")
-	{
-		uint32_t num = 0;
-		while (plotHandler->checkIfPlotExists(std::string("new plot") + std::to_string(num)))
-			num++;
-
-		std::string newName = std::string("new plot") + std::to_string(num);
-		auto plot = plotHandler->addPlot(newName);
-
-		std::shared_ptr<PlotGroup> target = plotGroupHandler->getActiveGroup();
-
-		if (!groupName.empty() && plotGroupHandler->checkIfGroupExists(groupName))
-			target = plotGroupHandler->getGroup(groupName);
-
-		if (target != nullptr)
-			target->addPlot(plot);
-
-		plotEditWindow->setPlotToEdit(plot);
-		plotEditWindow->setShowPlotEditWindowState(true);
-	}
-
-	/* An empty parent name puts the group at the top level. */
-	void addNewGroup(const std::string& parentName = "")
-	{
-		uint32_t num = 0;
-		while (plotGroupHandler->checkIfGroupExists(std::string("new group") + std::to_string(num)))
-			num++;
-
-		std::string newName = std::string("new group") + std::to_string(num);
-		auto group = plotGroupHandler->addGroup(newName, PlotGroup::Type::Sampling, parentName);
-		groupEditWindow->setGroupToEdit(group);
-		groupEditWindow->setShowGroupEditWindowState(true);
 	}
 
 	void drawExportPlotToCSVButton(std::shared_ptr<Plot> plt)
@@ -418,55 +576,153 @@ class PlotsTree
 		}
 	}
 
-   private:
-	void drawMenuGroupPopup(const std::string& name, std::function<void()> onNewGroup, std::function<void()> onNewPlot, std::function<void(const std::string&)> onDelete, std::function<void(const std::string&)> onProperties)
+	/* The menu a group node answers a right click with.
+	   It is where everything about a group is done: making one of either kind,
+	   making a plot of a named kind in it, copying it, and copying it to the
+	   other kind. Where the reference build offers these, this menu offers
+	   them too, under the same wording, so a reader of its manual finds them
+	   where they expect. The separators are part of that: the reference build
+	   breaks the entries into making, copying, deleting and properties, and a
+	   menu that runs them together reads as a different menu.
+
+	   The entries that would produce a recorder group are greyed out while the
+	   recorder is switched off, and they say why through a tooltip rather than
+	   leaving the user to guess - a greyed entry with no reason is a bug from
+	   where the user is sitting. */
+	void drawMenuGroupPopup(const std::string& name)
 	{
+		const std::shared_ptr<PlotGroup> group = plotGroupHandler->getGroup(name);
+
+		if (group == nullptr)
+			return;
+
+		const bool isRecorderGroup = group->getType() == PlotGroup::Type::Recorder;
+		const bool recorderReady = recorderHandler != nullptr && recorderHandler->isEnabled();
+
 		ImGui::PushID(name.c_str());
+
 		if (ImGui::BeginPopupContextItem(name.c_str()))
 		{
 			if (ImGui::BeginMenu("New"))
 			{
-				if (ImGui::MenuItem("Group"))
-					onNewGroup();
+				if (ImGui::MenuItem("Sampling group"))
+					requestNewGroup(PlotGroup::Type::Sampling);
 
-				if (ImGui::MenuItem("Plot"))
-					onNewPlot();
+				ImGui::BeginDisabled(!recorderReady);
+
+				if (ImGui::MenuItem("Recorder group"))
+					requestNewGroup(PlotGroup::Type::Recorder);
+
+				ImGui::EndDisabled();
+
+				if (!recorderReady && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+					ImGui::SetTooltip("Please enable recorder in Acquisition settings to add a new recorder group");
+
+				if (ImGui::BeginMenu("Plot"))
+				{
+					for (uint32_t index = 0; index < IM_ARRAYSIZE(plotTypeNames); index++)
+					{
+						if (ImGui::MenuItem(plotTypeNames[index]))
+							requestNewPlot(name, static_cast<Plot::Type>(index));
+					}
+
+					ImGui::EndMenu();
+				}
 
 				ImGui::EndMenu();
 			}
 
+			ImGui::Separator();
+
+			if (ImGui::MenuItem("Copy"))
+				requestCopyGroup(name, group->getType());
+
+			/* A group is copied to the other kind of group. Which kind that is
+			   follows from the group the menu was opened on, so only one of the
+			   two entries is ever offered. */
+			if (isRecorderGroup)
+			{
+				if (ImGui::MenuItem("Copy to sampling group"))
+					requestCopyGroup(name, PlotGroup::Type::Sampling);
+			}
+			else
+			{
+				ImGui::BeginDisabled(!recorderReady);
+
+				if (ImGui::MenuItem("Copy to recorder group"))
+					requestCopyGroup(name, PlotGroup::Type::Recorder);
+
+				ImGui::EndDisabled();
+
+				if (!recorderReady && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+					ImGui::SetTooltip("Please enable recorder in Acquisition settings to copy this group to a recorder group");
+			}
+
+			ImGui::Separator();
+
 			if (ImGui::MenuItem("Delete group"))
-				onDelete(name);
+				requestDeleteGroup(name);
+
+			ImGui::Separator();
 
 			if (ImGui::MenuItem("Properties"))
-				onProperties(name);
+			{
+				groupEditWindow->setGroupToEdit(group);
+				groupEditWindow->setShowGroupEditWindowState(true);
+			}
 
 			ImGui::EndPopup();
 		}
+
 		ImGui::PopID();
 	}
 
-	void drawMenuPlotPopup(const std::string& name, std::function<void()> onNewPlot, std::function<void(const std::string&)> onDelete, std::function<void(const std::string&)> onProperties)
+	/* The menu a plot row answers a right click with. A plot is made with a
+	   kind from the start here as well, and a plot can be copied the same way a
+	   group is, which is what "one more of these" usually means. */
+	void drawMenuPlotPopup(const std::string& groupName, const std::string& plotName, const std::shared_ptr<Plot>& plot)
 	{
-		ImGui::PushID(name.c_str());
-		if (ImGui::BeginPopupContextItem(name.c_str()))
+		ImGui::PushID(plotName.c_str());
+
+		if (ImGui::BeginPopupContextItem(plotName.c_str()))
 		{
 			if (ImGui::BeginMenu("New"))
 			{
-				if (ImGui::MenuItem("Plot"))
-					onNewPlot();
+				if (ImGui::BeginMenu("Plot"))
+				{
+					for (uint32_t index = 0; index < IM_ARRAYSIZE(plotTypeNames); index++)
+					{
+						if (ImGui::MenuItem(plotTypeNames[index]))
+							requestNewPlot(groupName, static_cast<Plot::Type>(index));
+					}
+
+					ImGui::EndMenu();
+				}
 
 				ImGui::EndMenu();
 			}
 
+			ImGui::Separator();
+
+			if (ImGui::MenuItem("Copy"))
+				requestCopyPlot(groupName, plotName);
+
+			ImGui::Separator();
+
 			if (ImGui::MenuItem("Delete plot"))
-				onDelete(name);
+				requestDeletePlot(groupName, plotName);
+
+			ImGui::Separator();
 
 			if (ImGui::MenuItem("Properties"))
-				onProperties(name);
+			{
+				plotEditWindow->setPlotToEdit(plot);
+				plotEditWindow->setShowPlotEditWindowState(true);
+			}
 
 			ImGui::EndPopup();
 		}
+
 		ImGui::PopID();
 	}
 
@@ -483,9 +739,17 @@ class PlotsTree
 	std::string selectedGroup = "";
 	std::string selectedPlot = "";
 
+	/* What a context menu asked for, and what it was asked about. */
+	PendingKind pending = PendingKind::None;
+	std::string pendingGroup = "";
+	std::string pendingPlot = "";
+	Plot::Type pendingPlotType = Plot::Type::CURVE;
+	PlotGroup::Type pendingGroupType = PlotGroup::Type::Sampling;
+
 	std::unique_ptr<GroupEditWindow> groupEditWindow;
 
 	StatisticsWindow statisticsWindow;
 	IFileHandler* fileHandler;
+	recorder::RecorderHandler* recorderHandler;
 	spdlog::logger* logger;
 };

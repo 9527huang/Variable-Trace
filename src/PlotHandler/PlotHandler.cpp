@@ -66,6 +66,36 @@ bool PlotHandler::checkIfPlotExists(const std::string& name) const
 	return plotsMap.find(name) != plotsMap.end();
 }
 
+std::string PlotHandler::makeFreeName(const std::string& stem) const
+{
+	for (uint32_t index = 0;; index++)
+	{
+		const std::string candidate = stem + std::to_string(index);
+
+		if (!checkIfPlotExists(candidate))
+			return candidate;
+	}
+}
+
+std::string PlotHandler::makeFreeCopyName(const std::string& stem) const
+{
+	for (uint32_t index = 0;; index++)
+	{
+		const std::string candidate = stem + "_copy_" + std::to_string(index);
+
+		if (!checkIfPlotExists(candidate))
+			return candidate;
+	}
+}
+
+std::shared_ptr<Plot> PlotHandler::addPlotCopy(const Plot& source, const std::string& stem)
+{
+	const std::shared_ptr<Plot> copy = addPlot(makeFreeCopyName(stem));
+	copy->copyConfigurationFrom(source);
+
+	return copy;
+}
+
 void PlotHandler::setMaxPoints(uint32_t maxPoints)
 {
 	if (maxPoints == 0)

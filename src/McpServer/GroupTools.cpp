@@ -6,64 +6,6 @@ namespace mcp
 {
 	namespace
 	{
-		/* A group that other groups were copied from keeps the copy recognisable,
-		   and the first free suffix keeps repeated copies apart. */
-		std::string freeGroupName(McpContext& context, const std::string& base)
-		{
-			for (uint32_t index = 0;; index++)
-			{
-				const std::string candidate = base + "_copy_" + std::to_string(index);
-
-				if (!context.plotGroupHandler->checkIfGroupExists(candidate))
-					return candidate;
-			}
-		}
-
-		std::string freePlotName(McpContext& context, const std::string& base)
-		{
-			for (uint32_t index = 0;; index++)
-			{
-				const std::string candidate = base + "_copy_" + std::to_string(index);
-
-				if (!context.plotHandler->checkIfPlotExists(candidate))
-					return candidate;
-			}
-		}
-
-		/* Copies the shape of a plot, not its samples: the copy starts collecting
-		   from the moment it is added to a group. */
-		void copyPlotStructure(const std::shared_ptr<Plot>& source, const std::shared_ptr<Plot>& destination)
-		{
-			destination->setType(source->getType());
-			destination->setAlias(source->getAlias());
-			destination->setXAxisLabel(source->getXAxisLabel());
-			destination->setYAxisLabel(source->getYAxisLabel());
-			destination->setCursorsVisible(source->getCursorsVisible());
-			destination->setCursorMode(source->getCursorMode());
-
-			destination->markerX0.setValue(source->markerX0.getValue());
-			destination->markerX1.setValue(source->markerX1.getValue());
-			destination->markerY0.setValue(source->markerY0.getValue());
-			destination->markerY1.setValue(source->markerY1.getValue());
-			destination->setVisibility(source->getVisibility());
-			destination->setDomain(source->getDomain());
-			destination->setTraceVarType(source->getTraceVarType());
-
-			if (Variable* xAxis = source->getXAxisVariable())
-				destination->setXAxisVariable(xAxis);
-
-			for (const auto& [name, series] : source->getSeriesMap())
-			{
-				if (series->var == nullptr)
-					continue;
-
-				destination->addSeries(series->var);
-				auto copied = destination->getSeries(name);
-				copied->visible = series->visible;
-				copied->format = series->format;
-			}
-		}
-
 		Json listGroups(McpContext& context, const Json&)
 		{
 			if (context.plotGroupHandler == nullptr)
@@ -138,40 +80,9 @@ namespace mcp
 			return Json::object({{"removed", resolved}, {"removed_count", removed}, {"active", context.plotGroupHandler->getActiveGroupName()}});
 		}
 
-		/* Copies a group together with its plots and the whole branch below it.
-		   A copy that kept only the top group would leave its children pointing
-		   at the original, so the branch travels as a unit. */
-		void copyGroupBranch(McpContext& context, const std::shared_ptr<PlotGroup>& source, const std::string& destinationName, uint32_t& groups, uint32_t& plots)
-		{
-			const std::shared_ptr<PlotGroup> destination = context.plotGroupHandler->getGroup(destinationName);
-			groups++;
-
-			for (const auto& [plotName, entry] : *source)
-			{
-				if (entry.plot == nullptr)
-					continue;
-
-				const std::string copyName = freePlotName(context, plotName);
-				auto copy = context.plotHandler->addPlot(copyName);
-
-				copyPlotStructure(entry.plot, copy);
-				destination->addPlot(copy, entry.visibility);
-
-				plots++;
-			}
-
-			/* getChildNames returns its own list, so adding groups below while
-			   walking it cannot change what is being walked. */
-			for (const std::string& childName : context.plotGroupHandler->getChildNames(source->getName()))
-			{
-				const std::shared_ptr<PlotGroup> child = context.plotGroupHandler->getGroup(childName);
-				const std::string childCopyName = freeGroupName(context, childName);
-
-				context.plotGroupHandler->addGroup(childCopyName, child->getType(), destinationName);
-				copyGroupBranch(context, child, childCopyName, groups, plots);
-			}
-		}
-
+		/* The group copy lives in the group handler, so that the tool and the
+		   tree menu duplicate a group the same way - same names, same depth,
+		   same plots. What is left here is the counting the answer needs. */
 		Json copyGroup(McpContext& context, const Json& arguments)
 		{
 			if (context.plotGroupHandler == nullptr || context.plotHandler == nullptr)
@@ -180,12 +91,18 @@ namespace mcp
 			const std::string sourceName = resolveGroupName(context, requireString(arguments, "target"));
 			const std::shared_ptr<PlotGroup> source = context.plotGroupHandler->getGroup(sourceName);
 
-			const std::string newName = freeGroupName(context, sourceName);
-			context.plotGroupHandler->addGroup(newName, source->getType());
+			const uint32_t groupsBefore = static_cast<uint32_t>(context.plotGroupHandler->getGroupCount());
+			const uint32_t plotsBefore = context.plotHandler->getPlotsCount();
 
-			uint32_t groups = 0;
-			uint32_t plots = 0;
-			copyGroupBranch(context, source, newName, groups, plots);
+			const std::string newName = context.plotGroupHandler->copyGroup(sourceName, source->getType(), *context.plotHandler);
+
+			if (newName.empty())
+				throw ToolError("Group '" + sourceName + "' does not exist. Use list_groups to see the available groups.");
+
+			/* A copy carries the groups nested in the source along with it, so
+			   the counts are the difference rather than a single group or plot. */
+			const uint32_t groups = static_cast<uint32_t>(context.plotGroupHandler->getGroupCount()) - groupsBefore;
+			const uint32_t plots = context.plotHandler->getPlotsCount() - plotsBefore;
 
 			return Json::object({{"source", sourceName}, {"group", newName}, {"type", source->getTypeName()}, {"plots", plots}, {"groups", groups}});
 		}
