@@ -24,11 +24,11 @@ class VariableEditWindow
 	void draw()
 	{
 		if (showVariableEditWindow)
-			ImGui::OpenPopup(I18n::tr("Variable Edit"));
+			ImGui::OpenPopup(I18n::windowTitle("Variable Edit").c_str());
 
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		ImGui::SetNextWindowSize(ImVec2(800 * GuiHelper::contentScale, 500 * GuiHelper::contentScale));
-		if (ImGui::BeginPopupModal(I18n::tr("Variable Edit"), &showVariableEditWindow, 0))
+		if (ImGui::BeginPopupModal(I18n::windowTitle("Variable Edit").c_str(), &showVariableEditWindow, 0))
 		{
 			drawVariableEditSettings();
 

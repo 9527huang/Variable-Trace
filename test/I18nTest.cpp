@@ -137,8 +137,8 @@ TEST_F(I18nTest, everyLineKeepsTheValuesItsEnglishAsksFor)
 }
 
 /* The docked windows, as the source names them when it opens them. Each is
-   named in the layout file, so each has to be translated - otherwise a Chinese
-   interface keeps an English tab. */
+   named in the layout file, and each is a pane the reader is meant to see
+   translated. */
 const char* const dockedWindows[] = {
 	"Trace Viewer",
 	"Trace Plots",
@@ -149,34 +149,66 @@ const char* const dockedWindows[] = {
 	"Statistics",
 };
 
-/* A window title is translated like any other text and carries nothing else.
+/* A name is stored without an id marker in it.
  *
- * The layout file names each window by the title it was given, so the title is
- * also the key the saved position and the saved dock are filed under. Keeping
- * the English name in the file by appending it after an id marker was tried
- * and does not work: ImGui files a window under the part that follows the
- * marker, and looks it up by an identifier derived from the whole title, so
- * the two no longer meet and the saved layout is quietly not restored - the
- * panels come up floating on top of the dock space. A marker in a title is
- * therefore a pane that moves when the language is switched.
+ * The marker is added where the name is built, and only there. A translation
+ * that carried one would come out with two, and ImGui cuts and hashes at the
+ * first of them, so the second would be the one that counted - the identifier
+ * would follow the language again, which is the whole thing the marker is
+ * there to prevent.
  */
-TEST_F(I18nTest, aWindowTitleCarriesNothingButItsText)
+TEST_F(I18nTest, noStoredTextCarriesAnIdMarker)
 {
 	size_t count = 0;
 	const I18n::Entry* table = I18n::entries(count);
 
 	for (size_t index = 0; index < count; index++)
-		EXPECT_EQ(std::strstr(table[index].chinese, "###"), nullptr) << "an id marker reached a title: " << table[index].chinese;
+	{
+		EXPECT_EQ(std::strstr(table[index].english, "###"), nullptr) << "a marker is stored in the table: " << table[index].english;
+		EXPECT_EQ(std::strstr(table[index].chinese, "###"), nullptr) << "a marker is stored in the table: " << table[index].chinese;
+	}
+}
 
+/* A window is opened with one name that does two jobs.
+ *
+ * What the reader sees in the title bar and the tab has to be the translation.
+ * What the layout file files the window's dock and its size under has to be
+ * the same whichever language is in force, or the layout saved in one language
+ * would not describe the windows of the other and a pane would come up where
+ * the other language had left it. ImGui cuts a name at `##` twice over - it
+ * stops drawing there and it restarts its hash there - so one string can be
+ * read as one thing and stored as another.
+ */
+TEST_F(I18nTest, aWindowNameReadsInTheLanguageAndIsFiledUnderOneKey)
+{
 	for (const char* title : dockedWindows)
 	{
-		bool found = false;
+		const char* translated = I18n::tr(title);
+		const std::string name = I18n::windowTitle(title);
 
-		for (size_t index = 0; index < count && !found; index++)
-			found = std::strcmp(table[index].english, title) == 0;
+		ASSERT_STRNE(translated, title) << "a docked window is not translated: " << title;
 
-		EXPECT_TRUE(found) << "a docked window is not translated: " << title;
+		/* Everything up to the marker is what gets drawn. */
+		EXPECT_EQ(std::strncmp(name.c_str(), translated, std::strlen(translated)), 0) << title;
+		EXPECT_EQ(name[std::strlen(translated)], '#') << title;
+
+		/* And from the marker on it is the English, which no language moves. */
+		EXPECT_EQ(name.substr(name.find("###")), std::string("###") + title) << title;
 	}
+}
+
+/* The same window, named in both languages: the reader's half differs and the
+   half the layout file keeps does not. */
+TEST_F(I18nTest, theSameWindowIsFiledUnderTheSameKeyInBothLanguages)
+{
+	I18n::currentLanguage = I18n::Language::English;
+	const std::string english = I18n::windowTitle("Var Viewer");
+
+	I18n::currentLanguage = I18n::Language::Chinese;
+	const std::string chinese = I18n::windowTitle("Var Viewer");
+
+	EXPECT_NE(english, chinese);
+	EXPECT_EQ(english.substr(english.find("###")), chinese.substr(chinese.find("###")));
 }
 
 /* The lookup bisects, so the table has to be in order. A line inserted in the

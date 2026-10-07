@@ -129,13 +129,13 @@ void GuiHelper::showQuestionBox(const char* id, const char* question, std::funct
 {
 	float buttonWidth = 120.0f * GuiHelper::contentScale;
 
-	/* The caller opens the box by the same id, and that call site goes through
-	   the table, so this one has to as well or the two would no longer name the
-	   same popup and it would never appear. */
-	id = I18n::tr(id);
+	/* The caller opens the box by the same name, so this one has to build it
+	   the same way or the two would no longer name the same popup and it would
+	   never appear. */
+	const std::string title = I18n::windowTitle(id);
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	if (ImGui::BeginPopupModal(id, NULL, ImGuiWindowFlags_AlwaysAutoResize))
+	if (ImGui::BeginPopupModal(title.c_str(), NULL, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		ImGui::Text("%s", question);
 		ImGui::Separator();

@@ -310,7 +310,7 @@ void Gui::capturePlotImages()
 void Gui::drawPlotExportDialog()
 {
 	if (plotExportDialogOpen)
-		ImGui::OpenPopup(I18n::tr("Save Plots"));
+		ImGui::OpenPopup(I18n::windowTitle("Save Plots").c_str());
 
 	plotExport::Settings& settings = globalConfig->getSettings().plotExport;
 
@@ -323,7 +323,7 @@ void Gui::drawPlotExportDialog()
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSizeConstraints(ImVec2(wrapWidth + 40.0f * GuiHelper::contentScale, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
 
-	if (ImGui::BeginPopupModal(I18n::tr("Save Plots"), &plotExportDialogOpen, ImGuiWindowFlags_AlwaysAutoResize))
+	if (ImGui::BeginPopupModal(I18n::windowTitle("Save Plots").c_str(), &plotExportDialogOpen, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		const size_t count = pendingPlotImages.size();
 

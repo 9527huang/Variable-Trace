@@ -237,12 +237,12 @@ void Gui::mainThread(std::string externalPath)
 		drawWritePlannerWindow();
 		drawC2000ParserSuggestion();
 
-		if (ImGui::Begin(I18n::tr("Trace Viewer")))
+		if (ImGui::Begin(I18n::windowTitle("Trace Viewer").c_str()))
 		{
 			activeView = ActiveViewType::TraceViewer;
 			drawAcqusitionSettingsWindow(activeView);
 			ImGui::SetNextWindowClass(&window_class);
-			if (ImGui::Begin(I18n::tr("Trace Plots")))
+			if (ImGui::Begin(I18n::windowTitle("Trace Plots").c_str()))
 				drawPlotsSwo();
 			ImGui::End();
 			drawStartButton(traceDataHandler);
@@ -252,7 +252,7 @@ void Gui::mainThread(std::string externalPath)
 		}
 		ImGui::End();
 
-		if (ImGui::Begin(I18n::tr("Var Viewer")))
+		if (ImGui::Begin(I18n::windowTitle("Var Viewer").c_str()))
 		{
 			activeView = ActiveViewType::VarViewer;
 			drawAcqusitionSettingsWindow(activeView);
@@ -266,7 +266,7 @@ void Gui::mainThread(std::string externalPath)
 			plotsTree->draw();
 			plotEditWindow->draw();
 			ImGui::SetNextWindowClass(&window_class);
-			if (ImGui::Begin(I18n::tr("Plots")))
+			if (ImGui::Begin(I18n::windowTitle("Plots").c_str()))
 				drawPlots();
 			ImGui::End();
 		}
@@ -837,11 +837,11 @@ void Gui::drawStartButton(DataHandlerBase* activeDataHandler)
 void Gui::drawAcqusitionSettingsWindow(ActiveViewType type)
 {
 	if (showAcqusitionSettingsWindow)
-		ImGui::OpenPopup(I18n::tr("Acqusition Settings"));
+		ImGui::OpenPopup(I18n::windowTitle("Acqusition Settings").c_str());
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSize(ImVec2(950 * GuiHelper::contentScale, 600 * GuiHelper::contentScale));
-	if (ImGui::BeginPopupModal(I18n::tr("Acqusition Settings"), &showAcqusitionSettingsWindow, 0))
+	if (ImGui::BeginPopupModal(I18n::windowTitle("Acqusition Settings").c_str(), &showAcqusitionSettingsWindow, 0))
 	{
 		drawAcqusitionSettingsScope(type);
 
@@ -938,7 +938,29 @@ void Gui::ensureDockLayout(ImGuiID dockspaceId)
 
 	dockLayoutChecked = true;
 
-	if (ImGui::FindWindowSettings(ImHashStr(I18n::tr("Var Viewer"))) != nullptr)
+	/* The names carry their English after an id marker, so the layout file
+	   keys every pane by something the language cannot move. That makes the
+	   question "has a layout been saved for these panes?" answerable the same
+	   way in either language.
+	   
+	   An entry on its own does not answer it, though. A file can carry one
+	   left behind by a build that named its windows differently, and such an
+	   entry describes a pane standing loose at whatever size the application
+	   happened to start with - reading that as a layout would leave the panes
+	   floating and skip the default below. What is asked instead is whether
+	   the file actually puts one of them in a dock, which is the part a
+	   default layout is there to supply. */
+	bool anyPaneIsDocked = false;
+
+	for (const char* pane : {"Var Viewer", "Trace Viewer", "Plots", "Trace Plots"})
+	{
+		ImGuiWindowSettings* settings = ImGui::FindWindowSettings(ImHashStr(I18n::windowTitle(pane).c_str()));
+
+		if (settings != nullptr && settings->DockId != 0)
+			anyPaneIsDocked = true;
+	}
+
+	if (anyPaneIsDocked)
 		return;
 
 	ImGui::DockBuilderRemoveNode(dockspaceId);
@@ -953,10 +975,10 @@ void Gui::ensureDockLayout(ImGuiID dockspaceId)
 
 	/* The variable side and the trace side live in the same node and are
 	   switched between with the tabs above it, and so do their plots. */
-	ImGui::DockBuilderDockWindow(I18n::tr("Var Viewer"), settingsSide);
-	ImGui::DockBuilderDockWindow(I18n::tr("Trace Viewer"), settingsSide);
-	ImGui::DockBuilderDockWindow(I18n::tr("Plots"), plotsSide);
-	ImGui::DockBuilderDockWindow(I18n::tr("Trace Plots"), plotsSide);
+	ImGui::DockBuilderDockWindow(I18n::windowTitle("Var Viewer").c_str(), settingsSide);
+	ImGui::DockBuilderDockWindow(I18n::windowTitle("Trace Viewer").c_str(), settingsSide);
+	ImGui::DockBuilderDockWindow(I18n::windowTitle("Plots").c_str(), plotsSide);
+	ImGui::DockBuilderDockWindow(I18n::windowTitle("Trace Plots").c_str(), plotsSide);
 
 	ImGui::DockBuilderFinish(dockspaceId);
 }
@@ -1071,12 +1093,12 @@ void Gui::drawPreferencesWindow()
 	{
 		themeIndex = static_cast<int>(GuiHelper::themeFromName(globalConfig->getSettings().theme));
 		languageIndex = static_cast<int>(I18n::languageFromName(globalConfig->getSettings().language));
-		ImGui::OpenPopup(I18n::tr("Preferences"));
+		ImGui::OpenPopup(I18n::windowTitle("Preferences").c_str());
 	}
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSize(ImVec2(500 * GuiHelper::contentScale, 700 * GuiHelper::contentScale));
-	if (ImGui::BeginPopupModal(I18n::tr("Preferences"), &showPreferencesWindow, 0))
+	if (ImGui::BeginPopupModal(I18n::windowTitle("Preferences").c_str(), &showPreferencesWindow, 0))
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		GlobalConfig::Settings& settings = globalConfig->getSettings();
@@ -1191,7 +1213,7 @@ void Gui::drawPreferencesWindow()
 void Gui::askShouldSaveOnExit(bool shouldOpenPopup)
 {
 	if (shouldOpenPopup)
-		ImGui::OpenPopup(I18n::tr("Save?"));
+		ImGui::OpenPopup(I18n::windowTitle("Save?").c_str());
 
 	auto onYes = [&]()
 	{
@@ -1235,7 +1257,7 @@ void Gui::askShouldSaveOnNew(bool shouldOpenPopup)
 	if (variableHandler->isEmpty() && projectElfPath.empty() && shouldOpenPopup)
 		onNo();
 	else if (shouldOpenPopup)
-		ImGui::OpenPopup(I18n::tr("SaveOnNew?"));
+		ImGui::OpenPopup(I18n::windowTitle("SaveOnNew?").c_str());
 
 	auto onYes = [&]()
 	{
@@ -1583,12 +1605,12 @@ void Gui::drawC2000ParserSuggestion()
 
 	if (!c2000SuggestionOpened)
 	{
-		ImGui::OpenPopup(I18n::tr("C2000 Target Detected"));
+		ImGui::OpenPopup(I18n::windowTitle("C2000 Target Detected").c_str());
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		c2000SuggestionOpened = true;
 	}
 
-	if (ImGui::BeginPopupModal(I18n::tr("C2000 Target Detected"), &showC2000ParserSuggestion, ImGuiWindowFlags_AlwaysAutoResize))
+	if (ImGui::BeginPopupModal(I18n::windowTitle("C2000 Target Detected").c_str(), &showC2000ParserSuggestion, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		ImGui::TextUnformatted(I18n::tr("The selected file appears to be a TI C2000 target binary."));
 		ImGui::Dummy(ImVec2(0, 4));

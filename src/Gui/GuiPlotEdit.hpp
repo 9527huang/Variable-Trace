@@ -20,11 +20,11 @@ class PlotEditWindow
 	void draw()
 	{
 		if (showPlotEditWindow)
-			ImGui::OpenPopup(I18n::tr("Plot Edit"));
+			ImGui::OpenPopup(I18n::windowTitle("Plot Edit").c_str());
 
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		ImGui::SetNextWindowSize(ImVec2(700 * GuiHelper::contentScale, 500 * GuiHelper::contentScale));
-		if (ImGui::BeginPopupModal(I18n::tr("Plot Edit"), &showPlotEditWindow, 0))
+		if (ImGui::BeginPopupModal(I18n::windowTitle("Plot Edit").c_str(), &showPlotEditWindow, 0))
 		{
 			drawPlotEditSettings();
 

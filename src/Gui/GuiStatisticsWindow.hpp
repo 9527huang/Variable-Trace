@@ -199,7 +199,7 @@ class StatisticsWindow
 		/* No collapse arrow, as upstream: the window is either open or closed by
 		   its switch, and a rolled-up title bar would be a third state the
 		   switch does not know about. */
-		ImGui::Begin(I18n::tr("Statistics"), &open, ImGuiWindowFlags_NoCollapse);
+		ImGui::Begin(I18n::windowTitle("Statistics").c_str(), &open, ImGuiWindowFlags_NoCollapse);
 
 		if (!open)
 			plt->setStatisticsVisible(false);

@@ -33,12 +33,12 @@ class WritePlannerWindow
 	void draw()
 	{
 		if (showWindow)
-			ImGui::OpenPopup(I18n::tr("Write Planner"));
+			ImGui::OpenPopup(I18n::windowTitle("Write Planner").c_str());
 
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		ImGui::SetNextWindowSize(ImVec2(900 * GuiHelper::contentScale, 560 * GuiHelper::contentScale));
 
-		if (!ImGui::BeginPopupModal(I18n::tr("Write Planner"), &showWindow, 0))
+		if (!ImGui::BeginPopupModal(I18n::windowTitle("Write Planner").c_str(), &showWindow, 0))
 			return;
 
 		ImGui::BeginChild("##WPContent", ImVec2(-1, -1));

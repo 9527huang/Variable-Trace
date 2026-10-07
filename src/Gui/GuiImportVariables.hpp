@@ -34,7 +34,7 @@ class ImportVariablesWindow
 
 		if (showImportVariablesWindow)
 		{
-			ImGui::OpenPopup(I18n::tr("Import Variables"));
+			ImGui::OpenPopup(I18n::windowTitle("Import Variables").c_str());
 
 			if (!wasPreviouslyOpened)
 			{
@@ -46,7 +46,7 @@ class ImportVariablesWindow
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		ImGui::SetNextWindowSize(ImVec2(500 * GuiHelper::contentScale, 500 * GuiHelper::contentScale), ImGuiCond_Once);
 
-		if (ImGui::BeginPopupModal(I18n::tr("Import Variables"), &showImportVariablesWindow, 0))
+		if (ImGui::BeginPopupModal(I18n::windowTitle("Import Variables").c_str(), &showImportVariablesWindow, 0))
 		{
 			char buttonText[30]{};
 

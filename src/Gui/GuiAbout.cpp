@@ -10,11 +10,11 @@
 void Gui::drawAboutWindow()
 {
 	if (showAboutWindow)
-		ImGui::OpenPopup(I18n::tr("About"));
+		ImGui::OpenPopup(I18n::windowTitle("About").c_str());
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSize(ImVec2(500 * GuiHelper::contentScale, 300 * GuiHelper::contentScale));
-	if (ImGui::BeginPopupModal(I18n::tr("About"), &showAboutWindow, 0))
+	if (ImGui::BeginPopupModal(I18n::windowTitle("About").c_str(), &showAboutWindow, 0))
 	{
 		GuiHelper::drawCenteredText(I18n::tr("Variable-Trace"));
 		std::string line2(std::string(I18n::tr("version: ")) + std::to_string(VARIABLE_TRACE_VERSION_MAJOR) + "." + std::to_string(VARIABLE_TRACE_VERSION_MINOR) + "." + std::to_string(VARIABLE_TRACE_VERSION_REVISION));

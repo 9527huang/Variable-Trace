@@ -60,7 +60,7 @@ class PlotsTree
 		if (treeWidth < minimumTree)
 			treeWidth = minimumTree;
 
-		ImGui::BeginChild(I18n::tr("Plot Tree"), ImVec2(-1, windowHeight));
+		ImGui::BeginChild(I18n::windowTitle("Plot Tree").c_str(), ImVec2(-1, windowHeight));
 		ImGui::BeginChild("left pane", ImVec2(treeWidth, -1), true);
 
 		/* Only the groups without a parent start a branch; the rest are reached

@@ -152,7 +152,7 @@ void Gui::drawFlashOutputWindow()
 	if (!showFlashOutputWindow)
 		return;
 
-	if (!ImGui::Begin(I18n::tr("Flash Output"), &showFlashOutputWindow))
+	if (!ImGui::Begin(I18n::windowTitle("Flash Output").c_str(), &showFlashOutputWindow))
 	{
 		ImGui::End();
 		return;
@@ -221,12 +221,12 @@ void Gui::drawFlashOutputWindow()
 void Gui::drawFlashingSettingsWindow()
 {
 	if (showFlashingSettingsWindow)
-		ImGui::OpenPopup(I18n::tr("Flashing Settings"));
+		ImGui::OpenPopup(I18n::windowTitle("Flashing Settings").c_str());
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSize(ImVec2(720 * GuiHelper::contentScale, 600 * GuiHelper::contentScale));
 
-	if (!ImGui::BeginPopupModal(I18n::tr("Flashing Settings"), &showFlashingSettingsWindow, 0))
+	if (!ImGui::BeginPopupModal(I18n::windowTitle("Flashing Settings").c_str(), &showFlashingSettingsWindow, 0))
 		return;
 
 	/* Every field edits the stored setting directly, one field at a time. A

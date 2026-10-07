@@ -102,7 +102,7 @@ void Gui::drawRecorderWindow()
 	if (!showRecorderWindow)
 		return;
 
-	if (!ImGui::Begin(I18n::tr("Recorder"), &showRecorderWindow))
+	if (!ImGui::Begin(I18n::windowTitle("Recorder").c_str(), &showRecorderWindow))
 	{
 		ImGui::End();
 		return;

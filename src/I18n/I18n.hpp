@@ -50,13 +50,34 @@ const char* tr(const char* english);
  *
  * Public so that the tests can walk the whole of it. What has to hold - the
  * Chinese differs from the English, the format specifiers survive, a window
- * title keeps its id - holds for every entry or for none, so checking a
+ * name carries its id - holds for every entry or for none, so checking a
  * handful that were picked by hand would prove nothing. */
 struct Entry
 {
 	const char* english;
 	const char* chinese;
 };
+
+/**
+ * @brief The name to open a window or a popup with
+ *
+ * The name a window is opened with is two things at once: what the reader sees
+ * in its title bar, and the identifier the layout file files it under. A
+ * translated name alone would make the second of those follow the language,
+ * and the two would then disagree: the layout saved while one language was in
+ * force would not describe the windows of the other, so a pane would come up
+ * where the other language had left it, or nowhere at all.
+ *
+ * ImGui cuts a name at `##` twice over. `FindRenderedTextEnd` hides everything
+ * from the marker on, so the reader still sees only the translation, and
+ * `ImHashStr` restarts its hash at the marker, so the identifier is the same
+ * in every language. Appending the English after the marker therefore gives a
+ * name that reads in one language and is stored under one key.
+ *
+ * @param english text as written at the call site, which is also the key
+ * @return std::string the translated name with the English kept as its id
+ */
+std::string windowTitle(const char* english);
 
 /**
  * @brief The whole table, sorted by the English text

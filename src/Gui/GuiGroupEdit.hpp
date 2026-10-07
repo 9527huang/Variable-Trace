@@ -20,11 +20,11 @@ class GroupEditWindow
 	void draw()
 	{
 		if (showGroupEditWindow)
-			ImGui::OpenPopup(I18n::tr("Group Edit"));
+			ImGui::OpenPopup(I18n::windowTitle("Group Edit").c_str());
 
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		ImGui::SetNextWindowSize(ImVec2(700 * GuiHelper::contentScale, 500 * GuiHelper::contentScale));
-		if (ImGui::BeginPopupModal(I18n::tr("Group Edit"), &showGroupEditWindow, 0))
+		if (ImGui::BeginPopupModal(I18n::windowTitle("Group Edit").c_str(), &showGroupEditWindow, 0))
 		{
 			drawGroupEditSettings();
 

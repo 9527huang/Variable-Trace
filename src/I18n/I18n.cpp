@@ -85,6 +85,17 @@ const char* tr(const char* english)
 	return entry != nullptr ? entry->chinese : english;
 }
 
+std::string windowTitle(const char* english)
+{
+	if (english == nullptr)
+		return std::string();
+
+	std::string title = tr(english);
+	title += "###";
+	title += english;
+	return title;
+}
+
 const std::string& allText()
 {
 	/* Built once. The font is set up once as well, so the cost is paid at
