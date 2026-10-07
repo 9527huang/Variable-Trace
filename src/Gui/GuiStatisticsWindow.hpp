@@ -47,7 +47,12 @@ class StatisticsWindow
 	   the shaded range are drawn in. */
 	std::shared_ptr<Plot::Series> drawPicker(std::shared_ptr<Plot>& plt)
 	{
-		std::vector<std::string> serNames{"OFF"};
+		/* The first entry stands for "no series chosen". The switch beside the
+		   plots tree can be on while the list is still empty, so this has to
+		   read as a placeholder rather than as a state: a dash says nothing has
+		   been picked, while `OFF` claimed the measurements were switched off -
+		   which is exactly what the switch says they are not. */
+		std::vector<std::string> serNames{"-"};
 		for (auto& [name, ser] : plt->getSeriesMap())
 			serNames.push_back(name);
 
