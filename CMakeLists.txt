@@ -197,6 +197,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/OfdDwarfXml.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/TiOfdParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer/CSVStreamer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/I18n/I18n.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/VariableHandler/VariableHandler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DataHandler/ViewerDataHandler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DataHandler/TraceDataHandler.cpp
@@ -281,6 +282,7 @@ target_include_directories(${EXECUTABLE} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser
     ${CMAKE_CURRENT_SOURCE_DIR}/src/PlotGroupHandler
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/I18n
     ${CMAKE_CURRENT_SOURCE_DIR}/src/VariableHandler
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DataHandler
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Recorder

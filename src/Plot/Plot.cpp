@@ -11,6 +11,8 @@
 
 #include "implot.h"
 
+#include "I18n.hpp"
+
 Plot::Plot(const std::string& name) : name(name)
 {
 	xAxisSeries.buffer = std::make_unique<ScrollingBuffer<double>>();
@@ -371,12 +373,19 @@ std::string Plot::getDefaultYAxisLabel() const
 
 std::string Plot::getEffectiveXAxisLabel() const
 {
-	return xAxisLabel.empty() ? getDefaultXAxisLabel() : xAxisLabel;
+	/* The name an axis carries on its own is interface text, so it is put
+	   through the table here rather than in getDefaultXAxisLabel: the default
+	   is also what the editor shows as the hint of an empty field, and a test
+	   reads it to check which kind of plot produces which axis. Translating at
+	   this point keeps the drawing and the hint in step with the chosen
+	   language while the defaults stay comparable. A label the user typed is
+	   theirs and is shown as written. */
+	return xAxisLabel.empty() ? I18n::tr(getDefaultXAxisLabel().c_str()) : xAxisLabel;
 }
 
 std::string Plot::getEffectiveYAxisLabel() const
 {
-	return yAxisLabel.empty() ? getDefaultYAxisLabel() : yAxisLabel;
+	return yAxisLabel.empty() ? I18n::tr(getDefaultYAxisLabel().c_str()) : yAxisLabel;
 }
 
 std::string Plot::formatCursorValue(double value)

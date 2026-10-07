@@ -19,9 +19,11 @@
 #include "glfw3.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "imgui_internal.h"
 
 #include "../commons.hpp"
 
+#include "I18n.hpp"
 #include "McpBridge.hpp"
 #include "McpContext.hpp"
 #include "McpServer.hpp"
@@ -109,14 +111,14 @@ void Gui::mainThread(std::string externalPath)
 
 	GuiHelper::contentScale = getContentScale(window);
 
-	ImFontConfig cfg;
-	cfg.SizePixels = 13.0f * GuiHelper::contentScale;
-
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-	io.Fonts->AddFontDefault(&cfg);
-	io.FontGlobalScale = globalConfig->getSettings().fontScale;
+
+	/* Before the font, because which glyphs are needed depends on it, and
+	   before the first frame, because the atlas is built by then. */
+	applyLanguage();
+	setupFonts();
 
 	/* Keep the window layout next to the logs rather than beside the executable.
 	 *
@@ -180,8 +182,19 @@ void Gui::mainThread(std::string externalPath)
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 
+		/* Changing the language changes which glyphs are needed, so the atlas
+		   has to be rebuilt and its texture replaced. ImGui only allows that
+		   outside a frame, and the dialog that asks for it runs inside one, so
+		   the request is recorded there and carried out here. */
+		if (fontRebuildPending)
+		{
+			fontRebuildPending = false;
+			rebuildFonts();
+		}
+
 		ImGui::NewFrame();
-		ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+		ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+		ensureDockLayout(dockspaceId);
 
 		/* Tool calls arrive on connection threads and are run here, before the
 		   frame reads the model, so a change made through the API is visible in
@@ -224,12 +237,12 @@ void Gui::mainThread(std::string externalPath)
 		drawWritePlannerWindow();
 		drawC2000ParserSuggestion();
 
-		if (ImGui::Begin("Trace Viewer"))
+		if (ImGui::Begin(I18n::tr("Trace Viewer")))
 		{
 			activeView = ActiveViewType::TraceViewer;
 			drawAcqusitionSettingsWindow(activeView);
 			ImGui::SetNextWindowClass(&window_class);
-			if (ImGui::Begin("Trace Plots"))
+			if (ImGui::Begin(I18n::tr("Trace Plots")))
 				drawPlotsSwo();
 			ImGui::End();
 			drawStartButton(traceDataHandler);
@@ -239,7 +252,7 @@ void Gui::mainThread(std::string externalPath)
 		}
 		ImGui::End();
 
-		if (ImGui::Begin("Var Viewer"))
+		if (ImGui::Begin(I18n::tr("Var Viewer")))
 		{
 			activeView = ActiveViewType::VarViewer;
 			drawAcqusitionSettingsWindow(activeView);
@@ -253,7 +266,7 @@ void Gui::mainThread(std::string externalPath)
 			plotsTree->draw();
 			plotEditWindow->draw();
 			ImGui::SetNextWindowClass(&window_class);
-			if (ImGui::Begin("Plots"))
+			if (ImGui::Begin(I18n::tr("Plots")))
 				drawPlots();
 			ImGui::End();
 		}
@@ -314,57 +327,57 @@ void Gui::drawMenu()
 
 	bool active = !(viewerDataHandler->getState() == DataHandlerBase::State::RUN || traceDataHandler->getState() == DataHandlerBase::State::RUN);
 
-	if (ImGui::BeginMenu("File"))
+	if (ImGui::BeginMenu(I18n::tr("File")))
 	{
 		/* Loading a project replaces every variable and plot, so it is only
 		   offered while no acquisition is running. */
-		if (ImGui::MenuItem("New", "Ctrl+N", false, active))
+		if (ImGui::MenuItem(I18n::tr("New"), "Ctrl+N", false, active))
 			shouldSaveOnNew = true;
 
-		if (ImGui::MenuItem("Open", "Ctrl+O", false, active))
+		if (ImGui::MenuItem(I18n::tr("Open"), "Ctrl+O", false, active))
 			openProject();
 
 		drawOpenRecentMenu();
 
-		if (ImGui::MenuItem("Save", "Ctrl+S", false, (!projectConfigPath.empty())))
+		if (ImGui::MenuItem(I18n::tr("Save"), "Ctrl+S", false, (!projectConfigPath.empty())))
 			saveProject();
 
-		if (ImGui::MenuItem("Save As.."))
+		if (ImGui::MenuItem(I18n::tr("Save As..")))
 			saveProjectAs();
 
 		/* Saving the plots does not touch the model, so it stays available
 		   while an acquisition is running. That is when the plots are worth
 		   keeping in the first place. */
-		if (ImGui::MenuItem("Save Plots to *.png", "Ctrl+P", false, true))
+		if (ImGui::MenuItem(I18n::tr("Save Plots to *.png"), "Ctrl+P", false, true))
 			requestPlotImages();
 
-		if (ImGui::MenuItem("Quit"))
+		if (ImGui::MenuItem(I18n::tr("Quit")))
 			shouldSaveOnClose = true;
 
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu("Options"))
+	if (ImGui::BeginMenu(I18n::tr("Options")))
 	{
-		ImGui::MenuItem("Acquisition settings...", NULL, &showAcqusitionSettingsWindow, active);
+		ImGui::MenuItem(I18n::tr("Acquisition settings..."), NULL, &showAcqusitionSettingsWindow, active);
 
 		/* The programmer and the firmware file belong to the machine rather than
 		   to the project, which is why they are reached from here and not from
 		   the project file dialog. */
-		ImGui::MenuItem("Flashing", NULL, &showFlashingSettingsWindow, true);
+		ImGui::MenuItem(I18n::tr("Flashing"), NULL, &showFlashingSettingsWindow, true);
 
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu("Window"))
+	if (ImGui::BeginMenu(I18n::tr("Window")))
 	{
-		ImGui::MenuItem("Recorder", NULL, &showRecorderWindow, active);
-		ImGui::MenuItem("Flash Output", NULL, &showFlashOutputWindow, true);
-		ImGui::MenuItem("Write Planner", NULL, &showWritePlannerWindow, active);
-		ImGui::MenuItem("Preferences", NULL, &showPreferencesWindow, active);
+		ImGui::MenuItem(I18n::tr("Recorder"), NULL, &showRecorderWindow, active);
+		ImGui::MenuItem(I18n::tr("Flash Output"), NULL, &showFlashOutputWindow, true);
+		ImGui::MenuItem(I18n::tr("Write Planner"), NULL, &showWritePlannerWindow, active);
+		ImGui::MenuItem(I18n::tr("Preferences"), NULL, &showPreferencesWindow, active);
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu("Help"))
+	if (ImGui::BeginMenu(I18n::tr("Help")))
 	{
-		ImGui::MenuItem("About", NULL, &showAboutWindow, active);
+		ImGui::MenuItem(I18n::tr("About"), NULL, &showAboutWindow, active);
 		ImGui::EndMenu();
 	}
 
@@ -435,14 +448,28 @@ void Gui::drawConnectionIndicator()
 	const bool transitioning = handler->isTransitionPending();
 	const bool acquired = (handler->getStateImmediate() == DataHandlerBase::State::RUN);
 
-	const char* stateText = "Disconnected";
+	/* The four names the state takes, gathered so that the width below can be
+	   measured over all of them: the segment keeps the width of the longest, or
+	   it would grow and shrink as the state changes and shove the group beside
+	   it along the bar. */
+	enum StateName
+	{
+		DisconnectedName,
+		ConnectedName,
+		ConnectingName,
+		DisconnectingName
+	};
+
+	const char* stateTexts[] = {I18n::tr("Disconnected"), I18n::tr("Connected"), I18n::tr("Connecting"), I18n::tr("Disconnecting")};
+
+	const char* stateText = stateTexts[DisconnectedName];
 	ImVec4 stateFace = GuiHelper::red();
 	ImVec4 stateFaceHovered = GuiHelper::redLight();
 	ImVec4 stateFaceActive = GuiHelper::redLightDim();
 
 	if (acquired)
 	{
-		stateText = "Connected";
+		stateText = stateTexts[ConnectedName];
 		stateFace = GuiHelper::green();
 		stateFaceHovered = GuiHelper::greenLight();
 		stateFaceActive = GuiHelper::greenLightDim();
@@ -450,7 +477,7 @@ void Gui::drawConnectionIndicator()
 
 	if (transitioning)
 	{
-		stateText = acquired ? "Connecting" : "Disconnecting";
+		stateText = acquired ? stateTexts[ConnectingName] : stateTexts[DisconnectingName];
 		stateFace = GuiHelper::orange();
 		stateFaceHovered = GuiHelper::orangeLight();
 		stateFaceActive = GuiHelper::orangeLightDim();
@@ -463,8 +490,16 @@ void Gui::drawConnectionIndicator()
 	const float height = ImGui::GetFrameHeight();
 
 	/* Both segments keep the width of their longest text, so that the group does
-	   not move while the state or the rate changes. */
-	const float stateWidth = ImGui::CalcTextSize("Disconnecting").x + 2.0f * textPadding;
+	   not move while the state or the rate changes. The longest of the four is
+	   measured in the language in force, since a translated name is generally
+	   not the length of the English one it stands in for. */
+	float stateWidth = 0.0f;
+
+	for (const char* name : stateTexts)
+		stateWidth = std::max(stateWidth, ImGui::CalcTextSize(name).x);
+
+	stateWidth += 2.0f * textPadding;
+
 	const float probeWidth = ImGui::CalcTextSize(probeName).x + 2.0f * textPadding;
 
 	char samplingText[64] = "";
@@ -474,8 +509,8 @@ void Gui::drawConnectionIndicator()
 	{
 		/* Formatted here rather than by the helper that draws it, because the
 		   width has to be known before the row is laid out. */
-		std::snprintf(samplingText, sizeof(samplingText), "sampling: %.2f Hz", viewerDataHandler->getAverageSamplingFrequency());
-		samplingWidth = ImGui::CalcTextSize("sampling: 1000000.00 Hz").x;
+		std::snprintf(samplingText, sizeof(samplingText), I18n::tr("sampling: %.2f Hz"), viewerDataHandler->getAverageSamplingFrequency());
+		samplingWidth = ImGui::CalcTextSize(I18n::tr("sampling: 1000000.00 Hz")).x;
 	}
 
 	const bool withSampling = (samplingText[0] != '\0');
@@ -542,27 +577,27 @@ void Gui::drawConnectionIndicator()
 		return;
 
 	ImGui::BeginTooltip();
-	ImGui::TextUnformatted(isVariableView ? "Variable Viewer acquisition" : "Trace Viewer acquisition");
+	ImGui::TextUnformatted(I18n::tr(isVariableView ? "Variable Viewer acquisition" : "Trace Viewer acquisition"));
 	ImGui::Separator();
 
-	drawIndicatorRow("State", stateText);
-	drawIndicatorRow("Probe", probeName);
+	drawIndicatorRow(I18n::tr("State"), stateText);
+	drawIndicatorRow(I18n::tr("Probe"), probeName);
 
 	if (serialPort)
 	{
-		drawIndicatorRow("Serial port", serialNumber.empty() ? "-" : serialNumber);
-		drawIndicatorRow("Baudrate", std::to_string(baudrate) + " baud");
+		drawIndicatorRow(I18n::tr("Serial port"), serialNumber.empty() ? "-" : serialNumber);
+		drawIndicatorRow(I18n::tr("Baudrate"), std::to_string(baudrate) + " baud");
 	}
 	else
 	{
-		drawIndicatorRow("Serial number", serialNumber.empty() ? "-" : serialNumber);
-		drawIndicatorRow("SWD speed", std::to_string(speedkHz) + " kHz");
+		drawIndicatorRow(I18n::tr("Serial number"), serialNumber.empty() ? "-" : serialNumber);
+		drawIndicatorRow(I18n::tr("SWD speed"), std::to_string(speedkHz) + " kHz");
 	}
 
 	if (hasTargetName)
 	{
-		drawIndicatorRow("Target name", targetName.empty() ? "-" : targetName);
-		drawIndicatorRow("Mode", highSpeed ? "HSS" : "NORMAL");
+		drawIndicatorRow(I18n::tr("Target name"), targetName.empty() ? "-" : targetName);
+		drawIndicatorRow(I18n::tr("Mode"), I18n::tr(highSpeed ? "HSS" : "NORMAL"));
 	}
 
 	/* The reason the last start failed. Without it a disconnected chip says
@@ -578,7 +613,7 @@ void Gui::drawConnectionIndicator()
 	}
 
 	ImGui::Separator();
-	ImGui::TextUnformatted("Click to open the acquisition settings.");
+	ImGui::TextUnformatted(I18n::tr("Click to open the acquisition settings."));
 	ImGui::EndTooltip();
 }
 
@@ -586,7 +621,7 @@ void Gui::drawOpenRecentMenu()
 {
 	GlobalConfig::Settings& settings = globalConfig->getSettings();
 
-	if (!ImGui::BeginMenu("Open Recent", !settings.recentProjects.empty()))
+	if (!ImGui::BeginMenu(I18n::tr("Open Recent"), !settings.recentProjects.empty()))
 		return;
 
 	for (const std::string& path : settings.recentProjects)
@@ -605,7 +640,7 @@ void Gui::drawOpenRecentMenu()
 
 	ImGui::Separator();
 
-	if (ImGui::MenuItem("Clear list"))
+	if (ImGui::MenuItem(I18n::tr("Clear list")))
 	{
 		settings.recentProjects.clear();
 		globalConfig->save();
@@ -777,7 +812,7 @@ void Gui::drawStartButton(DataHandlerBase* activeDataHandler)
 		}
 	}
 
-	if ((ImGui::Button((viewerStateMap.at(state) + " " + activeDataHandler->getLastReaderError()).c_str(), ImVec2(-1, 50 * GuiHelper::contentScale)) ||
+	if ((ImGui::Button((std::string(I18n::tr(viewerStateMap.at(state).c_str())) + " " + activeDataHandler->getLastReaderError()).c_str(), ImVec2(-1, 50 * GuiHelper::contentScale)) ||
 		 (ImGui::IsKeyPressed(ImGuiKey_Space, false) && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopup))) &&
 		!shouldDisableButton)
 	{
@@ -802,11 +837,11 @@ void Gui::drawStartButton(DataHandlerBase* activeDataHandler)
 void Gui::drawAcqusitionSettingsWindow(ActiveViewType type)
 {
 	if (showAcqusitionSettingsWindow)
-		ImGui::OpenPopup("Acqusition Settings");
+		ImGui::OpenPopup(I18n::tr("Acqusition Settings"));
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSize(ImVec2(950 * GuiHelper::contentScale, 600 * GuiHelper::contentScale));
-	if (ImGui::BeginPopupModal("Acqusition Settings", &showAcqusitionSettingsWindow, 0))
+	if (ImGui::BeginPopupModal(I18n::tr("Acqusition Settings"), &showAcqusitionSettingsWindow, 0))
 	{
 		drawAcqusitionSettingsScope(type);
 
@@ -820,7 +855,7 @@ void Gui::drawAcqusitionSettingsWindow(ActiveViewType type)
 		const float buttonHeight = 25.0f * GuiHelper::contentScale;
 		ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowSize().y - buttonHeight / 2.0f - ImGui::GetFrameHeightWithSpacing()));
 
-		if (ImGui::Button("Done", ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+		if (ImGui::Button(I18n::tr("Done"), ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
 		{
 			showAcqusitionSettingsWindow = false;
 			ImGui::CloseCurrentPopup();
@@ -882,88 +917,256 @@ void Gui::applyTheme()
 	logger->info("Interface theme applied: {}", GuiHelper::themeToName(GuiHelper::currentTheme));
 }
 
+/* Lays the panels out when there is nothing to restore.
+ *
+ * ImGui docks a window only if the layout file holds an entry for it, and the
+ * entry is the title the window was opened with. A first run, a file the user
+ * removed and a language that has not been started before all arrive with no
+ * entry for these windows, and without this the panels would come up floating
+ * at their default size on top of the dock space instead of filling it.
+ *
+ * The titles come from the table, so the names match the ones the drawing code
+ * opens the windows with whichever language is in force. The saved layout of
+ * one language is not the saved layout of another, which is why the check is
+ * for a name rather than for the file: a language that has been used before
+ * gets its own arrangement back, untouched.
+ */
+void Gui::ensureDockLayout(ImGuiID dockspaceId)
+{
+	if (dockLayoutChecked)
+		return;
+
+	dockLayoutChecked = true;
+
+	if (ImGui::FindWindowSettings(ImHashStr(I18n::tr("Var Viewer"))) != nullptr)
+		return;
+
+	ImGui::DockBuilderRemoveNode(dockspaceId);
+	ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+
+	const ImVec2 size = ImGui::GetMainViewport()->WorkSize;
+	ImGui::DockBuilderSetNodeSize(dockspaceId, size);
+
+	ImGuiID settingsSide = 0;
+	ImGuiID plotsSide = 0;
+	ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.27f, &settingsSide, &plotsSide);
+
+	/* The variable side and the trace side live in the same node and are
+	   switched between with the tabs above it, and so do their plots. */
+	ImGui::DockBuilderDockWindow(I18n::tr("Var Viewer"), settingsSide);
+	ImGui::DockBuilderDockWindow(I18n::tr("Trace Viewer"), settingsSide);
+	ImGui::DockBuilderDockWindow(I18n::tr("Plots"), plotsSide);
+	ImGui::DockBuilderDockWindow(I18n::tr("Trace Plots"), plotsSide);
+
+	ImGui::DockBuilderFinish(dockspaceId);
+}
+
+void Gui::applyLanguage()
+{
+	GlobalConfig::Settings& settings = globalConfig->getSettings();
+
+	I18n::currentLanguage = I18n::languageFromName(settings.language);
+
+	logger->info("Interface language applied: {}", I18n::languageToName(I18n::currentLanguage));
+}
+
+/* The fonts the Chinese interface is drawn with, in the order they are tried.
+ *
+ * Microsoft YaHei is the one Windows itself uses for interface text, so it is
+ * the one the rest of the screen is already set in. The others are there for
+ * machines where it was removed - a stripped down Windows image, or a Linux
+ * install, where the Noto and WenQuanYi families are the usual answer.
+ *
+ * A missing font is not fatal. The interface comes up with the Latin glyphs it
+ * would have had anyway, and every Chinese word draws as an empty box, which
+ * says what went wrong more clearly than a dialog would. */
+static const char* chineseFontCandidates[] = {
+	"C:/Windows/Fonts/msyh.ttc",
+	"C:/Windows/Fonts/msyhbd.ttc",
+	"C:/Windows/Fonts/Deng.ttf",
+	"C:/Windows/Fonts/simhei.ttf",
+	"C:/Windows/Fonts/simsun.ttc",
+	"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+	"/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+	"/usr/share/fonts/truetype/arphic/uming.ttc",
+};
+
+void Gui::setupFonts()
+{
+	ImGuiIO& io = ImGui::GetIO();
+
+	/* Cleared rather than added to, so that the function can be called again
+	   for a language switch and produce the same atlas it produced the first
+	   time. */
+	io.Fonts->Clear();
+
+	ImFontConfig cfg;
+	cfg.SizePixels = 13.0f * GuiHelper::contentScale;
+
+	/* The embedded font carries Latin. It goes in first, which is what makes
+	   it the one the merged font below fills in the gaps of. */
+	io.Fonts->AddFontDefault(&cfg);
+
+	if (I18n::currentLanguage == I18n::Language::Chinese)
+	{
+		/* Handing FreeType the whole CJK block would bake several thousand
+		   glyphs nobody looks at. The set that is actually needed is the set of
+		   characters in the string table, so it is read from there - which
+		   also means it cannot drift away from the table the way a hand
+		   written list would. */
+		ImFontGlyphRangesBuilder builder;
+		builder.AddText(I18n::allText().c_str());
+
+		/* A builder that was given nothing produces a list holding only its
+		   terminator, which reads as "no glyphs at all" and would leave even
+		   the Latin missing. */
+		builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
+
+		/* Outlives this call on purpose: the atlas keeps the pointer and reads
+		   the ranges when it is built, which happens later, on the first
+		   frame. */
+		static ImVector<ImWchar> ranges;
+		builder.BuildRanges(&ranges);
+
+		ImFontConfig merged;
+		merged.MergeMode = true;
+		merged.SizePixels = cfg.SizePixels;
+
+		for (const char* path : chineseFontCandidates)
+		{
+			if (!std::filesystem::exists(path))
+				continue;
+
+			if (io.Fonts->AddFontFromFileTTF(path, cfg.SizePixels, &merged, ranges.Data) != nullptr)
+			{
+				logger->info("Chinese font loaded: {}", path);
+				break;
+			}
+
+			logger->warn("Chinese font could not be read: {}", path);
+		}
+
+		/* Reported rather than raised: the interface is still usable without
+		   it, and the reader can see for themselves which glyphs are missing. */
+		if (io.Fonts->Fonts.Size < 2)
+			logger->error("No Chinese font was found, so Chinese text will not be shown: {}", chineseFontCandidates[0]);
+	}
+
+	io.FontGlobalScale = globalConfig->getSettings().fontScale;
+}
+
+void Gui::rebuildFonts()
+{
+	/* The texture is built from the atlas, so the old one is dropped first.
+	   It is made again from the atlas this builds, which is why the two calls
+	   sit on either side of it rather than both after. */
+	ImGui_ImplOpenGL3_DestroyFontsTexture();
+	setupFonts();
+	ImGui_ImplOpenGL3_CreateFontsTexture();
+}
+
 void Gui::drawPreferencesWindow()
 {
 	if (showPreferencesWindow)
 	{
 		themeIndex = static_cast<int>(GuiHelper::themeFromName(globalConfig->getSettings().theme));
-		ImGui::OpenPopup("Preferences");
+		languageIndex = static_cast<int>(I18n::languageFromName(globalConfig->getSettings().language));
+		ImGui::OpenPopup(I18n::tr("Preferences"));
 	}
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSize(ImVec2(500 * GuiHelper::contentScale, 660 * GuiHelper::contentScale));
-	if (ImGui::BeginPopupModal("Preferences", &showPreferencesWindow, 0))
+	ImGui::SetNextWindowSize(ImVec2(500 * GuiHelper::contentScale, 700 * GuiHelper::contentScale));
+	if (ImGui::BeginPopupModal(I18n::tr("Preferences"), &showPreferencesWindow, 0))
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		GlobalConfig::Settings& settings = globalConfig->getSettings();
 
-		ImGui::TextUnformatted("Appearance");
+		ImGui::TextUnformatted(I18n::tr("Appearance"));
 
 		ImGui::SetNextItemWidth(200 * GuiHelper::contentScale);
 
-		if (ImGui::Combo("Theme##theme", &themeIndex, "Dark\0Light\0"))
+		if (ImGui::Combo(I18n::tr("Theme##theme"), &themeIndex, "Dark\0Light\0"))
 		{
 			settings.theme = GuiHelper::themeToName(static_cast<GuiHelper::Theme>(themeIndex));
 			logger->info("Interface theme set to {}", settings.theme);
 			applyTheme();
 		}
 
-		ImGui::TextDisabled("Applies to the whole interface, including the plots.");
+		ImGui::TextDisabled(I18n::tr("Applies to the whole interface, including the plots."));
+
+		ImGui::SetNextItemWidth(200 * GuiHelper::contentScale);
+
+		/* Each language is named in itself rather than translated into the one
+		   in force, so that a reader who has landed in a language they do not
+		   read can still find their way back out. */
+		const char* languageNames[] = {I18n::tr("English"), I18n::tr("Chinese")};
+
+		if (ImGui::Combo(I18n::tr("Language##language"), &languageIndex, languageNames, IM_ARRAYSIZE(languageNames)))
+		{
+			settings.language = I18n::languageToName(static_cast<I18n::Language>(languageIndex));
+			applyLanguage();
+
+			/* Read on the next frame, before anything is drawn with it: the
+			   dialog runs where ImGui will not let the font atlas be rebuilt. */
+			fontRebuildPending = true;
+		}
+
+		ImGui::TextDisabled(I18n::tr("Applies to the whole interface. The panels keep their places."));
 
 		ImGui::Separator();
 
-		ImGui::DragFloat("font size", &io.FontGlobalScale, 0.005f, 0.8f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+		ImGui::DragFloat(I18n::tr("font size"), &io.FontGlobalScale, 0.005f, 0.8f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
 		settings.fontScale = io.FontGlobalScale;
 
 		ImGui::Separator();
-		ImGui::TextUnformatted("Project");
+		ImGui::TextUnformatted(I18n::tr("Project"));
 
-		ImGui::Checkbox("Autosave project", &settings.autoSaveEnabled);
+		ImGui::Checkbox(I18n::tr("Autosave project"), &settings.autoSaveEnabled);
 		ImGui::BeginDisabled(!settings.autoSaveEnabled);
 
 		int interval = static_cast<int>(settings.autoSaveIntervalSeconds);
 		ImGui::SetNextItemWidth(200 * GuiHelper::contentScale);
 
-		if (ImGui::DragInt("interval [s]", &interval, 1.0f, 10, 3600, "%d", ImGuiSliderFlags_AlwaysClamp))
+		if (ImGui::DragInt(I18n::tr("interval [s]"), &interval, 1.0f, 10, 3600, "%d", ImGuiSliderFlags_AlwaysClamp))
 			settings.autoSaveIntervalSeconds = static_cast<uint32_t>(interval);
 
 		ImGui::EndDisabled();
-		ImGui::TextDisabled("Saves the project file when it is modified and has a path.");
+		ImGui::TextDisabled(I18n::tr("Saves the project file when it is modified and has a path."));
 
 		ImGui::Separator();
-		ImGui::TextUnformatted("API server");
+		ImGui::TextUnformatted(I18n::tr("API server"));
 
 		const bool mcpWasEnabled = settings.mcpEnabled;
 		const uint16_t mcpWasPort = settings.mcpPreferredPort;
 
-		ImGui::Checkbox("Enable MCP server##mcp", &settings.mcpEnabled);
+		ImGui::Checkbox(I18n::tr("Enable MCP server##mcp"), &settings.mcpEnabled);
 		ImGui::SameLine();
-		ImGui::HelpMarker("A local HTTP endpoint that exposes the project, the variable table and the acquisition as tools. "
-						  "The server listens on the loopback interface only. It is off until it is switched on here.");
+		ImGui::HelpMarker(I18n::tr("A local HTTP endpoint that exposes the project, the variable table and the acquisition as tools. "
+								   "The server listens on the loopback interface only. It is off until it is switched on here."));
 
 		ImGui::BeginDisabled(!settings.mcpEnabled);
 
 		int mcpPort = static_cast<int>(settings.mcpPreferredPort);
 		ImGui::SetNextItemWidth(200 * GuiHelper::contentScale);
 
-		if (ImGui::DragInt("port##mcp", &mcpPort, 1.0f, 1024, 65535, "%d", ImGuiSliderFlags_AlwaysClamp))
+		if (ImGui::DragInt(I18n::tr("port##mcp"), &mcpPort, 1.0f, 1024, 65535, "%d", ImGuiSliderFlags_AlwaysClamp))
 			settings.mcpPreferredPort = static_cast<uint16_t>(mcpPort);
 
 		ImGui::EndDisabled();
-		ImGui::TextDisabled("If the port is taken, the next free one is used.");
+		ImGui::TextDisabled(I18n::tr("If the port is taken, the next free one is used."));
 
-		ImGui::Checkbox("Allow API writes to the target", &settings.apiWritesEnabled);
+		ImGui::Checkbox(I18n::tr("Allow API writes to the target"), &settings.apiWritesEnabled);
 		ImGui::SameLine();
-		ImGui::HelpMarker("Without this, set_variable_value is refused. Each variable can carry its own min/max range on top.");
+		ImGui::HelpMarker(I18n::tr("Without this, set_variable_value is refused. Each variable can carry its own min/max range on top."));
 
 		if (mcpServer == nullptr)
-			ImGui::TextDisabled("Not available");
+			ImGui::TextDisabled(I18n::tr("Not available"));
 		else if (mcpServer->isRunning())
-			ImGui::Text("Listening on %s (%zu tools)", mcpServer->getEndpoint().c_str(), mcpServer->getToolCount());
+			ImGui::Text(I18n::tr("Listening on %s (%zu tools)"), mcpServer->getEndpoint().c_str(), mcpServer->getToolCount());
 		else if (settings.mcpEnabled)
-			ImGui::TextColored(GuiHelper::redLight(), "Not listening: %s", mcpServer->getLastError().c_str());
+			ImGui::TextColored(GuiHelper::redLight(), I18n::tr("Not listening: %s"), mcpServer->getLastError().c_str());
 		else
-			ImGui::TextDisabled("Disabled");
+			ImGui::TextDisabled(I18n::tr("Disabled"));
 
 		/* The port is bound at start, so a change is applied right away instead of
 		   waiting for the next launch. */
@@ -975,7 +1178,7 @@ void Gui::drawPreferencesWindow()
 
 		const float buttonHeight = 25.0f * GuiHelper::contentScale;
 		ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowSize().y - buttonHeight / 2.0f - ImGui::GetFrameHeightWithSpacing()));
-		if (ImGui::Button("Done", ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+		if (ImGui::Button(I18n::tr("Done"), ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
 		{
 			showPreferencesWindow = false;
 			globalConfig->save();
@@ -988,7 +1191,7 @@ void Gui::drawPreferencesWindow()
 void Gui::askShouldSaveOnExit(bool shouldOpenPopup)
 {
 	if (shouldOpenPopup)
-		ImGui::OpenPopup("Save?");
+		ImGui::OpenPopup(I18n::tr("Save?"));
 
 	auto onYes = [&]()
 	{
@@ -1005,7 +1208,7 @@ void Gui::askShouldSaveOnExit(bool shouldOpenPopup)
 	if (variableHandler->isEmpty() && projectElfPath.empty() && shouldOpenPopup)
 		done = true;
 
-	GuiHelper::showQuestionBox("Save?", "Do you want to save the current config?\n", onYes, onNo, onCancel);
+	GuiHelper::showQuestionBox("Save?", I18n::tr("Do you want to save the current config?\n"), onYes, onNo, onCancel);
 }
 
 void Gui::newProject()
@@ -1032,7 +1235,7 @@ void Gui::askShouldSaveOnNew(bool shouldOpenPopup)
 	if (variableHandler->isEmpty() && projectElfPath.empty() && shouldOpenPopup)
 		onNo();
 	else if (shouldOpenPopup)
-		ImGui::OpenPopup("SaveOnNew?");
+		ImGui::OpenPopup(I18n::tr("SaveOnNew?"));
 
 	auto onYes = [&]()
 	{
@@ -1041,7 +1244,7 @@ void Gui::askShouldSaveOnNew(bool shouldOpenPopup)
 		onNo();
 	};
 
-	GuiHelper::showQuestionBox("SaveOnNew?", "Do you want to save the current config?\n", onYes, onNo, []() {});
+	GuiHelper::showQuestionBox("SaveOnNew?", I18n::tr("Do you want to save the current config?\n"), onYes, onNo, []() {});
 }
 
 bool Gui::saveProject()
@@ -1051,7 +1254,7 @@ bool Gui::saveProject()
 
 	if (!projectHandler->save(projectConfigPath, collectProjectData()))
 	{
-		popup.show("Error", "Project could not be saved!", 3.0f);
+		popup.show(I18n::tr("Error"), I18n::tr("Project could not be saved!"), 3.0f);
 		return false;
 	}
 
@@ -1084,7 +1287,7 @@ bool Gui::saveProjectAs()
 
 	if (!projectHandler->save(path, data))
 	{
-		popup.show("Error", "Project could not be saved!", 3.0f);
+		popup.show(I18n::tr("Error"), I18n::tr("Project could not be saved!"), 3.0f);
 		return false;
 	}
 
@@ -1123,7 +1326,7 @@ bool Gui::openProject(std::string externalPath)
 
 	if (result != ProjectHandler::OpenResult::Ok)
 	{
-		popup.show("Error", ProjectHandler::resultToString(result).c_str(), 3.0f);
+		popup.show(I18n::tr("Error"), I18n::tr(ProjectHandler::resultToString(result).c_str()), 3.0f);
 		return false;
 	}
 
@@ -1157,7 +1360,7 @@ bool Gui::importLegacyProject(const std::string& path)
 
 	if (!configHandler->readConfigFile(projectElfPath))
 	{
-		popup.show("Error", "Legacy project could not be read!", 3.0f);
+		popup.show(I18n::tr("Error"), I18n::tr("Legacy project could not be read!"), 3.0f);
 		return false;
 	}
 
@@ -1178,7 +1381,7 @@ bool Gui::importLegacyProject(const std::string& path)
 	mcpRestartPending = true;
 
 	logger->info("Imported legacy project {}, save target is {}", path, projectConfigPath);
-	popup.show("Info", "Legacy project imported. Use Save to store it as .mcvproj.", 4.0f);
+	popup.show(I18n::tr("Info"), I18n::tr("Legacy project imported. Use Save to store it as .mcvproj."), 4.0f);
 
 	return true;
 }
@@ -1323,7 +1526,7 @@ bool Gui::openElfFile()
 
 	if (path.find(" ") != std::string::npos && parserNeedsPathWithoutSpaces())
 	{
-		acqusitionErrorPopup.show("Error!", "Selected path contains spaces!", 2.0f);
+		acqusitionErrorPopup.show(I18n::tr("Error!"), I18n::tr("Selected path contains spaces!"), 2.0f);
 		projectElfPath = "";
 		return false;
 	}
@@ -1380,21 +1583,21 @@ void Gui::drawC2000ParserSuggestion()
 
 	if (!c2000SuggestionOpened)
 	{
-		ImGui::OpenPopup("C2000 Target Detected");
+		ImGui::OpenPopup(I18n::tr("C2000 Target Detected"));
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		c2000SuggestionOpened = true;
 	}
 
-	if (ImGui::BeginPopupModal("C2000 Target Detected", &showC2000ParserSuggestion, ImGuiWindowFlags_AlwaysAutoResize))
+	if (ImGui::BeginPopupModal(I18n::tr("C2000 Target Detected"), &showC2000ParserSuggestion, ImGuiWindowFlags_AlwaysAutoResize))
 	{
-		ImGui::TextUnformatted("The selected file appears to be a TI C2000 target binary.");
+		ImGui::TextUnformatted(I18n::tr("The selected file appears to be a TI C2000 target binary."));
 		ImGui::Dummy(ImVec2(0, 4));
-		ImGui::TextUnformatted("It is highly recommended to switch to the C2000 parser");
+		ImGui::TextUnformatted(I18n::tr("It is highly recommended to switch to the C2000 parser"));
 		ImGui::Dummy(ImVec2(0, 4));
 		ImGui::TextDisabled("%s", c2000SuggestionPath.c_str());
 		ImGui::Dummy(ImVec2(0, 8));
 
-		if (ImGui::Button("Switch to C2000 parser (recommended)", ImVec2(-1, 25 * GuiHelper::contentScale)))
+		if (ImGui::Button(I18n::tr("Switch to C2000 parser (recommended)"), ImVec2(-1, 25 * GuiHelper::contentScale)))
 		{
 			ViewerDataHandler::Settings settings = viewerDataHandler->getSettings();
 			settings.elfParser = IElfParser::nameOf(IElfParser::Type::TiOfd);
@@ -1406,7 +1609,7 @@ void Gui::drawC2000ParserSuggestion()
 			ImGui::CloseCurrentPopup();
 		}
 
-		if (ImGui::Button("Keep current parser", ImVec2(-1, 25 * GuiHelper::contentScale)))
+		if (ImGui::Button(I18n::tr("Keep current parser"), ImVec2(-1, 25 * GuiHelper::contentScale)))
 		{
 			showC2000ParserSuggestion = false;
 			ImGui::CloseCurrentPopup();
@@ -1460,7 +1663,7 @@ void Gui::checkShortcuts()
 			wasSaved = saveProjectAs();
 
 		if (wasSaved)
-			popup.show("Info", "Saving successful!", 0.65f);
+			popup.show(I18n::tr("Info"), I18n::tr("Saving successful!"), 0.65f);
 	}
 }
 
@@ -1473,11 +1676,11 @@ void Gui::showChangeFormatPopup(const char* text, Plot& plt, const std::string& 
 
 	if (ImGui::BeginPopupContextItem(name.c_str()))
 	{
-		if (ImGui::RadioButton("dec", &format, 0))
+		if (ImGui::RadioButton(I18n::tr("dec"), &format, 0))
 			ImGui::CloseCurrentPopup();
-		if (ImGui::RadioButton("hex", &format, 1))
+		if (ImGui::RadioButton(I18n::tr("hex"), &format, 1))
 			ImGui::CloseCurrentPopup();
-		if (ImGui::RadioButton("bin", &format, 2))
+		if (ImGui::RadioButton(I18n::tr("bin"), &format, 2))
 			ImGui::CloseCurrentPopup();
 		ImGui::EndPopup();
 	}
@@ -1536,7 +1739,7 @@ void Gui::setupMcpServer()
 
 		if (!projectHandler->save(target, data))
 		{
-			popup.show("Error", "Project could not be saved!", 3.0f);
+			popup.show(I18n::tr("Error"), I18n::tr("Project could not be saved!"), 3.0f);
 			return false;
 		}
 
@@ -1608,7 +1811,7 @@ void Gui::applyMcpSettings()
 	if (mcpServer->isRunning())
 		logger->info("API server available at {} with {} tools", mcpServer->getEndpoint(), mcpServer->getToolCount());
 	else
-		popup.show("API server", ("The server could not be started: " + mcpServer->getLastError()).c_str(), 5.0f);
+		popup.show(I18n::tr("API server"), (std::string(I18n::tr("The server could not be started: ")) + mcpServer->getLastError()).c_str(), 5.0f);
 }
 
 bool Gui::setElfPathFromApi(const std::string& path, bool relative)
@@ -1618,7 +1821,7 @@ bool Gui::setElfPathFromApi(const std::string& path, bool relative)
 	   read the file themselves, so the restriction is theirs alone. */
 	if (path.find(' ') != std::string::npos && parserNeedsPathWithoutSpaces())
 	{
-		acqusitionErrorPopup.show("Error!", "Selected path contains spaces!", 2.0f);
+		acqusitionErrorPopup.show(I18n::tr("Error!"), I18n::tr("Selected path contains spaces!"), 2.0f);
 		return false;
 	}
 

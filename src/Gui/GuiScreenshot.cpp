@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Gui.hpp"
+#include "I18n.hpp"
 #include "PngWriter.hpp"
 #include "glfw3.h"
 
@@ -27,15 +28,15 @@
 
 namespace
 {
-	const char* const cancelledMessage = "Plot image save canceled.";
+	const char* const cancelledMessage = I18n::tr("Plot image save canceled.");
 
-	const char* const nullHandlerMessage = "Failed to save plot image: file handler is not available for Save As dialog.";
-	const char* const invalidDataMessage = "Failed to save plot image: invalid screenshot data returned by renderer.";
-	const char* const nothingDrawnMessage = "No visible plot to save.";
+	const char* const nullHandlerMessage = I18n::tr("Failed to save plot image: file handler is not available for Save As dialog.");
+	const char* const invalidDataMessage = I18n::tr("Failed to save plot image: invalid screenshot data returned by renderer.");
+	const char* const nothingDrawnMessage = I18n::tr("No visible plot to save.");
 
-	const char* const emptyDirectoryHint = "Empty means the directory the program was started from.";
+	const char* const emptyDirectoryHint = I18n::tr("Empty means the directory the program was started from.");
 	const char* const repeatedNameWarning =
-		"Increment file name is off, so every plot is written to the same file and the last one is the one that survives.";
+		I18n::tr("Increment file name is off, so every plot is written to the same file and the last one is the one that survives.");
 
 	/* How many rows of the target list the dialog prints before it says how
 	   many are left over. A run of twenty plots is rare, and printing all of
@@ -185,7 +186,7 @@ Gui::SaveOutcome Gui::savePlotImage(const PlotImage& image, const plotExport::Se
 
 	if (!pngWriter::write(path, image.width, image.height, image.rgba.data()))
 	{
-		error = std::string("Failed to save plot image to: ") + path;
+		error = std::string(I18n::tr("Failed to save plot image to: ")) + path;
 		return SaveOutcome::Failed;
 	}
 
@@ -240,8 +241,8 @@ bool Gui::writePlotImages()
 
 	if (written > 0)
 	{
-		pendingPlotImageTitle = "Info";
-		pendingPlotImageMessage = "Saved " + std::to_string(written) + (written == 1 ? " plot image." : " plot images.");
+		pendingPlotImageTitle = I18n::tr("Info");
+		pendingPlotImageMessage = std::string(I18n::tr("Saved ")) + std::to_string(written) + I18n::tr(written == 1 ? " plot image." : " plot images.");
 		pendingPlotImageSeconds = 2.0f;
 	}
 
@@ -276,7 +277,7 @@ void Gui::capturePlotImages()
 	if (pendingPlotImages.empty())
 	{
 		logger->warn("No plot was drawn, so there is nothing to save");
-		pendingPlotImageTitle = "Warning";
+		pendingPlotImageTitle = I18n::tr("Warning");
 		pendingPlotImageMessage = nothingDrawnMessage;
 		pendingPlotImageSeconds = 2.0f;
 		return;
@@ -291,7 +292,7 @@ void Gui::capturePlotImages()
 	{
 		if (!writePlotImages())
 		{
-			pendingPlotImageTitle = "Error!";
+			pendingPlotImageTitle = I18n::tr("Error!");
 			pendingPlotImageMessage = plotExportError;
 			pendingPlotImageSeconds = 3.0f;
 			plotExportError.clear();
@@ -309,7 +310,7 @@ void Gui::capturePlotImages()
 void Gui::drawPlotExportDialog()
 {
 	if (plotExportDialogOpen)
-		ImGui::OpenPopup("Save Plots");
+		ImGui::OpenPopup(I18n::tr("Save Plots"));
 
 	plotExport::Settings& settings = globalConfig->getSettings().plotExport;
 
@@ -322,14 +323,14 @@ void Gui::drawPlotExportDialog()
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSizeConstraints(ImVec2(wrapWidth + 40.0f * GuiHelper::contentScale, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
 
-	if (ImGui::BeginPopupModal("Save Plots", &plotExportDialogOpen, ImGuiWindowFlags_AlwaysAutoResize))
+	if (ImGui::BeginPopupModal(I18n::tr("Save Plots"), &plotExportDialogOpen, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		const size_t count = pendingPlotImages.size();
 
-		ImGui::Text("%zu %s to save", count, count == 1 ? "visible plot" : "visible plots");
+		ImGui::Text(I18n::tr("%zu %s to save"), count, count == 1 ? "visible plot" : "visible plots");
 
 		ImGui::SetNextItemWidth(fieldWidth);
-		ImGui::InputText("Export directory:##screenshotDialogDirectory", &settings.directory, 0, NULL, NULL);
+		ImGui::InputText(I18n::tr("Export directory:##screenshotDialogDirectory"), &settings.directory, 0, NULL, NULL);
 		ImGui::SameLine();
 
 		if (ImGui::Button("...##screenshotDialogSelect"))
@@ -357,14 +358,14 @@ void Gui::drawPlotExportDialog()
 
 		/* Enter in the name field is the whole of the answer most of the time,
 		   so it saves rather than doing nothing. */
-		const bool entered = ImGui::InputText("File name:##screenshotDialogFileName", &settings.fileName, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll, NULL, NULL);
+		const bool entered = ImGui::InputText(I18n::tr("File name:##screenshotDialogFileName"), &settings.fileName, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll, NULL, NULL);
 
 		ImGui::SameLine();
-		ImGui::HelpMarker("The *.png extension is added when it is missing.");
+		ImGui::HelpMarker(I18n::tr("The *.png extension is added when it is missing."));
 
-		ImGui::Checkbox("Increment file name:##screenshotDialogIncrement", &settings.incrementFileName);
+		ImGui::Checkbox(I18n::tr("Increment file name:##screenshotDialogIncrement"), &settings.incrementFileName);
 		ImGui::SameLine();
-		ImGui::HelpMarker("With several plots, numbers each file so none is written over.");
+		ImGui::HelpMarker(I18n::tr("With several plots, numbers each file so none is written over."));
 
 		ImGui::Separator();
 
@@ -385,7 +386,7 @@ void Gui::drawPlotExportDialog()
 		}
 
 		if (count > shown)
-			ImGui::TextDisabled("and %zu more", count - shown);
+			ImGui::TextDisabled(I18n::tr("and %zu more"), count - shown);
 
 		/* The warning and the error are both long, and the error carries a
 		   whole path. Left to themselves they stretch the dialog to fit, which
@@ -408,7 +409,7 @@ void Gui::drawPlotExportDialog()
 
 		const float buttonWidth = 120.0f * GuiHelper::contentScale;
 
-		if (ImGui::Button("Save", ImVec2(buttonWidth, 0)) || entered)
+		if (ImGui::Button(I18n::tr("Save"), ImVec2(buttonWidth, 0)) || entered)
 		{
 			if (writePlotImages())
 			{
@@ -419,7 +420,7 @@ void Gui::drawPlotExportDialog()
 
 		ImGui::SameLine();
 
-		if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+		if (ImGui::Button(I18n::tr("Cancel"), ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
 		{
 			/* Cancelling drops the capture rather than keeping it: the plots
 			   have moved on since it was taken, and what is on screen now is
@@ -445,16 +446,16 @@ void Gui::drawPlotExportSettings()
 {
 	plotExport::Settings& settings = globalConfig->getSettings().plotExport;
 
-	ImGui::TextUnformatted("Plot export");
+	ImGui::TextUnformatted(I18n::tr("Plot export"));
 
-	ImGui::Checkbox("Ask for location:##askForScreenshotLocation", &settings.askForLocation);
+	ImGui::Checkbox(I18n::tr("Ask for location:##askForScreenshotLocation"), &settings.askForLocation);
 	ImGui::SameLine();
-	ImGui::HelpMarker("When enabled, each screenshot opens a Save As dialog of its own and the two fields below are only what it starts from.");
+	ImGui::HelpMarker(I18n::tr("When enabled, each screenshot opens a Save As dialog of its own and the two fields below are only what it starts from."));
 
 	/* These are the values the export dialog opens with, so they stay editable
 	   in both modes. */
 	ImGui::SetNextItemWidth(300 * GuiHelper::contentScale);
-	ImGui::InputText("Export directory:##screenshotDirectory", &settings.directory, 0, NULL, NULL);
+	ImGui::InputText(I18n::tr("Export directory:##screenshotDirectory"), &settings.directory, 0, NULL, NULL);
 	ImGui::SameLine();
 
 	if (ImGui::Button("...##screenshotSelect"))
@@ -469,11 +470,11 @@ void Gui::drawPlotExportSettings()
 		ImGui::TextDisabled("%s", emptyDirectoryHint);
 
 	ImGui::SetNextItemWidth(300 * GuiHelper::contentScale);
-	ImGui::InputText("File name:##screenshotFileName", &settings.fileName, 0, NULL, NULL);
+	ImGui::InputText(I18n::tr("File name:##screenshotFileName"), &settings.fileName, 0, NULL, NULL);
 	ImGui::SameLine();
-	ImGui::HelpMarker("The *.png extension is added when it is missing.");
+	ImGui::HelpMarker(I18n::tr("The *.png extension is added when it is missing."));
 
-	ImGui::Checkbox("Increment file name:##incrementFileName", &settings.incrementFileName);
+	ImGui::Checkbox(I18n::tr("Increment file name:##incrementFileName"), &settings.incrementFileName);
 	ImGui::SameLine();
-	ImGui::HelpMarker("With several plots, numbers each file so none is written over.");
+	ImGui::HelpMarker(I18n::tr("With several plots, numbers each file so none is written over."));
 }

@@ -7,6 +7,7 @@
 
 #include "../commons.hpp"
 #include "GuiHelper.hpp"
+#include "I18n.hpp"
 #include "ImguiPlugins.hpp"
 #include "Variable.hpp"
 #include "VariableHandler.hpp"
@@ -17,7 +18,7 @@ class SelectVariableWindow
 	SelectVariableWindow(VariableHandler* variableHandler, std::set<std::string>* selection, int id)
 		: variableHandler(variableHandler), selection(selection), id(id)
 	{
-		popupName = "Select Variables##" + std::to_string(id);	// Unique name
+		popupName = std::string(I18n::tr("Select Variables")) + "##" + std::to_string(id);	// Unique name
 	}
 
 	void draw()
@@ -30,13 +31,13 @@ class SelectVariableWindow
 
 		if (ImGui::BeginPopupModal(popupName.c_str(), &show, 0))
 		{
-			const char* searchLabel = "search ";
+			const std::string searchLabel = GuiHelper::padToColumn(I18n::tr("search"), 7);
 			uint32_t dupa = ImGui::GetItemRectSize().x - 25 * GuiHelper::contentScale;
-			uint32_t dupa2 = ImGui::CalcTextSize(searchLabel).x;
+			uint32_t dupa2 = ImGui::CalcTextSize(searchLabel.c_str()).x;
 			ImGui::PushItemWidth(dupa - dupa2);
 			ImGui::Dummy(ImVec2(-1, 5));
 			static std::string search{};
-			ImGui::Text("%s", searchLabel);
+			ImGui::Text("%s", searchLabel.c_str());
 			ImGui::SameLine();
 
 			static bool focusSet = false;
@@ -55,7 +56,7 @@ class SelectVariableWindow
 			std::string importBtnName{"Select ("};
 			importBtnName += std::to_string(selection->size()) + std::string(")");
 
-			if (ImGui::Button("Done", ImVec2(-1, 25 * GuiHelper::contentScale)))
+			if (ImGui::Button(I18n::tr("Done"), ImVec2(-1, 25 * GuiHelper::contentScale)))
 			{
 				show = false;
 				ImGui::CloseCurrentPopup();
@@ -78,8 +79,8 @@ class SelectVariableWindow
 		if (ImGui::BeginTable("table_scrolly", 2, flags, ImVec2(0.0f, 400 * GuiHelper::contentScale)))
 		{
 			ImGui::TableSetupScrollFreeze(0, 1);
-			ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_None);
-			ImGui::TableSetupColumn("Address", ImGuiTableColumnFlags_None);
+			ImGui::TableSetupColumn(I18n::tr("Name"), ImGuiTableColumnFlags_None, 0.0f, ImGui::GetID("Name"));
+			ImGui::TableSetupColumn(I18n::tr("Address"), ImGuiTableColumnFlags_None, 0.0f, ImGui::GetID("Address"));
 			ImGui::TableHeadersRow();
 
 			for (std::shared_ptr<Variable> var : *variableHandler)

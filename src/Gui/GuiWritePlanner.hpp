@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "GuiHelper.hpp"
+#include "I18n.hpp"
 #include "Popup.hpp"
 #include "VariableHandler.hpp"
 #include "WritePlanner.hpp"
@@ -32,12 +33,12 @@ class WritePlannerWindow
 	void draw()
 	{
 		if (showWindow)
-			ImGui::OpenPopup("Write Planner");
+			ImGui::OpenPopup(I18n::tr("Write Planner"));
 
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		ImGui::SetNextWindowSize(ImVec2(900 * GuiHelper::contentScale, 560 * GuiHelper::contentScale));
 
-		if (!ImGui::BeginPopupModal("Write Planner", &showWindow, 0))
+		if (!ImGui::BeginPopupModal(I18n::tr("Write Planner"), &showWindow, 0))
 			return;
 
 		ImGui::BeginChild("##WPContent", ImVec2(-1, -1));
@@ -65,10 +66,10 @@ class WritePlannerWindow
 	{
 		ImGui::BeginChild("##PlanList", ImVec2(230 * GuiHelper::contentScale, -1), true);
 
-		GuiHelper::drawCenteredText("Plans");
+		GuiHelper::drawCenteredText(I18n::tr("Plans"));
 		ImGui::Separator();
 
-		if (ImGui::Button("Add plan", ImVec2(-1, 25 * GuiHelper::contentScale)))
+		if (ImGui::Button(I18n::tr("Add plan"), ImVec2(-1, 25 * GuiHelper::contentScale)))
 		{
 			const std::string name = WritePlanner::freeName(*planner, "plan");
 			planner->addPlan(name);
@@ -120,9 +121,9 @@ class WritePlannerWindow
 		if (selectedPlan.empty() || !planner->hasPlan(selectedPlan))
 		{
 			ImGui::Dummy(ImVec2(-1, 20));
-			GuiHelper::drawCenteredText("No plan selected");
+			GuiHelper::drawCenteredText(I18n::tr("No plan selected"));
 			ImGui::Dummy(ImVec2(-1, 5));
-			GuiHelper::drawCenteredText("Select a plan to edit");
+			GuiHelper::drawCenteredText(I18n::tr("Select a plan to edit"));
 			ImGui::EndChild();
 			return;
 		}
@@ -132,14 +133,14 @@ class WritePlannerWindow
 		/* NAME */
 		std::string name = plan.name;
 
-		GuiHelper::drawTextAlignedToSize("name:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("name:"), alignment);
 		ImGui::SameLine();
 		ImGui::InputText("##name", &name, ImGuiInputTextFlags_None, NULL, NULL);
 
 		if (ImGui::IsItemDeactivatedAfterEdit())
 		{
 			if (name != plan.name && !planner->renamePlan(plan.name, name))
-				popup.show("Error!", "A plan with that name already exists!", 1.5f);
+				popup.show(I18n::tr("Error!"), I18n::tr("A plan with that name already exists!"), 1.5f);
 			else
 				selectedPlan = name;
 		}
@@ -147,7 +148,7 @@ class WritePlannerWindow
 		/* VARIABLE */
 		std::string variable = plan.variable;
 
-		GuiHelper::drawTextAlignedToSize("variable:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("variable:"), alignment);
 		ImGui::SameLine();
 
 		if (ImGui::InputText("##variable", &variable, ImGuiInputTextFlags_None, NULL, NULL))
@@ -158,9 +159,9 @@ class WritePlannerWindow
 		/* A name the variable table does not know would write nowhere, so it is
 		   pointed out as it is typed rather than at the moment of use. */
 		if (variable.empty() || variableHandler == nullptr || variableHandler->contains(variable))
-			ImGui::TextDisabled("(the variable this plan is for)");
+			ImGui::TextDisabled(I18n::tr("(the variable this plan is for)"));
 		else
-			ImGui::TextColored(GuiHelper::orange(), "variable does not exist!");
+			ImGui::TextColored(GuiHelper::orange(), I18n::tr("variable does not exist!"));
 
 		drawSteps(plan);
 		drawPreview(plan);
@@ -171,18 +172,18 @@ class WritePlannerWindow
 	void drawSteps(const WritePlanner::Plan& plan)
 	{
 		ImGui::Dummy(ImVec2(-1, 5));
-		GuiHelper::drawCenteredText("Steps");
+		GuiHelper::drawCenteredText(I18n::tr("Steps"));
 		ImGui::Separator();
 
 		/* ADD */
 		ImGui::SetNextItemWidth(90 * GuiHelper::contentScale);
-		ImGui::InputText("Time##add", &newStepTime, ImGuiInputTextFlags_CharsDecimal, NULL, NULL);
+		ImGui::InputText(I18n::tr("Time##add"), &newStepTime, ImGuiInputTextFlags_CharsDecimal, NULL, NULL);
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(90 * GuiHelper::contentScale);
-		ImGui::InputText("Value##add", &newStepValue, ImGuiInputTextFlags_CharsDecimal, NULL, NULL);
+		ImGui::InputText(I18n::tr("Value##add"), &newStepValue, ImGuiInputTextFlags_CharsDecimal, NULL, NULL);
 		ImGui::SameLine();
 
-		if (ImGui::Button("Add", ImVec2(80 * GuiHelper::contentScale, 0)))
+		if (ImGui::Button(I18n::tr("Add"), ImVec2(80 * GuiHelper::contentScale, 0)))
 		{
 			const double time = GuiHelper::convertStringToNumber<double>(newStepTime);
 			planner->addStep(plan.name, time, GuiHelper::convertStringToNumber<double>(newStepValue));
@@ -193,7 +194,7 @@ class WritePlannerWindow
 		}
 
 		ImGui::SameLine();
-		ImGui::HelpMarker("A step holds its value until the next step begins.");
+		ImGui::HelpMarker(I18n::tr("A step holds its value until the next step begins."));
 
 		/* TABLE */
 		std::vector<WritePlanner::Step> steps = plan.steps;
@@ -201,8 +202,8 @@ class WritePlannerWindow
 
 		if (ImGui::BeginTable("##StepsTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp, ImVec2(0, 140 * GuiHelper::contentScale)))
 		{
-			ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthStretch);
-			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn(I18n::tr("Time"), ImGuiTableColumnFlags_WidthStretch, 0.0f, ImGui::GetID("Time"));
+			ImGui::TableSetupColumn(I18n::tr("Value"), ImGuiTableColumnFlags_WidthStretch, 0.0f, ImGui::GetID("Value"));
 			ImGui::TableSetupColumn("##del", ImGuiTableColumnFlags_WidthFixed, 50 * GuiHelper::contentScale);
 			ImGui::TableHeadersRow();
 
@@ -225,7 +226,7 @@ class WritePlannerWindow
 
 				ImGui::TableSetColumnIndex(2);
 
-				if (ImGui::Button("Del", ImVec2(-1, 0)))
+				if (ImGui::Button(I18n::tr("Del"), ImVec2(-1, 0)))
 					indexToRemove = index;
 
 				ImGui::PopID();
@@ -283,7 +284,7 @@ class WritePlannerWindow
 
 		if (ImPlot::BeginPlot("##WritePlanPlot", ImVec2(-1, 200 * GuiHelper::contentScale)))
 		{
-			ImPlot::SetupAxes("time [s]", "value");
+			ImPlot::SetupAxes(I18n::tr("time [s]"), I18n::tr("value"));
 			ImPlot::SetupAxesLimits(0.0, span, lowest - (highest - lowest) * 0.05, highest + (highest - lowest) * 0.05, ImPlotCond_Once);
 			ImPlot::PlotLine(plan.name.c_str(), times.data(), values.data(), static_cast<int>(times.size()));
 			ImPlot::EndPlot();

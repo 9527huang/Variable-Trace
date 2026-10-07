@@ -1,4 +1,5 @@
 #include "Gui.hpp"
+#include "I18n.hpp"
 
 void Gui::dragAndDropPlot(std::shared_ptr<Plot> plot)
 {
@@ -284,10 +285,13 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 	if (ImGui::BeginTable(plot->getName().c_str(), 4, flags))
 	{
 		ImGui::TableSetupScrollFreeze(0, 1);  // Make top row always visible
-		ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_None);
-		ImGui::TableSetupColumn("Address", ImGuiTableColumnFlags_None);
-		ImGui::TableSetupColumn("Read value", ImGuiTableColumnFlags_None);
-		ImGui::TableSetupColumn("Write value", ImGuiTableColumnFlags_None);
+
+		/* Translated header, English id: the widths the reader drags are filed
+		   under the id, so they outlive a change of language. */
+		ImGui::TableSetupColumn(I18n::tr("Name"), ImGuiTableColumnFlags_None, 0.0f, ImGui::GetID("Name"));
+		ImGui::TableSetupColumn(I18n::tr("Address"), ImGuiTableColumnFlags_None, 0.0f, ImGui::GetID("Address"));
+		ImGui::TableSetupColumn(I18n::tr("Read value"), ImGuiTableColumnFlags_None, 0.0f, ImGui::GetID("Read value"));
+		ImGui::TableSetupColumn(I18n::tr("Write value"), ImGuiTableColumnFlags_None, 0.0f, ImGui::GetID("Write value"));
 		ImGui::TableHeadersRow();
 
 		for (auto& [key, serPtr] : seriesMap)

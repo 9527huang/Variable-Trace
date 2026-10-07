@@ -2,12 +2,14 @@
 #define _GUI_HELPER_HPP
 
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <iomanip>
 #include <optional>
 #include <sstream>
 #include <string>
 
+#include "I18n.hpp"
 #include "ImguiPlugins.hpp"
 #include "imgui.h"
 
@@ -245,9 +247,26 @@ void drawCenteredText(std::string&& text);
  * @brief draw text with alignment to x fields of characters
  *
  * @param text
- * @param alignTo amount of characters to align the text to
+ * @param alignTo width to pad to, counted in the characters of the English
+ * label the call site was written for
  */
 void drawTextAlignedToSize(std::string&& text, size_t alignTo);
+
+/**
+ * @brief A label padded with spaces so that it fills the width of a column
+ *
+ * The column is measured in the characters of the English label the call site
+ * was written for, and turned into pixels here. Padding by character count
+ * instead only holds while every character is the same width, which was true
+ * of the embedded font and stops being true the moment the label is Chinese:
+ * the same words take fewer characters and more pixels, and the control to the
+ * right of them lands somewhere else on every line.
+ *
+ * @param text the label, already in the language being drawn
+ * @param column width to pad to, counted in English characters
+ * @return std::string the label, padded; unchanged when it is already wider
+ */
+std::string padToColumn(const std::string& text, size_t column);
 
 /**
  * @brief Parse hex string to a decimal number
@@ -294,10 +313,18 @@ std::string formatNumber(T number, std::string unit = "", size_t decimalPlaces =
 
 /* Marks the half of a reading that has crossed a threshold. On a dark panel
    this is the default text colour, so the caller passes the colour it wants and
-   the default here only has to work for the palette in use at the time. */
+   the default here only has to work for the palette in use at the time.
+ *
+ * The description is written as the English label padded with the spaces that
+ * take it out to its column, and the translation is padded to the same width
+ * here rather than in the table. Counting the spaces in the table would count
+ * them in whichever font draws the translation, and a space in the Chinese font
+ * is not the width of a space in the Latin one. */
 template <typename T>
 void drawDescriptionWithNumber(const char* description, T number, std::string unit = "", size_t decimalPlaces = 5, float threshold = std::nan(""), ImVec4 thresholdExceededColor = ImVec4(-1.0f, -1.0f, -1.0f, 1.0f))
 {
+	const std::string label = padToColumn(I18n::tr(description), std::strlen(description));
+
 	if (threshold != std::nan("") && number > threshold)
 	{
 		/* A negative alpha tells the caller apart from a colour it chose
@@ -306,10 +333,10 @@ void drawDescriptionWithNumber(const char* description, T number, std::string un
 		if (thresholdExceededColor.x < 0.0f)
 			thresholdExceededColor = redLight();
 
-		ImGui::TextColored(thresholdExceededColor, "%s", description);
+		ImGui::TextColored(thresholdExceededColor, "%s", label.c_str());
 	}
 	else
-		ImGui::Text("%s", description);
+		ImGui::Text("%s", label.c_str());
 	ImGui::SameLine();
 	ImGui::Text("%s", formatNumber(number, unit, decimalPlaces).c_str());
 }

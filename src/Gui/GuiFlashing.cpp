@@ -6,6 +6,7 @@
 
 #include "FlashingService.hpp"
 #include "Gui.hpp"
+#include "I18n.hpp"
 #include "ViewerDataHandler.hpp"
 
 /*
@@ -71,7 +72,7 @@ void Gui::startFlash(bool test)
 	   one thing the user can fix in a single step. */
 	if (settings.command.empty())
 	{
-		flashPopup.show("Error!", test ? "Set a flash command above first." : "Set a flash command in Options -> Flashing.", 2.5f);
+		flashPopup.show(I18n::tr("Error!"), I18n::tr(test ? "Set a flash command above first." : "Set a flash command in Options -> Flashing."), 2.5f);
 		return;
 	}
 
@@ -82,7 +83,7 @@ void Gui::startFlash(bool test)
 
 	if (file.empty())
 	{
-		flashPopup.show("Error!", "No firmware file configured. Provide 'file' or set it in Options -> Flashing.", 2.5f);
+		flashPopup.show(I18n::tr("Error!"), I18n::tr("No firmware file configured. Provide 'file' or set it in Options -> Flashing."), 2.5f);
 		return;
 	}
 
@@ -104,7 +105,7 @@ void Gui::startFlash(bool test)
 
 	if (!flasher->startFlash(settings.command, file, timeout).valid())
 	{
-		flashPopup.show("Error!", "A flash is already in progress.", 2.0f);
+		flashPopup.show(I18n::tr("Error!"), I18n::tr("A flash is already in progress."), 2.0f);
 		return;
 	}
 
@@ -123,10 +124,10 @@ void Gui::drawFlashButton()
 	if (running)
 	{
 		const size_t phase = static_cast<size_t>(ImGui::GetTime() * 8.0) % (sizeof(spinnerCharacters) - 1);
-		snprintf(label, sizeof(label), "Flash %c", spinnerCharacters[phase]);
+		snprintf(label, sizeof(label), "%s %c", I18n::tr("Flash"), spinnerCharacters[phase]);
 	}
 	else
-		snprintf(label, sizeof(label), "Flash");
+		snprintf(label, sizeof(label), "%s", I18n::tr("Flash"));
 
 	if (running)
 	{
@@ -151,7 +152,7 @@ void Gui::drawFlashOutputWindow()
 	if (!showFlashOutputWindow)
 		return;
 
-	if (!ImGui::Begin("Flash Output", &showFlashOutputWindow))
+	if (!ImGui::Begin(I18n::tr("Flash Output"), &showFlashOutputWindow))
 	{
 		ImGui::End();
 		return;
@@ -163,15 +164,15 @@ void Gui::drawFlashOutputWindow()
 
 	if (state == FlashingService::State::Running)
 	{
-		ImGui::TextColored(GuiHelper::orangeLight(), "Flashing in progress...");
+		ImGui::TextColored(GuiHelper::orangeLight(), I18n::tr("Flashing in progress..."));
 		ImGui::SameLine();
 
-		if (ImGui::Button("Abort", ImVec2(80 * GuiHelper::contentScale, 0)))
+		if (ImGui::Button(I18n::tr("Abort"), ImVec2(80 * GuiHelper::contentScale, 0)))
 			flasher->abort();
 	}
 	else if (state == FlashingService::State::Success)
 	{
-		ImGui::TextColored(GuiHelper::greenLight(), "Flash successful!");
+		ImGui::TextColored(GuiHelper::greenLight(), I18n::tr("Flash successful!"));
 	}
 	else if (state != FlashingService::State::Idle)
 	{
@@ -180,13 +181,13 @@ void Gui::drawFlashOutputWindow()
 		ImGui::TextColored(GuiHelper::redLight(), "%s", flasher->getLastError().c_str());
 	}
 
-	ImGui::TextUnformatted("Flash command output:");
+	ImGui::TextUnformatted(I18n::tr("Flash command output:"));
 	ImGui::SameLine();
 
 	if (dropped > 0)
-		ImGui::TextDisabled("(%zu earlier lines were dropped)", dropped);
+		ImGui::TextDisabled(I18n::tr("(%zu earlier lines were dropped)"), dropped);
 	else
-		ImGui::TextDisabled("(the last %zu lines are kept)", FlashingService::maximumOutputLines);
+		ImGui::TextDisabled(I18n::tr("(the last %zu lines are kept)"), FlashingService::maximumOutputLines);
 
 	ImGui::BeginChild("flashOut", ImVec2(-1, -1), true);
 
@@ -196,7 +197,7 @@ void Gui::drawFlashOutputWindow()
 
 	if (lines.empty())
 	{
-		ImGui::TextDisabled("(no output)");
+		ImGui::TextDisabled(I18n::tr("(no output)"));
 	}
 	else
 	{
@@ -220,12 +221,12 @@ void Gui::drawFlashOutputWindow()
 void Gui::drawFlashingSettingsWindow()
 {
 	if (showFlashingSettingsWindow)
-		ImGui::OpenPopup("Flashing Settings");
+		ImGui::OpenPopup(I18n::tr("Flashing Settings"));
 
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSize(ImVec2(720 * GuiHelper::contentScale, 600 * GuiHelper::contentScale));
 
-	if (!ImGui::BeginPopupModal("Flashing Settings", &showFlashingSettingsWindow, 0))
+	if (!ImGui::BeginPopupModal(I18n::tr("Flashing Settings"), &showFlashingSettingsWindow, 0))
 		return;
 
 	/* Every field edits the stored setting directly, one field at a time. A
@@ -234,11 +235,11 @@ void Gui::drawFlashingSettingsWindow()
 	FlashingService::FlashSettings& settings = globalConfig->getSettings().flash;
 
 	ImGui::Dummy(ImVec2(-1, 5));
-	GuiHelper::drawCenteredText("Select firmware file and flash command to use for flashing.");
+	GuiHelper::drawCenteredText(I18n::tr("Select firmware file and flash command to use for flashing."));
 	ImGui::Separator();
 
 	/* FIRMWARE FILE */
-	GuiHelper::drawTextAlignedToSize("Firmware file:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Firmware file:"), alignment);
 	ImGui::SameLine();
 
 	ImGui::BeginDisabled(settings.useElfFile);
@@ -255,24 +256,24 @@ void Gui::drawFlashingSettingsWindow()
 
 	ImGui::EndDisabled();
 	ImGui::SameLine();
-	ImGui::HelpMarker("Selected file path replaces the {file} macro in the flash command below.");
+	ImGui::HelpMarker(I18n::tr("Selected file path replaces the {file} macro in the flash command below."));
 
-	GuiHelper::drawTextAlignedToSize("Use *.elf/*.axf file:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Use *.elf/*.axf file:"), alignment);
 	ImGui::SameLine();
 	ImGui::Checkbox("##useElfFile", &settings.useElfFile);
 	ImGui::SameLine();
-	ImGui::HelpMarker("When checked, {file} is replaced with the *.elf/*.axf path set in Options -> Acquisition.");
+	ImGui::HelpMarker(I18n::tr("When checked, {file} is replaced with the *.elf/*.axf path set in Options -> Acquisition."));
 
 	/* FLASH COMMAND */
-	GuiHelper::drawTextAlignedToSize("Flash command:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Flash command:"), alignment);
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth(-1);
 	ImGui::InputText("##flashingCommand", &settings.command, 0, NULL, NULL);
 
-	ImGui::TextDisabled("The path replaces every {file} in the command. Without one it is appended at the end.");
+	ImGui::TextDisabled(I18n::tr("The path replaces every {file} in the command. Without one it is appended at the end."));
 
 	/* TIMEOUT */
-	GuiHelper::drawTextAlignedToSize("Timeout [s]:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Timeout [s]:"), alignment);
 	ImGui::SameLine();
 	ImGui::Checkbox("##flashingTimeoutEnabled", &settings.timeoutEnabled);
 	ImGui::SameLine();
@@ -287,18 +288,18 @@ void Gui::drawFlashingSettingsWindow()
 
 	ImGui::EndDisabled();
 	ImGui::SameLine();
-	ImGui::HelpMarker("When enabled, flashing will be aborted automatically if there is no output for the specified time.");
+	ImGui::HelpMarker(I18n::tr("When enabled, flashing will be aborted automatically if there is no output for the specified time."));
 
 	/* TEST */
 	ImGui::Dummy(ImVec2(-1, 5));
-	GuiHelper::drawCenteredText("Test flash");
+	GuiHelper::drawCenteredText(I18n::tr("Test flash"));
 	ImGui::Separator();
 
 	const bool running = flasher->isRunning();
 
 	ImGui::BeginDisabled(running);
 
-	if (ImGui::Button("Test flash", ImVec2(120 * GuiHelper::contentScale, 25 * GuiHelper::contentScale)))
+	if (ImGui::Button(I18n::tr("Test flash"), ImVec2(120 * GuiHelper::contentScale, 25 * GuiHelper::contentScale)))
 		startFlash(true);
 
 	ImGui::EndDisabled();
@@ -307,11 +308,11 @@ void Gui::drawFlashingSettingsWindow()
 
 	if (running)
 	{
-		if (ImGui::Button("Abort##testFlashAbort", ImVec2(120 * GuiHelper::contentScale, 25 * GuiHelper::contentScale)))
+		if (ImGui::Button(I18n::tr("Abort##testFlashAbort"), ImVec2(120 * GuiHelper::contentScale, 25 * GuiHelper::contentScale)))
 			flasher->abort();
 	}
 
-	ImGui::TextUnformatted("Test output:");
+	ImGui::TextUnformatted(I18n::tr("Test output:"));
 
 	ImGui::BeginChild("##testFlashOutput", ImVec2(-1, 150 * GuiHelper::contentScale), true);
 
@@ -319,15 +320,15 @@ void Gui::drawFlashingSettingsWindow()
 	{
 		/* Nothing has been tried from this window, so there is nothing to show
 		   even if a flash the user started elsewhere has printed something. */
-		ImGui::TextDisabled("Not tested");
-		ImGui::TextDisabled("Click the button above to test the flash command.");
+		ImGui::TextDisabled(I18n::tr("Not tested"));
+		ImGui::TextDisabled(I18n::tr("Click the button above to test the flash command."));
 	}
 	else
 	{
 		const std::vector<std::string>& lines = flashOutput();
 
 		if (lines.empty())
-			ImGui::TextDisabled("(no output)");
+			ImGui::TextDisabled(I18n::tr("(no output)"));
 		else
 			for (const std::string& line : lines)
 				ImGui::TextUnformatted(line.c_str());
@@ -338,7 +339,7 @@ void Gui::drawFlashingSettingsWindow()
 	const float buttonHeight = 25.0f * GuiHelper::contentScale;
 	ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowSize().y - buttonHeight / 2.0f - ImGui::GetFrameHeightWithSpacing()));
 
-	if (ImGui::Button("Done", ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+	if (ImGui::Button(I18n::tr("Done"), ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
 	{
 		showFlashingSettingsWindow = false;
 		globalConfig->save();

@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "I18n.hpp"
 #include "IElfParser.hpp"
 #include "Gui.hpp"
 #include "ImguiPlugins.hpp"
@@ -33,7 +34,7 @@ class ImportVariablesWindow
 
 		if (showImportVariablesWindow)
 		{
-			ImGui::OpenPopup("Import Variables");
+			ImGui::OpenPopup(I18n::tr("Import Variables"));
 
 			if (!wasPreviouslyOpened)
 			{
@@ -45,17 +46,17 @@ class ImportVariablesWindow
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		ImGui::SetNextWindowSize(ImVec2(500 * GuiHelper::contentScale, 500 * GuiHelper::contentScale), ImGuiCond_Once);
 
-		if (ImGui::BeginPopupModal("Import Variables", &showImportVariablesWindow, 0))
+		if (ImGui::BeginPopupModal(I18n::tr("Import Variables"), &showImportVariablesWindow, 0))
 		{
 			char buttonText[30]{};
 
 			if (refreshThread.valid() && refreshThread.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
-				snprintf(buttonText, 30, "Refresh %c", "|/-\\"[(int)(ImGui::GetTime() / 0.05f) & 3]);
+				snprintf(buttonText, 30, "%s %c", I18n::tr("Refresh"), "|/-\\"[(int)(ImGui::GetTime() / 0.05f) & 3]);
 			else
 			{
 				if (refreshThread.valid() && !refreshThread.get())
-					acqusitionErrorPopup.show("Error!", "Update error. Please check the *.elf/*.axf file path!", 2.0f);
-				snprintf(buttonText, 30, "Refresh");
+					acqusitionErrorPopup.show(I18n::tr("Error!"), I18n::tr("Update error. Please check the *.elf/*.axf file path!"), 2.0f);
+				snprintf(buttonText, 30, "%s", I18n::tr("Refresh"));
 			}
 
 			if (ImGui::Button(buttonText, ImVec2(-1, 25 * GuiHelper::contentScale)) || shouldUpdateOnOpen)
@@ -65,11 +66,11 @@ class ImportVariablesWindow
 			}
 
 			static std::string search{};
-			ImGui::Text("search ");
+			GuiHelper::drawTextAlignedToSize(I18n::tr("search"), 7);
 			ImGui::SameLine();
 			ImGui::InputText("##search", &search, 0, NULL, NULL);
 			ImGui::SameLine();
-			ImGui::HelpMarker("Import feature is still in Beta. If you're unable to find your variable on the list please open an issue on GitHub (remember to attach your *.elf/*.axf file).");
+			ImGui::HelpMarker(I18n::tr("Import feature is still in Beta. If you're unable to find your variable on the list please open an issue on GitHub (remember to attach your *.elf/*.axf file)."));
 
 			drawImportVariablesTable(parser->getParsedData(), selection, search);
 
@@ -92,7 +93,7 @@ class ImportVariablesWindow
 
 				if (namesAlreadyImported.size() > 0)
 				{
-					std::string message = "The following variables were already imported: \n";
+					std::string message = I18n::tr("The following variables were already imported: \n");
 
 					for (auto& name : namesAlreadyImported)
 					{
@@ -102,12 +103,12 @@ class ImportVariablesWindow
 						message += "\n";
 					}
 
-					importWarningPopup.show("Warning!", message.c_str(), 2.0f);
+					importWarningPopup.show(I18n::tr("Warning!"), message.c_str(), 2.0f);
 				}
 				shouldUpdate = true;
 			}
 
-			if (ImGui::Button("Done", ImVec2(-1, 25 * GuiHelper::contentScale)))
+			if (ImGui::Button(I18n::tr("Done"), ImVec2(-1, 25 * GuiHelper::contentScale)))
 			{
 				showImportVariablesWindow = false;
 				ImGui::CloseCurrentPopup();
@@ -151,8 +152,10 @@ class ImportVariablesWindow
 		if (ImGui::BeginTable("table_scrolly", 2, flags, ImVec2(0.0f, 350 * GuiHelper::contentScale)))
 		{
 			ImGui::TableSetupScrollFreeze(0, 1);
-			ImGui::TableSetupColumn("Name", 0);
-			ImGui::TableSetupColumn("Address", 0);
+			/* Translated header, English id: the column widths are filed under
+			   the id, so they survive a change of language. */
+			ImGui::TableSetupColumn(I18n::tr("Name"), 0, 0.0f, ImGui::GetID("Name"));
+			ImGui::TableSetupColumn(I18n::tr("Address"), 0, 0.0f, ImGui::GetID("Address"));
 			ImGui::TableHeadersRow();
 
 			for (auto& [name, varData] : importedVars)

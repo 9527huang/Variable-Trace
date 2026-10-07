@@ -8,6 +8,7 @@
 #include "GuiHelper.hpp"
 #include "GuiPlotEdit.hpp"
 #include "GuiStatisticsWindow.hpp"
+#include "I18n.hpp"
 #include "IFileHandler.hpp"
 #include "Plot.hpp"
 #include "PlotGroupHandler.hpp"
@@ -26,7 +27,7 @@ class PlotsTree
 		const uint32_t windowHeight = 350 * GuiHelper::contentScale;
 
 		ImGui::Dummy(ImVec2(-1, 5));
-		GuiHelper::drawCenteredText("Plots");
+		GuiHelper::drawCenteredText(I18n::tr("Plots"));
 		ImGui::Separator();
 
 		if (plotHandler->getPlotsCount() == 0)
@@ -59,7 +60,7 @@ class PlotsTree
 		if (treeWidth < minimumTree)
 			treeWidth = minimumTree;
 
-		ImGui::BeginChild("Plot Tree", ImVec2(-1, windowHeight));
+		ImGui::BeginChild(I18n::tr("Plot Tree"), ImVec2(-1, windowHeight));
 		ImGui::BeginChild("left pane", ImVec2(treeWidth, -1), true);
 
 		/* Only the groups without a parent start a branch; the rest are reached
@@ -78,20 +79,20 @@ class PlotsTree
 		{
 			const bool recorderReady = recorderHandler != nullptr && recorderHandler->isEnabled();
 
-			if (ImGui::BeginMenu("New"))
+			if (ImGui::BeginMenu(I18n::tr("New")))
 			{
-				if (ImGui::MenuItem("Sampling group"))
+				if (ImGui::MenuItem(I18n::tr("Sampling group")))
 					requestNewGroup(PlotGroup::Type::Sampling);
 
 				ImGui::BeginDisabled(!recorderReady);
 
-				if (ImGui::MenuItem("Recorder group"))
+				if (ImGui::MenuItem(I18n::tr("Recorder group")))
 					requestNewGroup(PlotGroup::Type::Recorder);
 
 				ImGui::EndDisabled();
 
 				if (!recorderReady && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-					ImGui::SetTooltip("Please enable recorder in Acquisition settings to add a new recorder group");
+					ImGui::SetTooltip(I18n::tr("Please enable recorder in Acquisition settings to add a new recorder group"));
 
 				ImGui::EndMenu();
 			}
@@ -115,7 +116,7 @@ class PlotsTree
 		if (plt == nullptr)
 		{
 			ImGui::BeginGroup();
-			GuiHelper::drawCenteredText("No plot selected");
+			GuiHelper::drawCenteredText(I18n::tr("No plot selected"));
 			ImGui::EndGroup();
 			ImGui::EndChild();
 			return;
@@ -161,7 +162,7 @@ class PlotsTree
 				ImGui::SameLine();
 				ImGui::Selectable(name.c_str());
 				if (!seriesNameToDelete.has_value())
-					seriesNameToDelete = GuiHelper::showDeletePopup("Delete var", name);
+					seriesNameToDelete = GuiHelper::showDeletePopup(I18n::tr("Delete var"), name);
 				ImGui::PopID();
 				ImGui::EndDisabled();
 			}
@@ -201,7 +202,7 @@ class PlotsTree
 
 	void drawCursorSettings(const std::shared_ptr<Plot>& plt)
 	{
-		GuiHelper::drawTextAlignedToSize("Cursors:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Cursors:"), alignment);
 		ImGui::SameLine();
 
 		bool visible = plt->getCursorsVisible();
@@ -238,7 +239,7 @@ class PlotsTree
 
 	void drawStatisticsSettings(const std::shared_ptr<Plot>& plt)
 	{
-		GuiHelper::drawTextAlignedToSize("Statistics:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Statistics:"), alignment);
 		ImGui::SameLine();
 
 		bool visible = plt->getStatisticsVisible();
@@ -540,7 +541,7 @@ class PlotsTree
 
 	void drawExportPlotToCSVButton(std::shared_ptr<Plot> plt)
 	{
-		if (ImGui::Button("Export plot to *.csv", ImVec2(-1, 25 * GuiHelper::contentScale)))
+		if (ImGui::Button(I18n::tr("Export plot to *.csv"), ImVec2(-1, 25 * GuiHelper::contentScale)))
 		{
 			std::string path = fileHandler->saveFile({{"CSV", "csv"}});
 			std::ofstream csvFile(path);
@@ -603,26 +604,26 @@ class PlotsTree
 
 		if (ImGui::BeginPopupContextItem(name.c_str()))
 		{
-			if (ImGui::BeginMenu("New"))
+			if (ImGui::BeginMenu(I18n::tr("New")))
 			{
-				if (ImGui::MenuItem("Sampling group"))
+				if (ImGui::MenuItem(I18n::tr("Sampling group")))
 					requestNewGroup(PlotGroup::Type::Sampling);
 
 				ImGui::BeginDisabled(!recorderReady);
 
-				if (ImGui::MenuItem("Recorder group"))
+				if (ImGui::MenuItem(I18n::tr("Recorder group")))
 					requestNewGroup(PlotGroup::Type::Recorder);
 
 				ImGui::EndDisabled();
 
 				if (!recorderReady && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-					ImGui::SetTooltip("Please enable recorder in Acquisition settings to add a new recorder group");
+					ImGui::SetTooltip(I18n::tr("Please enable recorder in Acquisition settings to add a new recorder group"));
 
-				if (ImGui::BeginMenu("Plot"))
+				if (ImGui::BeginMenu(I18n::tr("Plot")))
 				{
 					for (uint32_t index = 0; index < IM_ARRAYSIZE(plotTypeNames); index++)
 					{
-						if (ImGui::MenuItem(plotTypeNames[index]))
+						if (ImGui::MenuItem(I18n::tr(plotTypeNames[index])))
 							requestNewPlot(name, static_cast<Plot::Type>(index));
 					}
 
@@ -634,7 +635,7 @@ class PlotsTree
 
 			ImGui::Separator();
 
-			if (ImGui::MenuItem("Copy"))
+			if (ImGui::MenuItem(I18n::tr("Copy")))
 				requestCopyGroup(name, group->getType());
 
 			/* A group is copied to the other kind of group. Which kind that is
@@ -642,30 +643,30 @@ class PlotsTree
 			   two entries is ever offered. */
 			if (isRecorderGroup)
 			{
-				if (ImGui::MenuItem("Copy to sampling group"))
+				if (ImGui::MenuItem(I18n::tr("Copy to sampling group")))
 					requestCopyGroup(name, PlotGroup::Type::Sampling);
 			}
 			else
 			{
 				ImGui::BeginDisabled(!recorderReady);
 
-				if (ImGui::MenuItem("Copy to recorder group"))
+				if (ImGui::MenuItem(I18n::tr("Copy to recorder group")))
 					requestCopyGroup(name, PlotGroup::Type::Recorder);
 
 				ImGui::EndDisabled();
 
 				if (!recorderReady && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-					ImGui::SetTooltip("Please enable recorder in Acquisition settings to copy this group to a recorder group");
+					ImGui::SetTooltip(I18n::tr("Please enable recorder in Acquisition settings to copy this group to a recorder group"));
 			}
 
 			ImGui::Separator();
 
-			if (ImGui::MenuItem("Delete group"))
+			if (ImGui::MenuItem(I18n::tr("Delete group")))
 				requestDeleteGroup(name);
 
 			ImGui::Separator();
 
-			if (ImGui::MenuItem("Properties"))
+			if (ImGui::MenuItem(I18n::tr("Properties")))
 			{
 				groupEditWindow->setGroupToEdit(group);
 				groupEditWindow->setShowGroupEditWindowState(true);
@@ -686,13 +687,13 @@ class PlotsTree
 
 		if (ImGui::BeginPopupContextItem(plotName.c_str()))
 		{
-			if (ImGui::BeginMenu("New"))
+			if (ImGui::BeginMenu(I18n::tr("New")))
 			{
-				if (ImGui::BeginMenu("Plot"))
+				if (ImGui::BeginMenu(I18n::tr("Plot")))
 				{
 					for (uint32_t index = 0; index < IM_ARRAYSIZE(plotTypeNames); index++)
 					{
-						if (ImGui::MenuItem(plotTypeNames[index]))
+						if (ImGui::MenuItem(I18n::tr(plotTypeNames[index])))
 							requestNewPlot(groupName, static_cast<Plot::Type>(index));
 					}
 
@@ -704,17 +705,17 @@ class PlotsTree
 
 			ImGui::Separator();
 
-			if (ImGui::MenuItem("Copy"))
+			if (ImGui::MenuItem(I18n::tr("Copy")))
 				requestCopyPlot(groupName, plotName);
 
 			ImGui::Separator();
 
-			if (ImGui::MenuItem("Delete plot"))
+			if (ImGui::MenuItem(I18n::tr("Delete plot")))
 				requestDeletePlot(groupName, plotName);
 
 			ImGui::Separator();
 
-			if (ImGui::MenuItem("Properties"))
+			if (ImGui::MenuItem(I18n::tr("Properties")))
 			{
 				plotEditWindow->setPlotToEdit(plot);
 				plotEditWindow->setShowPlotEditWindowState(true);

@@ -2,6 +2,8 @@
 
 #include <filesystem>
 
+#include "I18n.hpp"
+
 std::string GuiHelper::intToHexString(uint32_t var)
 {
 	std::stringstream ss;
@@ -15,12 +17,35 @@ void GuiHelper::drawCenteredText(std::string&& text)
 	ImGui::Text("%s", text.c_str());
 }
 
+std::string GuiHelper::padToColumn(const std::string& text, size_t column)
+{
+	/* The call site asks for a column `column` characters wide, and every call
+	   site counts those characters against the English label it was written
+	   for. What the count stands for is a width, so it is turned into one and
+	   the padding is measured against that. */
+	const float latinCharacterWidth = ImGui::CalcTextSize("M").x;
+	const float columnWidth = latinCharacterWidth * static_cast<float>(column);
+
+	const float textWidth = ImGui::CalcTextSize(text.c_str()).x;
+	const float spaceWidth = ImGui::CalcTextSize(" ").x;
+
+	int spacesToAdd = 0;
+
+	if (spaceWidth > 0.0f)
+		spacesToAdd = static_cast<int>((columnWidth - textWidth) / spaceWidth + 0.5f);
+
+	/* A label that is already wider than its column is left as it is, which is
+	   what the character-count version did: the control after it moves right
+	   and the rest of the rows stay put. */
+	if (spacesToAdd < 0)
+		spacesToAdd = 0;
+
+	return text + std::string(static_cast<size_t>(spacesToAdd), ' ');
+}
+
 void GuiHelper::drawTextAlignedToSize(std::string&& text, size_t alignTo)
 {
-	size_t currentLength = text.length();
-	size_t spacesToAdd = (currentLength < alignTo) ? (alignTo - currentLength) : 0;
-	std::string alignedText = text + std::string(spacesToAdd, ' ');
-	ImGui::Text("%s", alignedText.c_str());
+	ImGui::Text("%s", padToColumn(text, alignTo).c_str());
 }
 
 uint32_t GuiHelper::hexStringToDecimal(const std::string& hexStr)
@@ -103,24 +128,30 @@ std::optional<std::string> GuiHelper::showDeletePopup(const char* text, const st
 void GuiHelper::showQuestionBox(const char* id, const char* question, std::function<void()> onYes, std::function<void()> onNo, std::function<void()> onCancel)
 {
 	float buttonWidth = 120.0f * GuiHelper::contentScale;
+
+	/* The caller opens the box by the same id, and that call site goes through
+	   the table, so this one has to as well or the two would no longer name the
+	   same popup and it would never appear. */
+	id = I18n::tr(id);
+
 	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	if (ImGui::BeginPopupModal(id, NULL, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		ImGui::Text("%s", question);
 		ImGui::Separator();
-		if (ImGui::Button("Yes", ImVec2(buttonWidth, 0)))
+		if (ImGui::Button(I18n::tr("Yes"), ImVec2(buttonWidth, 0)))
 		{
 			onYes();
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("No", ImVec2(buttonWidth, 0)))
+		if (ImGui::Button(I18n::tr("No"), ImVec2(buttonWidth, 0)))
 		{
 			onNo();
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)))
+		if (ImGui::Button(I18n::tr("Cancel"), ImVec2(buttonWidth, 0)))
 		{
 			onCancel();
 			ImGui::CloseCurrentPopup();

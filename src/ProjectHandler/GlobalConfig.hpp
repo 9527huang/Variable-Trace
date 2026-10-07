@@ -33,6 +33,12 @@ class GlobalConfig
 		   into a different one. */
 		std::string theme = "dark";
 
+		/* "english" or "chinese", by name for the same reason as the theme. A
+		   name that is not recognised is read as English where it is applied,
+		   so a config from a build offering a language this one does not know
+		   still opens in a language the reader has. */
+		std::string language = "english";
+
 		std::vector<std::string> recentProjects{};
 
 		/* The API server is off until it is switched on. It accepts connections

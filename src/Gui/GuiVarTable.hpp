@@ -9,6 +9,7 @@
 #include "GuiHelper.hpp"
 #include "GuiImportVariables.hpp"
 #include "GuiVariablesEdit.hpp"
+#include "I18n.hpp"
 #include "IElfParser.hpp"
 #include "PlotHandler.hpp"
 #include "Popup.hpp"
@@ -71,18 +72,20 @@ class VariableTableWindow
 
 		ImGui::BeginDisabled(viewerDataHandler->getState() == DataHandlerBase::State::RUN);
 		ImGui::Dummy(ImVec2(-1, 5));
-		GuiHelper::drawCenteredText("Variables");
+		GuiHelper::drawCenteredText(I18n::tr("Variables"));
 		ImGui::SameLine();
-		ImGui::HelpMarker("Select your *.elf/*.axf file in the Options->Acqusition Settings to import or update the variables.");
+		ImGui::HelpMarker(I18n::tr("Select your *.elf/*.axf file in the Options->Acqusition Settings to import or update the variables."));
 		ImGui::Separator();
 
 		drawAddVariableButton();
 		drawUpdateAddressesFromElf();
 
-		const char* label = "search ";
-		ImGui::PushItemWidth(ImGui::GetItemRectSize().x - ImGui::CalcTextSize(label).x - 8 * GuiHelper::contentScale);
+		/* Padded to the width the English label takes, so that the field beside
+		   it starts in the same place in either language. */
+		const std::string label = GuiHelper::padToColumn(I18n::tr("search"), 7);
+		ImGui::PushItemWidth(ImGui::GetItemRectSize().x - ImGui::CalcTextSize(label.c_str()).x - 8 * GuiHelper::contentScale);
 		static std::string search{};
-		ImGui::Text("%s", label);
+		ImGui::Text("%s", label.c_str());
 		ImGui::SameLine();
 		ImGui::InputText("##search", &search, 0, NULL, NULL);
 		ImGui::PopItemWidth();
@@ -90,9 +93,13 @@ class VariableTableWindow
 		if (ImGui::BeginTable("table_scrolly", 3, flags, ImVec2(0.0f, 300 * GuiHelper::contentScale)))
 		{
 			ImGui::TableSetupScrollFreeze(0, 1);
-			ImGui::TableSetupColumn("Name", 0);
-			ImGui::TableSetupColumn("Address", 0);
-			ImGui::TableSetupColumn("Type", 0);
+
+			/* The header is the translation, but the id the column width is
+			   saved under is taken from the English, so that switching language
+			   does not throw the widths away. */
+			ImGui::TableSetupColumn(I18n::tr("Name"), 0, 0.0f, ImGui::GetID("Name"));
+			ImGui::TableSetupColumn(I18n::tr("Address"), 0, 0.0f, ImGui::GetID("Address"));
+			ImGui::TableSetupColumn(I18n::tr("Type"), 0, 0.0f, ImGui::GetID("Type"));
 			ImGui::TableHeadersRow();
 
 			std::optional<std::string> varNameToDelete;
@@ -153,7 +160,7 @@ class VariableTableWindow
 					ImGui::PopID();
 
 					if (selection.size() > 1)
-						ImGui::TextUnformatted("<multiple vars>");
+						ImGui::TextUnformatted(I18n::tr("<multiple vars>"));
 					else
 						ImGui::TextUnformatted(selection.begin()->c_str());
 					ImGui::EndDragDropSource();
@@ -163,7 +170,7 @@ class VariableTableWindow
 				if (var->getIsFound())
 					ImGui::Text("%s", ("0x" + std::string(GuiHelper::intToHexString(var->getAddress()))).c_str());
 				else
-					ImGui::TextColored(GuiHelper::redLight(), "NOT FOUND!");
+					ImGui::TextColored(GuiHelper::redLight(), I18n::tr("NOT FOUND!"));
 
 				ImGui::TableSetColumnIndex(2);
 				ImGui::Text("%s", var->getTypeStr().c_str());
@@ -187,14 +194,14 @@ class VariableTableWindow
    private:
 	void drawAddVariableButton()
 	{
-		if (ImGui::Button("Add variable", ImVec2(-1, 25 * GuiHelper::contentScale)))
+		if (ImGui::Button(I18n::tr("Add variable"), ImVec2(-1, 25 * GuiHelper::contentScale)))
 		{
 			variableHandler->addNewVariable("");
 		}
 
 		ImGui::BeginDisabled(projectElfPath->empty());
 
-		if (ImGui::Button("Import variables from *.elf/*.axf", ImVec2(-1, 25 * GuiHelper::contentScale)))
+		if (ImGui::Button(I18n::tr("Import variables from *.elf/*.axf"), ImVec2(-1, 25 * GuiHelper::contentScale)))
 			importVariablesWindow->setShowImportVariablesWindow(true);
 
 		ImGui::EndDisabled();
@@ -204,16 +211,19 @@ class VariableTableWindow
 	{
 		static bool shouldPopStyle = false;
 
-		static constexpr size_t textSize = 40;
+		/* Wide enough for the longest label in either language: a translated
+		   label is longer in bytes than the English it replaces, and this one
+		   carries a file pattern inside it. */
+		static constexpr size_t textSize = 80;
 		char buttonText[textSize]{};
 
 		if (isRefreshRunning())
-			snprintf(buttonText, textSize, "Update variable addresses %c", "|/-\\"[(int)(ImGui::GetTime() / 0.05f) & 3]);
+			snprintf(buttonText, textSize, "%s %c", I18n::tr("Update variable addresses"), "|/-\\"[(int)(ImGui::GetTime() / 0.05f) & 3]);
 		else
 		{
-			snprintf(buttonText, textSize, "Update variable addresses");
+			snprintf(buttonText, textSize, "%s", I18n::tr("Update variable addresses"));
 			if (refreshThread.valid() && !refreshThread.get())
-				popup.show("Error!", "Update error. Please check the *.elf/*.axf file path!", 2.0f);
+				popup.show(I18n::tr("Error!"), I18n::tr("Update error. Please check the *.elf/*.axf file path!"), 2.0f);
 		}
 
 		ImGui::BeginDisabled(projectElfPath->empty());
@@ -225,7 +235,7 @@ class VariableTableWindow
 		if (elfChanged)
 		{
 			ImVec4 color = GuiHelper::orange();
-			snprintf(buttonText, textSize, "Click to reload *.elf/*.axf changes!");
+			snprintf(buttonText, textSize, "%s", I18n::tr("Click to reload *.elf/*.axf changes!"));
 			ImGui::PushStyleColor(ImGuiCol_Button, color);
 			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, color);
 			ImGui::PushStyleColor(ImGuiCol_ButtonActive, color);
@@ -279,16 +289,16 @@ class VariableTableWindow
 		ImGui::PushID(name.c_str());
 		if (ImGui::BeginPopupContextItem(name.c_str()))
 		{
-			if (ImGui::MenuItem("New"))
+			if (ImGui::MenuItem(I18n::tr("New")))
 				onNew();
 
-			if (ImGui::MenuItem("Copy"))
+			if (ImGui::MenuItem(I18n::tr("Copy")))
 				onCopy(name);
 
-			if (ImGui::MenuItem("Delete"))
+			if (ImGui::MenuItem(I18n::tr("Delete")))
 				onDelete(name);
 
-			if (ImGui::MenuItem("Properties"))
+			if (ImGui::MenuItem(I18n::tr("Properties")))
 				onProperties(name);
 
 			ImGui::EndPopup();

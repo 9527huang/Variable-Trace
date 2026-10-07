@@ -1,11 +1,11 @@
 #include "Gui.hpp"
 #include "GuiStatisticsWindow.hpp"
+#include "I18n.hpp"
 
 void Gui::drawSettingsSwo()
 {
 	ImGui::Dummy(ImVec2(-1, 5));
-	ImGui::SetCursorPosX((ImGui::GetWindowSize().x - ImGui::CalcTextSize("Plots").x) * 0.5f);
-	ImGui::Text("Settings");
+	GuiHelper::drawCenteredText(I18n::tr("Settings"));
 	ImGui::Separator();
 
 	auto settings = traceDataHandler->getSettings();
@@ -14,25 +14,28 @@ void Gui::drawSettingsSwo()
 	if (state == DataHandlerBase::State::RUN)
 		ImGui::BeginDisabled();
 
-	ImGui::Text("core frequency [kHz]   ");
+	/* The column these labels and the two below them share is 23 characters of
+	   the English they were written for; the padding is measured in pixels by
+	   the helper so that it holds in either language. */
+	GuiHelper::drawTextAlignedToSize(I18n::tr("core frequency [kHz]"), 23);
 	ImGui::SameLine();
 
 	GuiHelper::drawInputText("##frequency", settings.coreFrequency, [&](std::string str)
 							 { settings.coreFrequency = std::stoi(str); });
 
-	ImGui::Text("trace prescaler        ");
+	GuiHelper::drawTextAlignedToSize(I18n::tr("trace prescaler"), 23);
 	ImGui::SameLine();
 	GuiHelper::drawInputText("##prescaler", settings.tracePrescaler, [&](std::string str)
 							 { settings.tracePrescaler = std::stoi(str); });
 
 	const char* triggers[] = {"OFF", "CH0", "CH1", "CH2", "CH3", "CH4", "CH5", "CH6", "CH7", "CH8", "CH9"};
 	int32_t trigerCombo = settings.triggerChannel + 1;
-	ImGui::Text("trigger channel        ");
+	GuiHelper::drawTextAlignedToSize(I18n::tr("trigger channel"), 23);
 	ImGui::SameLine();
 	if (ImGui::Combo("##trigger", &trigerCombo, triggers, IM_ARRAYSIZE(triggers)))
 		settings.triggerChannel = trigerCombo - 1;
 
-	ImGui::Text("trigger level          ");
+	GuiHelper::drawTextAlignedToSize(I18n::tr("trigger level"), 23);
 	ImGui::SameLine();
 
 	for (auto plt : *tracePlotHandler)
@@ -43,7 +46,7 @@ void Gui::drawSettingsSwo()
 							 { settings.triggerLevel = std::stod(str); });
 
 	static bool shouldReset = false;
-	ImGui::Text("should reset           ");
+	GuiHelper::drawTextAlignedToSize(I18n::tr("should reset"), 23);
 	ImGui::SameLine();
 	ImGui::Checkbox("##rst", &shouldReset);
 	settings.shouldReset = shouldReset;
@@ -56,10 +59,9 @@ void Gui::drawSettingsSwo()
 void Gui::drawIndicatorsSwo()
 {
 	ImGui::Dummy(ImVec2(-1, 5));
-	ImGui::SetCursorPosX((ImGui::GetWindowSize().x - ImGui::CalcTextSize("Plots").x) * 0.5f);
-	ImGui::Text("Indicators");
+	GuiHelper::drawCenteredText(I18n::tr("Indicators"));
 	ImGui::SameLine();
-	ImGui::HelpMarker("Indicators help to ascess the quality of trace waveforms. Look out for red indicators that tell you a frame might be misinterpreted. In such cases try to increase the trace prescaler or limit the number of active trace channels.");
+	ImGui::HelpMarker(I18n::tr("Indicators help to ascess the quality of trace waveforms. Look out for red indicators that tell you a frame might be misinterpreted. In such cases try to increase the trace prescaler or limit the number of active trace channels."));
 	ImGui::Separator();
 
 	auto indicators = traceDataHandler->getTraceIndicators();
@@ -81,10 +83,9 @@ void Gui::drawPlotsTreeSwo()
 	static std::string selected = tracePlotHandler->begin().operator*()->getName();
 
 	ImGui::Dummy(ImVec2(-1, 5));
-	ImGui::SetCursorPosX((ImGui::GetWindowSize().x - ImGui::CalcTextSize("Plots").x) * 0.5f);
-	ImGui::Text("Channels");
+	GuiHelper::drawCenteredText(I18n::tr("Channels"));
 	ImGui::SameLine();
-	ImGui::HelpMarker("Uncheck a channel to disable it and free some of the SWO pin bandwidth.");
+	ImGui::HelpMarker(I18n::tr("Uncheck a channel to disable it and free some of the SWO pin bandwidth."));
 	ImGui::Separator();
 
 	/* The controls column is sized so that a label and two controls fit on
@@ -100,7 +101,7 @@ void Gui::drawPlotsTreeSwo()
 	if (treeWidth < minimumTree)
 		treeWidth = minimumTree;
 
-	ImGui::BeginChild("Plot Tree", ImVec2(-1, windowHeight));
+	ImGui::BeginChild(I18n::tr("Plot Tree"), ImVec2(-1, windowHeight));
 	ImGui::BeginChild("left pane", ImVec2(treeWidth, -1), true);
 
 	auto state = traceDataHandler->getState();
@@ -131,22 +132,29 @@ void Gui::drawPlotsTreeSwo()
 	ImGui::SameLine();
 
 	std::shared_ptr<Plot> plt = tracePlotHandler->getPlot(selected);
-	const char* plotDomains[] = {"analog", "digital"};
+	const char* plotDomains[] = {I18n::tr("analog"), I18n::tr("digital")};
 	int32_t domainCombo = (int32_t)plt->getDomain();
 	int32_t traceVarTypeCombo = (int32_t)plt->getTraceVarType();
 	std::string newAlias = plt->getAlias();
+
+	/* The width every label in this panel is padded to, counted in the
+	   characters of the English they were written for. The alias, domain and
+	   type rows use it, and so do the two switches below, which is what puts
+	   every control in the panel in one column. */
+	static constexpr size_t alignment = 11;
+
 	ImGui::BeginGroup();
-	ImGui::Text("alias      ");
+	GuiHelper::drawTextAlignedToSize(I18n::tr("alias"), alignment);
 	ImGui::SameLine();
 	ImGui::PushID(plt->getAlias().c_str());
 	ImGui::InputText("##input", &newAlias, ImGuiInputTextFlags_EnterReturnsTrue, NULL, NULL);
-	ImGui::Text("domain     ");
+	GuiHelper::drawTextAlignedToSize(I18n::tr("domain"), alignment);
 	ImGui::SameLine();
 	ImGui::Combo("##combo", &domainCombo, plotDomains, IM_ARRAYSIZE(plotDomains));
 	if (domainCombo == static_cast<int32_t>(Plot::Domain::ANALOG))
 	{
 		const char* traceVarTypes[] = {"uint8_t", "int8_t", "uint16_t", "int16_t", "uint32_t", "int32_t", "float"};
-		ImGui::Text("type       ");
+		GuiHelper::drawTextAlignedToSize(I18n::tr("type"), alignment);
 		ImGui::SameLine();
 		ImGui::Combo("##combo2", &traceVarTypeCombo, traceVarTypes, IM_ARRAYSIZE(traceVarTypes));
 		statisticsWindow.drawAnalog(plt, state == DataHandlerBase::State::RUN);
@@ -156,13 +164,9 @@ void Gui::drawPlotsTreeSwo()
 
 	/* Cursors are put away while the trace is running, for the same reason as
 	   on the variable side: a measurement of data that is still arriving is a
-	   measurement of nothing. The two rows below share the label column the
-	   alias, domain and type rows already use, so every switch in this panel
-	   stands in the same place. */
-	static constexpr size_t alignment = 11;
-
+	   measurement of nothing. */
 	bool cursorsVisible = (traceDataHandler->getState() == DataHandlerBase::State::RUN) ? false : plt->getCursorsVisible();
-	GuiHelper::drawTextAlignedToSize("Cursors:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Cursors:"), alignment);
 	ImGui::SameLine();
 	if (ImGui::Checkbox("##cursors", &cursorsVisible))
 	{
@@ -188,7 +192,7 @@ void Gui::drawPlotsTreeSwo()
 	/* Put away while running for the same reason as the cursors: a window
 	   that measures a trace still being written is measuring nothing. */
 	bool statisticsVisible = (traceDataHandler->getState() == DataHandlerBase::State::RUN) ? false : plt->getStatisticsVisible();
-	GuiHelper::drawTextAlignedToSize("Statistics:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Statistics:"), alignment);
 	ImGui::SameLine();
 	if (ImGui::Checkbox("##statistics", &statisticsVisible))
 		plt->setStatisticsVisible(statisticsVisible);

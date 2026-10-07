@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "GuiHelper.hpp"
+#include "I18n.hpp"
 #include "Popup.hpp"
 #include "Variable.hpp"
 #include "VariableHandler.hpp"
@@ -23,18 +24,18 @@ class VariableEditWindow
 	void draw()
 	{
 		if (showVariableEditWindow)
-			ImGui::OpenPopup("Variable Edit");
+			ImGui::OpenPopup(I18n::tr("Variable Edit"));
 
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		ImGui::SetNextWindowSize(ImVec2(800 * GuiHelper::contentScale, 500 * GuiHelper::contentScale));
-		if (ImGui::BeginPopupModal("Variable Edit", &showVariableEditWindow, 0))
+		if (ImGui::BeginPopupModal(I18n::tr("Variable Edit"), &showVariableEditWindow, 0))
 		{
 			drawVariableEditSettings();
 
 			const float buttonHeight = 25.0f * GuiHelper::contentScale;
 			ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowSize().y - buttonHeight / 2.0f - ImGui::GetFrameHeightWithSpacing()));
 
-			if (ImGui::Button("Done", ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+			if (ImGui::Button(I18n::tr("Done"), ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
 			{
 				showVariableEditWindow = false;
 				selection.clear();
@@ -75,7 +76,7 @@ class VariableEditWindow
 		bool selectNameManually = editedVariable->getIsTrackedNameDifferent();
 
 		ImGui::Dummy(ImVec2(-1, 5));
-		GuiHelper::drawCenteredText("General");
+		GuiHelper::drawCenteredText(I18n::tr("General"));
 		ImGui::Separator();
 
 		if (stateChanged)
@@ -84,7 +85,7 @@ class VariableEditWindow
 			stateChanged = false;
 		}
 		/* NAME */
-		GuiHelper::drawTextAlignedToSize("name:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("name:"), alignment);
 		ImGui::SameLine();
 		ImGui::InputText("##name", &name, ImGuiInputTextFlags_None, NULL, NULL);
 		if (ImGui::IsItemDeactivatedAfterEdit())
@@ -94,28 +95,28 @@ class VariableEditWindow
 				variableHandler->renameVariable(editedVariable->getName(), name);
 			}
 			else
-				popup.show("Error!", "Variable already exists!", 1.5f);
+				popup.show(I18n::tr("Error!"), I18n::tr("Variable already exists!"), 1.5f);
 		}
 
 		ImGui::SameLine();
-		ImGui::HelpMarker("Name has to be unique - it can be different from tracked variable name if you specify it manually below.");
+		ImGui::HelpMarker(I18n::tr("Name has to be unique - it can be different from tracked variable name if you specify it manually below."));
 
 		/* TRACKED NAME */
 		ImGui::BeginDisabled(!shouldUpdateFromElf);
 
-		GuiHelper::drawTextAlignedToSize("specify tracked name:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("specify tracked name:"), alignment);
 		ImGui::SameLine();
 		if (ImGui::Checkbox("##selectNameManually", &selectNameManually))
 			editedVariable->setIsTrackedNameDifferent(selectNameManually);
 
 		ImGui::SameLine();
-		ImGui::HelpMarker("Check if you'd like to specify a different variable name that will be sampled.");
+		ImGui::HelpMarker(I18n::tr("Check if you'd like to specify a different variable name that will be sampled."));
 
 		ImGui::EndDisabled();
 
 		ImGui::BeginDisabled(!selectNameManually);
 
-		GuiHelper::drawTextAlignedToSize("tracked variable:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("tracked variable:"), alignment);
 		ImGui::SameLine();
 
 		std::string trackedVarName = selection.empty() ? editedVariable->getTrackedName() : *selection.begin();
@@ -134,20 +135,20 @@ class VariableEditWindow
 		if (ImGui::IsItemDeactivatedAfterEdit())
 		{
 			if (!variableHandler->contains(trackedVarName))
-				popup.show("Error!", "Tracked variable doesn't exist!", 1.5f);
+				popup.show(I18n::tr("Error!"), I18n::tr("Tracked variable doesn't exist!"), 1.5f);
 		}
 
 		ImGui::SameLine();
-		if (ImGui::Button("select...", ImVec2(65 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
+		if (ImGui::Button(I18n::tr("select..."), ImVec2(65 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
 			selectVariableWindow->setShowState(true);
 
 		ImGui::SameLine();
-		ImGui::HelpMarker("Select or type an imported variable name from the *.elf/*.axf file.");
+		ImGui::HelpMarker(I18n::tr("Select or type an imported variable name from the *.elf/*.axf file."));
 
 		ImGui::EndDisabled();
 
 		/* SHOULD UPDATE FROM ELF */
-		GuiHelper::drawTextAlignedToSize("update from *.elf/*.axf:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("update from *.elf/*.axf:"), alignment);
 		ImGui::SameLine();
 		if (ImGui::Checkbox("##shouldUpdateFromElf", &shouldUpdateFromElf))
 		{
@@ -155,12 +156,12 @@ class VariableEditWindow
 			editedVariable->setIsTrackedNameDifferent(false);
 		}
 		ImGui::SameLine();
-		ImGui::HelpMarker("Check if the variable address and size should be automatically updated from *.elf/*.axf file.");
+		ImGui::HelpMarker(I18n::tr("Check if the variable address and size should be automatically updated from *.elf/*.axf file."));
 
 		/* ADDRESS */
 		ImGui::BeginDisabled(shouldUpdateFromElf);
 
-		GuiHelper::drawTextAlignedToSize("address:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("address:"), alignment);
 		ImGui::SameLine();
 		if (ImGui::InputText("##address", &address, ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase, NULL, NULL))
 		{
@@ -168,7 +169,7 @@ class VariableEditWindow
 			editedVariable->setAddress(addressDec);
 		}
 		/* BASE TYPE*/
-		GuiHelper::drawTextAlignedToSize("base type:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("base type:"), alignment);
 		ImGui::SameLine();
 		int32_t type = static_cast<int32_t>(editedVariable->getType());
 
@@ -180,7 +181,7 @@ class VariableEditWindow
 		ImGui::EndDisabled();
 
 		/* WRITE LIMITS */
-		GuiHelper::drawTextAlignedToSize("write limits:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("write limits:"), alignment);
 		ImGui::SameLine();
 
 		bool writeLimitsEnabled = editedVariable->getWriteLimitsEnabled();
@@ -193,39 +194,39 @@ class VariableEditWindow
 		}
 
 		ImGui::SameLine();
-		ImGui::HelpMarker("When enabled, writing values outside the specified range will be rejected.");
+		ImGui::HelpMarker(I18n::tr("When enabled, writing values outside the specified range will be rejected."));
 
 		ImGui::BeginDisabled(!writeLimitsEnabled);
 
 		std::string writeMin = GuiHelper::numberToString(editedVariable->getWriteMin());
 		std::string writeMax = GuiHelper::numberToString(editedVariable->getWriteMax());
 
-		GuiHelper::drawTextAlignedToSize("min:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("min:"), alignment);
 		ImGui::SameLine();
 		if (ImGui::InputText("##writeLimitMin", &writeMin, ImGuiInputTextFlags_CharsDecimal, NULL, NULL))
 			editedVariable->setWriteLimits(true, GuiHelper::convertStringToNumber<double>(writeMin), editedVariable->getWriteMax());
 
 		if (ImGui::IsItemDeactivatedAfterEdit() && editedVariable->getWriteMin() > editedVariable->getWriteMax())
-			popup.show("Error!", "Min value cannot be greater than max value!", 1.5f);
+			popup.show(I18n::tr("Error!"), I18n::tr("Min value cannot be greater than max value!"), 1.5f);
 
-		GuiHelper::drawTextAlignedToSize("max:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("max:"), alignment);
 		ImGui::SameLine();
 		if (ImGui::InputText("##writeLimitMax", &writeMax, ImGuiInputTextFlags_CharsDecimal, NULL, NULL))
 			editedVariable->setWriteLimits(true, editedVariable->getWriteMin(), GuiHelper::convertStringToNumber<double>(writeMax));
 
 		if (ImGui::IsItemDeactivatedAfterEdit() && editedVariable->getWriteMax() < editedVariable->getWriteMin())
-			popup.show("Error!", "Max value cannot be less than min value!", 1.5f);
+			popup.show(I18n::tr("Error!"), I18n::tr("Max value cannot be less than min value!"), 1.5f);
 
 		ImGui::EndDisabled();
 
 		/* POSTPROCESSING */
 		ImGui::Dummy(ImVec2(-1, 5));
-		GuiHelper::drawCenteredText("Postprocessing");
+		GuiHelper::drawCenteredText(I18n::tr("Postprocessing"));
 		ImGui::SameLine();
-		ImGui::HelpMarker("Applies transformation [(value >> shift) & mask] after sampling and before interpretation.");
+		ImGui::HelpMarker(I18n::tr("Applies transformation [(value >> shift) & mask] after sampling and before interpretation."));
 		ImGui::Separator();
 
-		GuiHelper::drawTextAlignedToSize("shift right:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("shift right:"), alignment);
 		ImGui::SameLine();
 		if (ImGui::InputText("##shift", &shift, ImGuiInputTextFlags_CharsDecimal, NULL, NULL))
 		{
@@ -234,7 +235,7 @@ class VariableEditWindow
 			editedVariable->setShift(shiftDec);
 		}
 
-		GuiHelper::drawTextAlignedToSize("mask:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("mask:"), alignment);
 		ImGui::SameLine();
 		if (ImGui::InputText("##mask", &mask, ImGuiInputTextFlags_None, NULL, NULL))
 		{
@@ -244,12 +245,12 @@ class VariableEditWindow
 
 		/* INTERPRETATION */
 		ImGui::Dummy(ImVec2(-1, 5));
-		GuiHelper::drawCenteredText("Interpretation");
+		GuiHelper::drawCenteredText(I18n::tr("Interpretation"));
 		ImGui::SameLine();
-		ImGui::HelpMarker("Interpret integer numbers as fixed point variables.");
+		ImGui::HelpMarker(I18n::tr("Interpret integer numbers as fixed point variables."));
 		ImGui::Separator();
 
-		GuiHelper::drawTextAlignedToSize("type:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("type:"), alignment);
 		ImGui::SameLine();
 		int32_t highLeveltype = static_cast<int32_t>(editedVariable->getHighLevelType());
 
@@ -265,7 +266,7 @@ class VariableEditWindow
 			std::string fractionalBits = std::to_string(fractional.fractionalBits);
 			bool shouldUpdate = false;
 
-			GuiHelper::drawTextAlignedToSize("fractional bits:", alignment);
+			GuiHelper::drawTextAlignedToSize(I18n::tr("fractional bits:"), alignment);
 			ImGui::SameLine();
 			if (ImGui::InputText("##fractional", &fractionalBits, ImGuiInputTextFlags_CharsDecimal, NULL, NULL))
 				shouldUpdate = true;
@@ -281,7 +282,7 @@ class VariableEditWindow
 			else
 				base = std::to_string(fractional.base);
 
-			GuiHelper::drawTextAlignedToSize("base:", alignment);
+			GuiHelper::drawTextAlignedToSize(I18n::tr("base:"), alignment);
 			ImGui::SameLine();
 
 			if (ImGui::InputText("##base", &base, ImGuiInputTextFlags_None, NULL, NULL))
@@ -292,11 +293,11 @@ class VariableEditWindow
 
 			ImGui::SameLine();
 			ImGui::PushID("fractional");
-			if (ImGui::Button("select...", ImVec2(65 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
+			if (ImGui::Button(I18n::tr("select..."), ImVec2(65 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
 				selectVariableWindowBase->setShowState(true);
 			ImGui::PopID();
 			ImGui::SameLine();
-			ImGui::HelpMarker("Either type a new base (multiplier), or select a variable defined as base from the list of imported variables.");
+			ImGui::HelpMarker(I18n::tr("Either type a new base (multiplier), or select a variable defined as base from the list of imported variables."));
 
 			if (shouldUpdate)
 			{
@@ -325,9 +326,9 @@ class VariableEditWindow
 	void drawEnumLabelsEditor()
 	{
 		ImGui::Dummy(ImVec2(-1, 3));
-		GuiHelper::drawTextAlignedToSize("fields:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("fields:"), alignment);
 		ImGui::SameLine();
-		ImGui::HelpMarker("Name the values this variable can take. A value without a name is shown as a number.");
+		ImGui::HelpMarker(I18n::tr("Name the values this variable can take. A value without a name is shown as a number."));
 
 		std::vector<Variable::EnumLabel> labels = editedVariable->getEnumLabels();
 		std::optional<size_t> indexToRemove;
@@ -336,8 +337,8 @@ class VariableEditWindow
 
 		if (ImGui::BeginTable("##Enum Values", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp, ImVec2(0, 4 * rowHeight)))
 		{
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch);
-			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 90 * GuiHelper::contentScale);
+			ImGui::TableSetupColumn(I18n::tr("Label"), ImGuiTableColumnFlags_WidthStretch, 0.0f, ImGui::GetID("Label"));
+			ImGui::TableSetupColumn(I18n::tr("Value"), ImGuiTableColumnFlags_WidthFixed, 90 * GuiHelper::contentScale, ImGui::GetID("Value"));
 			ImGui::TableSetupColumn("##", ImGuiTableColumnFlags_WidthFixed, 60 * GuiHelper::contentScale);
 			ImGui::TableHeadersRow();
 
@@ -363,9 +364,9 @@ class VariableEditWindow
 					}
 
 					if (labels[index].label.empty())
-						popup.show("Error!", "Label cannot be empty!", 1.5f);
+						popup.show(I18n::tr("Error!"), I18n::tr("Label cannot be empty!"), 1.5f);
 					else if (duplicated)
-						popup.show("Error!", "Label already exists!", 1.5f);
+						popup.show(I18n::tr("Error!"), I18n::tr("Label already exists!"), 1.5f);
 				}
 
 				ImGui::TableSetColumnIndex(1);
@@ -377,12 +378,12 @@ class VariableEditWindow
 					labels[index].value = static_cast<int64_t>(GuiHelper::convertStringToNumber<double>(value));
 
 				if (ImGui::IsItemDeactivatedAfterEdit() && value.find_first_not_of("0123456789+-.") != std::string::npos)
-					popup.show("Error!", "Value must be a valid integer!", 1.5f);
+					popup.show(I18n::tr("Error!"), I18n::tr("Value must be a valid integer!"), 1.5f);
 
 				ImGui::TableSetColumnIndex(2);
 				ImGui::PushID("del");
 
-				if (ImGui::Button("Del", ImVec2(-1, rowHeight)))
+				if (ImGui::Button(I18n::tr("Del"), ImVec2(-1, rowHeight)))
 					indexToRemove = index;
 
 				ImGui::PopID();
@@ -392,7 +393,7 @@ class VariableEditWindow
 			ImGui::EndTable();
 		}
 
-		if (ImGui::Button("Add", ImVec2(120 * GuiHelper::contentScale, rowHeight)))
+		if (ImGui::Button(I18n::tr("Add"), ImVec2(120 * GuiHelper::contentScale, rowHeight)))
 			labels.push_back({"", 0});
 
 		if (indexToRemove.has_value())

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GuiHelper.hpp"
+#include "I18n.hpp"
 #include "Plot.hpp"
 #include "Statistics.hpp"
 
@@ -76,7 +77,7 @@ class StatisticsWindow
 		ImGui::ColorEdit4("##color", &ser->var->getColor().r, ImGuiColorEditFlags_NoInputs);
 
 		static bool selectRange = false;
-		ImGui::Text("Select range:");
+		ImGui::Text(I18n::tr("Select range:"));
 		ImGui::SameLine();
 		ImGui::Checkbox("##selectrange", &selectRange);
 
@@ -127,11 +128,11 @@ class StatisticsWindow
 		drawTimeRow("t0:", plt->stats.getValueX0());
 		drawTimeRow("t1:", plt->stats.getValueX1());
 		drawTimeRow("t1 - t0:", plt->stats.getValueX1() - plt->stats.getValueX0());
-		drawValueRow("min:", results.min);
-		drawValueRow("max:", results.max);
-		drawValueRow("delta (max-min):", results.max - results.min);
-		drawValueRow("mean:", results.mean);
-		drawValueRow("stddev:", results.stddev);
+		drawValueRow(I18n::tr("min:"), results.min);
+		drawValueRow(I18n::tr("max:"), results.max);
+		drawValueRow(I18n::tr("delta (max-min):"), results.max - results.min);
+		drawValueRow(I18n::tr("mean:"), results.mean);
+		drawValueRow(I18n::tr("stddev:"), results.stddev);
 
 		ImGui::EndTable();
 	}
@@ -182,7 +183,7 @@ class StatisticsWindow
 		   so that a window already saved too small is pulled back up instead of
 		   staying where it is. */
 		const ImGuiStyle& style = ImGui::GetStyle();
-		const float labelColumn = ImGui::CalcTextSize("delta (max-min):").x + style.CellPadding.x * 2.0f;
+		const float labelColumn = ImGui::CalcTextSize(I18n::tr("delta (max-min):")).x + style.CellPadding.x * 2.0f;
 		const float minimumWidth = labelColumn * 2.0f + style.WindowPadding.x * 2.0f;
 		ImGui::SetNextWindowSizeConstraints(ImVec2(minimumWidth, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
 
@@ -198,7 +199,7 @@ class StatisticsWindow
 		/* No collapse arrow, as upstream: the window is either open or closed by
 		   its switch, and a rolled-up title bar would be a third state the
 		   switch does not know about. */
-		ImGui::Begin("Statistics", &open, ImGuiWindowFlags_NoCollapse);
+		ImGui::Begin(I18n::tr("Statistics"), &open, ImGuiWindowFlags_NoCollapse);
 
 		if (!open)
 			plt->setStatisticsVisible(false);

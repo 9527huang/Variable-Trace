@@ -3,6 +3,7 @@
 
 #include "GuiHelper.hpp"
 #include "GuiSelectVariable.hpp"
+#include "I18n.hpp"
 #include "Plot.hpp"
 #include "PlotGroupHandler.hpp"
 #include "Popup.hpp"
@@ -19,18 +20,18 @@ class PlotEditWindow
 	void draw()
 	{
 		if (showPlotEditWindow)
-			ImGui::OpenPopup("Plot Edit");
+			ImGui::OpenPopup(I18n::tr("Plot Edit"));
 
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		ImGui::SetNextWindowSize(ImVec2(700 * GuiHelper::contentScale, 500 * GuiHelper::contentScale));
-		if (ImGui::BeginPopupModal("Plot Edit", &showPlotEditWindow, 0))
+		if (ImGui::BeginPopupModal(I18n::tr("Plot Edit"), &showPlotEditWindow, 0))
 		{
 			drawPlotEditSettings();
 
 			const float buttonHeight = 25.0f * GuiHelper::contentScale;
 			ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowSize().y - buttonHeight / 2.0f - ImGui::GetFrameHeightWithSpacing()));
 
-			if (ImGui::Button("Done", ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+			if (ImGui::Button(I18n::tr("Done"), ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
 			{
 				showPlotEditWindow = false;
 				ImGui::CloseCurrentPopup();
@@ -62,10 +63,10 @@ class PlotEditWindow
 		std::string name = editedPlot->getName();
 
 		ImGui::Dummy(ImVec2(-1, 5));
-		GuiHelper::drawCenteredText("Plot");
+		GuiHelper::drawCenteredText(I18n::tr("Plot"));
 		ImGui::Separator();
 
-		GuiHelper::drawTextAlignedToSize("name:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("name:"), alignment);
 		ImGui::SameLine();
 
 		if (stateChanged)
@@ -85,19 +86,19 @@ class PlotEditWindow
 				plotGroupHandler->renamePlotInAllGroups(oldName, name);
 			}
 			else
-				popup.show("Error!", "Plot already exists!", 1.5f);
+				popup.show(I18n::tr("Error!"), I18n::tr("Plot already exists!"), 1.5f);
 		}
 
-		const char* plotTypes[] = {"curve", "bar", "table", "XY"};
+		const char* plotTypes[] = {I18n::tr("curve"), I18n::tr("bar"), I18n::tr("table"), I18n::tr("XY")};
 		int32_t typeCombo = (int32_t)editedPlot->getType();
-		GuiHelper::drawTextAlignedToSize("type:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("type:"), alignment);
 		ImGui::SameLine();
 		if (ImGui::Combo("##combo", &typeCombo, plotTypes, IM_ARRAYSIZE(plotTypes)))
 			editedPlot->setType((Plot::Type)typeCombo);
 
 		if (editedPlot->getType() == Plot::Type::XY)
 		{
-			GuiHelper::drawTextAlignedToSize("X-axis variable:", alignment);
+			GuiHelper::drawTextAlignedToSize(I18n::tr("X-axis variable:"), alignment);
 			ImGui::SameLine();
 
 			std::string selectedVariable = "";
@@ -111,7 +112,7 @@ class PlotEditWindow
 			if (variableHandler->contains(selectedVariable))
 				editedPlot->setXAxisVariable(variableHandler->getVariable(selectedVariable).get());
 			ImGui::SameLine();
-			if (ImGui::Button("select...", ImVec2(65 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
+			if (ImGui::Button(I18n::tr("select..."), ImVec2(65 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
 				selectVariableWindow->setShowState(true);
 		}
 
@@ -130,13 +131,13 @@ class PlotEditWindow
 		std::string xLabel = editedPlot->getXAxisLabel();
 		std::string yLabel = editedPlot->getYAxisLabel();
 
-		GuiHelper::drawTextAlignedToSize("X-axis label:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("X-axis label:"), alignment);
 		ImGui::SameLine();
 		drawAxisLabelInput("##xAxisLabel", xLabel, editedPlot->getDefaultXAxisLabel());
 		if (ImGui::IsItemDeactivatedAfterEdit())
 			editedPlot->setXAxisLabel(xLabel);
 
-		GuiHelper::drawTextAlignedToSize("Y-axis label:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Y-axis label:"), alignment);
 		ImGui::SameLine();
 		drawAxisLabelInput("##yAxisLabel", yLabel, editedPlot->getDefaultYAxisLabel());
 		if (ImGui::IsItemDeactivatedAfterEdit())
@@ -149,7 +150,7 @@ class PlotEditWindow
 	   empty and the plot keeps following whatever it is drawn against. */
 	void drawAxisLabelInput(const char* id, std::string& label, const std::string& automatic)
 	{
-		const std::string hint = automatic.empty() ? std::string("(no label)") : automatic;
+		const std::string hint = automatic.empty() ? std::string(I18n::tr("(no label)")) : automatic;
 		ImGui::InputTextWithHint(id, hint.c_str(), &label, 0, NULL, NULL);
 	}
 

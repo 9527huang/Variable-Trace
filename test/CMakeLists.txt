@@ -45,6 +45,7 @@ include_directories(${EXECUTABLE}
     ${CMAKE_SOURCE_DIR}/src/Flashing
     ${CMAKE_SOURCE_DIR}/src/WritePlanner
     ${CMAKE_SOURCE_DIR}/src/Screenshot
+    ${CMAKE_SOURCE_DIR}/src/I18n
     ${CMAKE_SOURCE_DIR}/src/CSVStreamer)
 
 include_directories(${EXECUTABLE} SYSTEM PRIVATE
@@ -115,6 +116,9 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/MemoryReader/SerialDebugProbe.cpp
     ${CMAKE_SOURCE_DIR}/src/Recorder/RecorderLayout.cpp
     ${CMAKE_SOURCE_DIR}/src/Recorder/RecorderHandler.cpp
+    # The string table the interface draws from. Nothing in it needs a window,
+    # so the whole of it is checked here.
+    ${CMAKE_SOURCE_DIR}/src/I18n/I18n.cpp
     ${CMAKE_SOURCE_DIR}/src/MemoryReader/SerialDriverLayout.cpp)
 
 target_link_libraries(GTest::GTest INTERFACE gtest_main gmock gmock_main)
@@ -134,6 +138,7 @@ add_executable(${EXECUTABLE} main.cpp
     PlotTest.cpp
     PlotCopyTest.cpp
     PlotGroupCopyTest.cpp
+    I18nTest.cpp
     ProjectHandlerTest.cpp
     WritePlannerTest.cpp
     PlotExportTest.cpp

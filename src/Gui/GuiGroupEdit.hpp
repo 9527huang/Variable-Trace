@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "GuiHelper.hpp"
+#include "I18n.hpp"
 #include "Plot.hpp"
 #include "PlotGroupHandler.hpp"
 #include "Popup.hpp"
@@ -19,18 +20,18 @@ class GroupEditWindow
 	void draw()
 	{
 		if (showGroupEditWindow)
-			ImGui::OpenPopup("Group Edit");
+			ImGui::OpenPopup(I18n::tr("Group Edit"));
 
 		ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 		ImGui::SetNextWindowSize(ImVec2(700 * GuiHelper::contentScale, 500 * GuiHelper::contentScale));
-		if (ImGui::BeginPopupModal("Group Edit", &showGroupEditWindow, 0))
+		if (ImGui::BeginPopupModal(I18n::tr("Group Edit"), &showGroupEditWindow, 0))
 		{
 			drawGroupEditSettings();
 
 			const float buttonHeight = 25.0f * GuiHelper::contentScale;
 			ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowSize().y - buttonHeight / 2.0f - ImGui::GetFrameHeightWithSpacing()));
 
-			if (ImGui::Button("Done", ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+			if (ImGui::Button(I18n::tr("Done"), ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
 			{
 				showGroupEditWindow = false;
 				ImGui::CloseCurrentPopup();
@@ -61,10 +62,10 @@ class GroupEditWindow
 		std::string name = editedGroup->getName();
 
 		ImGui::Dummy(ImVec2(-1, 5));
-		GuiHelper::drawCenteredText("Group");
+		GuiHelper::drawCenteredText(I18n::tr("Group"));
 		ImGui::Separator();
 
-		GuiHelper::drawTextAlignedToSize("name:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("name:"), alignment);
 		ImGui::SameLine();
 
 		if (stateChanged)
@@ -84,17 +85,17 @@ class GroupEditWindow
 			}
 
 			else
-				popup.show("Error!", "Group already exists!", 1.5f);
+				popup.show(I18n::tr("Error!"), I18n::tr("Group already exists!"), 1.5f);
 		}
 
 		/* PARENT */
-		GuiHelper::drawTextAlignedToSize("parent:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("parent:"), alignment);
 		ImGui::SameLine();
 
 		/* Every group is offered except this one and the groups below it, because
 		   nesting a group in its own child would cut the whole branch off the
 		   tree. Index 0 is the top level, which is not a group. */
-		std::vector<std::string> candidates{"top level"};
+		std::vector<std::string> candidates{I18n::tr("top level")};
 
 		for (const auto& [candidateName, candidate] : *plotGroupHandler)
 		{

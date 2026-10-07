@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Gui.hpp"
+#include "I18n.hpp"
 #include "RecorderHandler.hpp"
 #include "ViewerDataHandler.hpp"
 
@@ -91,7 +92,7 @@ namespace
 	{
 		const double period = static_cast<double>(timestepNs) * (skippedSamples + 1) * 1e-9;
 		char text[96] = {};
-		snprintf(text, sizeof(text), "%.4g s per sample (%.4g Hz)", period, period > 0.0 ? 1.0 / period : 0.0);
+		snprintf(text, sizeof(text), I18n::tr("%.4g s per sample (%.4g Hz)"), period, period > 0.0 ? 1.0 / period : 0.0);
 		return text;
 	}
 }  // namespace
@@ -101,7 +102,7 @@ void Gui::drawRecorderWindow()
 	if (!showRecorderWindow)
 		return;
 
-	if (!ImGui::Begin("Recorder", &showRecorderWindow))
+	if (!ImGui::Begin(I18n::tr("Recorder"), &showRecorderWindow))
 	{
 		ImGui::End();
 		return;
@@ -129,7 +130,7 @@ void Gui::drawRecorderWindow()
 
 	if (recorderHandler == nullptr)
 	{
-		GuiHelper::drawCenteredText("The recorder is not available in this build.");
+		GuiHelper::drawCenteredText(I18n::tr("The recorder is not available in this build."));
 		ImGui::End();
 		return;
 	}
@@ -141,7 +142,7 @@ void Gui::drawRecorderWindow()
 
 	bool enabled = recorderHandler->isEnabled();
 
-	if (ImGui::Checkbox("Enable recorder", &enabled))
+	if (ImGui::Checkbox(I18n::tr("Enable recorder"), &enabled))
 	{
 		errorMessage.clear();
 		statusMessage.clear();
@@ -155,22 +156,22 @@ void Gui::drawRecorderWindow()
 			std::string error;
 
 			if (recorderHandler->stop(*probe, error))
-				report("The recorder was disabled and the target was stopped.");
+				report(I18n::tr("The recorder was disabled and the target was stopped."));
 			else
-				fail("The recorder was disabled, but the target could not be stopped: " + error);
+				fail(I18n::tr("The recorder was disabled, but the target could not be stopped: ") + error);
 		}
 
 		recorderHandler->setEnabled(enabled);
 	}
 
 	ImGui::SameLine();
-	ImGui::HelpMarker("The recorder samples inside a timer interrupt on the target and keeps the samples in its own memory. Nothing is streamed while it runs.");
+	ImGui::HelpMarker(I18n::tr("The recorder samples inside a timer interrupt on the target and keeps the samples in its own memory. Nothing is streamed while it runs."));
 
 	if (group == nullptr)
 	{
 		ImGui::Separator();
-		GuiHelper::drawCenteredText("There is no active recorder group.");
-		GuiHelper::drawCenteredText("Add a group of type 'recorder' in the plot tree and make it the active one.");
+		GuiHelper::drawCenteredText(I18n::tr("There is no active recorder group."));
+		GuiHelper::drawCenteredText(I18n::tr("Add a group of type 'recorder' in the plot tree and make it the active one."));
 		ImGui::End();
 		return;
 	}
@@ -181,7 +182,7 @@ void Gui::drawRecorderWindow()
 	std::string groupError;
 	const bool groupUsable = recorder::configFromGroup(*group, config, groupError);
 
-	ImGui::Text("Group: %s", group->getName().c_str());
+	ImGui::Text(I18n::tr("Group: %s"), group->getName().c_str());
 
 	/* Pushing a change while a run is in progress restarts it, which is what
 	   makes the change visible without the user having to stop and start. */
@@ -195,38 +196,46 @@ void Gui::drawRecorderWindow()
 		std::string error;
 
 		if (recorderHandler->start(*probe, updated, error))
-			report("Restarted with the new " + what + ".");
+		{
+			/* The setting that changed is named in the middle of the sentence,
+			   and a language is free to put it somewhere else, so the wording
+			   goes through the table as a whole. The name itself is a key the
+			   configuration and the API also use, and stays as it is. */
+			char message[256] = {};
+			snprintf(message, sizeof(message), I18n::tr("Restarted with the new %s."), what.c_str());
+			report(message);
+		}
 		else
-			fail("The recorder could not be restarted: " + error);
+			fail(I18n::tr("The recorder could not be restarted: ") + error);
 	};
 
 	ImGui::Separator();
 
 	/* ------------------------------------------------------------- the target */
-	GuiHelper::drawCenteredText("Target");
+	GuiHelper::drawCenteredText(I18n::tr("Target"));
 	ImGui::Separator();
 
 	if (!probeOpen)
 	{
 		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
-		GuiHelper::drawCenteredText("The acquisition is stopped. Start it first, the recorder uses that connection.");
+		GuiHelper::drawCenteredText(I18n::tr("The acquisition is stopped. Start it first, the recorder uses that connection."));
 		ImGui::PopStyleColor();
 	}
 
 	ImGui::BeginDisabled(!probeOpen);
 
-	if (ImGui::Button("Detect", ImVec2(120 * GuiHelper::contentScale, 0)))
+	if (ImGui::Button(I18n::tr("Detect"), ImVec2(120 * GuiHelper::contentScale, 0)))
 	{
 		errorMessage.clear();
 
 		if (!syncRecorderSymbols())
-			fail("The symbol table has no ____recorderSettings or ____recorder. Import the variables from an *.elf/*.axf built with the recorder sources.");
+			fail(I18n::tr("The symbol table has no ____recorderSettings or ____recorder. Import the variables from an *.elf/*.axf built with the recorder sources."));
 		else
 		{
 			std::string error;
 
 			if (recorderHandler->detect(*probe, error))
-				report("Recorder detected.");
+				report(I18n::tr("Recorder detected."));
 			else
 				fail(error);
 
@@ -236,7 +245,11 @@ void Gui::drawRecorderWindow()
 			std::string driverError;
 
 			if (recorderHandler->detectDriver(*probe, driverError))
-				report("Recorder detected. " + serial::describeDriverSettings(recorderHandler->getDetectedDriverSettings()) + ".");
+			{
+				char message[512] = {};
+				snprintf(message, sizeof(message), I18n::tr("Recorder detected. %s."), serial::describeDriverSettings(recorderHandler->getDetectedDriverSettings()).c_str());
+				report(message);
+			}
 		}
 	}
 
@@ -245,7 +258,7 @@ void Gui::drawRecorderWindow()
 	if (recorderHandler->isDetected())
 	{
 		const recorder::Settings& settings = recorderHandler->getDetectedSettings();
-		ImGui::Text("Version %u.%u, time base %u ns, buffer %u elements, up to %u variables, float %s",
+		ImGui::Text(I18n::tr("Version %u.%u, time base %u ns, buffer %u elements, up to %u variables, float %s"),
 					settings.version, settings.revision, settings.timestepNs, settings.maxBufferSize,
 					settings.maxVariables, settings.floatSupport != 0 ? "yes" : "no");
 
@@ -253,7 +266,7 @@ void Gui::drawRecorderWindow()
 			ImGui::TextDisabled("%s", serial::describeDriverSettings(recorderHandler->getDetectedDriverSettings()).c_str());
 	}
 	else
-		ImGui::TextUnformatted("Not detected yet.");
+		ImGui::TextUnformatted(I18n::tr("Not detected yet."));
 
 	ImGui::EndDisabled();
 
@@ -262,7 +275,7 @@ void Gui::drawRecorderWindow()
 	const recorder::Settings& settings = recorderHandler->getDetectedSettings();
 
 	/* ---------------------------------------------------------------- capture */
-	GuiHelper::drawCenteredText("Capture");
+	GuiHelper::drawCenteredText(I18n::tr("Capture"));
 	ImGui::Separator();
 
 	ImGui::BeginDisabled(!enabled);
@@ -276,10 +289,10 @@ void Gui::drawRecorderWindow()
 
 	ImGui::BeginDisabled(!canRun);
 
-	const char* modes[] = {"run", "normal", "single"};
+	const char* modes[] = {I18n::tr("run"), I18n::tr("normal"), I18n::tr("single")};
 	int modeIndex = static_cast<int>(config.mode);
 
-	GuiHelper::drawTextAlignedToSize("Mode:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Mode:"), alignment);
 	ImGui::SameLine();
 
 	if (ImGui::Combo("##recorderMode", &modeIndex, modes, IM_ARRAYSIZE(modes)))
@@ -291,7 +304,7 @@ void Gui::drawRecorderWindow()
 		/* Nothing arms the comparison in run mode, so a mode that waits for a
 		   trigger without one would look like a trigger that never fired. */
 		if (mode != recorder::Mode::Run && (!config.trigger.enabled || config.trigger.source.empty()))
-			fail("Mode '" + std::string(modes[modeIndex]) + "' waits for a trigger. Pick a source variable below first.");
+			fail(std::string(I18n::tr("Mode '")) + modes[modeIndex] + I18n::tr("' waits for a trigger. Pick a source variable below first."));
 		else
 		{
 			recorder::Config updated = config;
@@ -301,10 +314,10 @@ void Gui::drawRecorderWindow()
 	}
 
 	ImGui::SameLine();
-	ImGui::HelpMarker("Run captures continuously and keeps the newest samples. Normal and single wait for the trigger; "
-					  "single stops after one capture, normal can be started again.");
+	ImGui::HelpMarker(I18n::tr("Run captures continuously and keeps the newest samples. Normal and single wait for the trigger; "
+							   "single stops after one capture, normal can be started again."));
 
-	GuiHelper::drawTextAlignedToSize("Skip samples:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Skip samples:"), alignment);
 	ImGui::SameLine();
 
 	int skipped = static_cast<int>(config.skippedSamples);
@@ -322,21 +335,21 @@ void Gui::drawRecorderWindow()
 	if (detected)
 		ImGui::TextDisabled("%s", describePeriod(settings.timestepNs, config.skippedSamples).c_str());
 	else
-		ImGui::TextDisabled("Time base unknown until the recorder is detected.");
+		ImGui::TextDisabled(I18n::tr("Time base unknown until the recorder is detected."));
 
 	const uint32_t packSize = recorder::packSizeOf(config.variables);
 
 	if (groupUsable)
 	{
-		GuiHelper::drawTextAlignedToSize("Sample:", alignment);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Sample:"), alignment);
 		ImGui::SameLine();
-		ImGui::Text("%u variables, %u bytes", static_cast<uint32_t>(config.variables.size()), packSize);
+		ImGui::Text(I18n::tr("%u variables, %u bytes"), static_cast<uint32_t>(config.variables.size()), packSize);
 	}
 
 	/* ---------------------------------------------------------------- trigger */
 	ImGui::BeginDisabled(config.mode == recorder::Mode::Run);
 
-	GuiHelper::drawCenteredText("Trigger");
+	GuiHelper::drawCenteredText(I18n::tr("Trigger"));
 	ImGui::Separator();
 
 	const std::vector<std::string> sourceNames = recorderSourceNames(*group);
@@ -349,7 +362,7 @@ void Gui::drawRecorderWindow()
 			sourceIndex = static_cast<int>(index);
 	}
 
-	GuiHelper::drawTextAlignedToSize("Source:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Source:"), alignment);
 	ImGui::SameLine();
 
 	if (ImGui::BeginCombo("##triggerSource", sourcePreview.c_str()))
@@ -373,10 +386,10 @@ void Gui::drawRecorderWindow()
 		ImGui::EndCombo();
 	}
 
-	GuiHelper::drawTextAlignedToSize("Edge:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Edge:"), alignment);
 	ImGui::SameLine();
 
-	const char* edges[] = {"rising", "falling"};
+	const char* edges[] = {I18n::tr("rising"), I18n::tr("falling")};
 	int edgeIndex = static_cast<int>(config.trigger.edge);
 
 	if (ImGui::Combo("##triggerEdge", &edgeIndex, edges, IM_ARRAYSIZE(edges)))
@@ -386,7 +399,7 @@ void Gui::drawRecorderWindow()
 		pushConfig(updated, "trigger edge");
 	}
 
-	GuiHelper::drawTextAlignedToSize("Value:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Value:"), alignment);
 	ImGui::SameLine();
 
 	double triggerValue = config.trigger.value;
@@ -398,7 +411,7 @@ void Gui::drawRecorderWindow()
 		recorderHandler->setPendingConfig(updated);
 	}
 
-	GuiHelper::drawTextAlignedToSize("Pre-trigger:", alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Pre-trigger:"), alignment);
 	ImGui::SameLine();
 
 	int preTrigger = static_cast<int>(config.trigger.preTriggerSamples);
@@ -412,7 +425,7 @@ void Gui::drawRecorderWindow()
 	}
 
 	ImGui::SameLine();
-	ImGui::HelpMarker("Samples kept from before the trigger. The captured window always ends at the trigger plus this many samples.");
+	ImGui::HelpMarker(I18n::tr("Samples kept from before the trigger. The captured window always ends at the trigger plus this many samples."));
 
 	ImGui::EndDisabled();
 
@@ -423,35 +436,35 @@ void Gui::drawRecorderWindow()
 
 	if (running)
 	{
-		if (ImGui::Button("Stop", ImVec2(120 * GuiHelper::contentScale, 0)))
+		if (ImGui::Button(I18n::tr("Stop"), ImVec2(120 * GuiHelper::contentScale, 0)))
 		{
 			std::string error;
 
 			if (recorderHandler->stop(*probe, error))
-				report("The target was stopped.");
+				report(I18n::tr("The target was stopped."));
 			else
 				fail(error);
 		}
 	}
-	else if (ImGui::Button("Start", ImVec2(120 * GuiHelper::contentScale, 0)))
+	else if (ImGui::Button(I18n::tr("Start"), ImVec2(120 * GuiHelper::contentScale, 0)))
 	{
 		errorMessage.clear();
 
 		if (!syncRecorderSymbols())
-			fail("The symbol table has no ____recorderSettings or ____recorder. Import the variables from an *.elf/*.axf built with the recorder sources.");
+			fail(I18n::tr("The symbol table has no ____recorderSettings or ____recorder. Import the variables from an *.elf/*.axf built with the recorder sources."));
 		else
 		{
 			std::string error;
 
 			if (recorderHandler->detect(*probe, error) && recorderHandler->start(*probe, config, error))
-				report("Recording. The target fills its buffer on its own, press Download when it has filled.");
+				report(I18n::tr("Recording. The target fills its buffer on its own, press Download when it has filled."));
 			else
 				fail(error);
 		}
 	}
 
 	ImGui::SameLine();
-	ImGui::TextUnformatted(running ? "The target is sampling." : "The target is idle.");
+	ImGui::TextUnformatted(I18n::tr(running ? "The target is sampling." : "The target is idle."));
 
 	ImGui::EndDisabled();  // canRun
 	ImGui::EndDisabled();  // enabled
@@ -461,7 +474,7 @@ void Gui::drawRecorderWindow()
 
 	ImGui::BeginDisabled(!probeOpen || !recorderHandler->isDetected());
 
-	if (ImGui::Button("Download", ImVec2(120 * GuiHelper::contentScale, 0)))
+	if (ImGui::Button(I18n::tr("Download"), ImVec2(120 * GuiHelper::contentScale, 0)))
 	{
 		errorMessage.clear();
 
@@ -499,8 +512,8 @@ void Gui::drawRecorderWindow()
 	}
 
 	ImGui::SameLine();
-	ImGui::HelpMarker("Copies the whole buffer out of the target and rebuilds the samples from the ring state. "
-					  "The sampling loop pauses for the duration of the copy.");
+	ImGui::HelpMarker(I18n::tr("Copies the whole buffer out of the target and rebuilds the samples from the ring state. "
+							   "The sampling loop pauses for the duration of the copy."));
 
 	ImGui::EndDisabled();
 
@@ -520,7 +533,7 @@ void Gui::drawRecorderWindow()
 		   that decimating it would hide the very features it is used to find. */
 		if (ImPlot::BeginPlot("##recorderCapture", ImVec2(-1, 300 * GuiHelper::contentScale)))
 		{
-			ImPlot::SetupAxes("time [s]", "value");
+			ImPlot::SetupAxes(I18n::tr("time [s]"), I18n::tr("value"));
 
 			for (size_t index = 0; index < captureValues.size(); index++)
 			{
@@ -533,7 +546,7 @@ void Gui::drawRecorderWindow()
 			ImPlot::EndPlot();
 		}
 
-		ImGui::Text("%u samples, one every %s", static_cast<uint32_t>(captureTimes.size()),
+		ImGui::Text(I18n::tr("%u samples, one every %s"), static_cast<uint32_t>(captureTimes.size()),
 					describePeriod(settings.timestepNs, config.skippedSamples).c_str());
 	}
 

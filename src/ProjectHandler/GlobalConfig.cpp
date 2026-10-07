@@ -71,6 +71,7 @@ bool GlobalConfig::load()
 		const auto& interface = root.at("interface");
 		settings.fontScale = interface.value("fontScale", settings.fontScale);
 		settings.theme = interface.value("theme", settings.theme);
+		settings.language = interface.value("language", settings.language);
 	}
 
 	/* An unrecognised name would leave the interface in whichever palette the
@@ -151,7 +152,7 @@ bool GlobalConfig::save()
 	json root;
 	root["formatVersion"] = formatVersion;
 	root["autoSave"] = {{"enabled", settings.autoSaveEnabled}, {"intervalSeconds", settings.autoSaveIntervalSeconds}};
-	root["interface"] = {{"fontScale", settings.fontScale}, {"theme", settings.theme}};
+	root["interface"] = {{"fontScale", settings.fontScale}, {"theme", settings.theme}, {"language", settings.language}};
 	root["api"] = {{"enabled", settings.mcpEnabled},
 				   {"preferredPort", settings.mcpPreferredPort},
 				   {"writesEnabled", settings.apiWritesEnabled}};

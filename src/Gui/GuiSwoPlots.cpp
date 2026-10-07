@@ -1,6 +1,7 @@
 #include <implot.h>
 
 #include "Gui.hpp"
+#include "I18n.hpp"
 
 void Gui::drawPlotsSwo()
 {
@@ -30,9 +31,9 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 		recordDrawnPlot(plot->getName());
 
 		if (first)
-			ImPlot::SetupAxis(ImAxis_X1, "time[s]", ImPlotAxisFlags_Opposite | ImPlotAxisFlags_NoLabel);
+			ImPlot::SetupAxis(ImAxis_X1, I18n::tr("time[s]"), ImPlotAxisFlags_Opposite | ImPlotAxisFlags_NoLabel);
 		else
-			ImPlot::SetupAxis(ImAxis_X1, "time[s]", ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel);
+			ImPlot::SetupAxis(ImAxis_X1, I18n::tr("time[s]"), ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel);
 
 		if (traceDataHandler->getState() == DataHandlerBase::State::RUN)
 		{

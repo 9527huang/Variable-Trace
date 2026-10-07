@@ -21,6 +21,7 @@
 #include "GuiVarTable.hpp"
 #include "GuiVariablesEdit.hpp"
 #include "GuiWritePlanner.hpp"
+#include "I18n.hpp"
 #include "IDebugProbe.hpp"
 #include "IElfParser.hpp"
 #include "IFileHandler.hpp"
@@ -90,6 +91,21 @@ class Gui
 	   opened, so an edit made through the API or a config file shows up too. */
 	int themeIndex = 0;
 
+	/* Same split for the language: the combo is an index, the settings hold a
+	   name. */
+	int languageIndex = 0;
+
+	/* Switching the language means the font atlas has to take on the Chinese
+	   glyphs, and ImGui refuses to build an atlas between NewFrame and Render.
+	   The dialog runs inside that window, so it records the request here and
+	   the frame loop carries it out before the next NewFrame. */
+	bool fontRebuildPending = false;
+
+	/* The layout is asked about once, on the first frame, because after that
+	   the windows have filed an entry of their own and the answer is always
+	   that a layout exists. */
+	bool dockLayoutChecked = false;
+
 	IFileHandler* fileHandler;
 	PlotHandler* tracePlotHandler;
 	ViewerDataHandler* viewerDataHandler;
@@ -100,7 +116,7 @@ class Gui
 	std::shared_ptr<IDebugProbe> serialProbe;
 	std::shared_ptr<IDebugProbe> debugProbeDevice;
 	std::vector<std::string> devicesList{};
-	const std::string noDevices = "No debug probes found!";
+	const std::string noDevices = I18n::tr("No debug probes found!");
 
 	std::shared_ptr<ITraceProbe> stlinkTraceProbe;
 	std::shared_ptr<ITraceProbe> jlinkTraceProbe;
@@ -277,6 +293,25 @@ class Gui
 	   before the first frame and again whenever the theme is switched, so the
 	   two paths cannot drift apart. */
 	void applyTheme();
+
+	/* Reads the stored language into the lookup table. Called before the font
+	   atlas is built, so that the atlas already holds the glyphs the language
+	   needs. */
+	void applyLanguage();
+
+	/* Lays the panels out when there is no saved layout to restore. Takes the
+	   dockspace id rather than the ImGui type it is, so that this header does
+	   not have to carry imgui.h. */
+	void ensureDockLayout(unsigned int dockspaceId);
+
+	/* Builds the font atlas for the language in force. Called once before the
+	   first frame. */
+	void setupFonts();
+
+	/* Throws the atlas away and builds it again, for the one setting that
+	   changes which glyphs are needed. Called at the top of a frame, where
+	   ImGui allows it. */
+	void rebuildFonts();
 
 	void drawPlots();
 	void drawPlotCurve(std::shared_ptr<Plot> plot);
