@@ -321,6 +321,21 @@ class Gui
 	void handleDragRect(uint32_t id, Plot::DragRect& dragRect, ImPlotRect plotLimits);
 	void dragAndDropPlot(std::shared_ptr<Plot> plot);
 
+	/* Whether the input arriving this frame asks the plot being drawn for a
+	   view other than the one it is showing. Only meaningful between
+	   BeginPlot() and EndPlot(), and only asked while the view is following
+	   the data. */
+	bool plotViewWasAskedForByHand();
+
+	/* The control that puts a plot back on the live end of its data. It is
+	   drawn only while the view is away from there, so a plot nobody has
+	   touched carries no extra control, and it answers whether it was
+	   pressed. It reads the pointer itself rather than going through an ImGui
+	   widget, since a widget inside a plot does not get the press; see the
+	   definition. Also between BeginPlot() and EndPlot(), and after the last
+	   of the Setup calls. */
+	bool drawBackToLiveButton(const Plot& plot);
+
 	void showQuestionBox(const char* id, const char* question, std::function<void()> onYes, std::function<void()> onNo, std::function<void()> onCancel);
 	void askShouldSaveOnExit(bool shouldOpenPopup);
 	void askShouldSaveOnNew(bool shouldOpenPopup);

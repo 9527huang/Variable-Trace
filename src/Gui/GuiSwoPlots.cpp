@@ -35,16 +35,32 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 		else
 			ImPlot::SetupAxis(ImAxis_X1, I18n::tr("time[s]"), ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel);
 
-		if (traceDataHandler->getState() == DataHandlerBase::State::RUN)
+		const bool running = traceDataHandler->getState() == DataHandlerBase::State::RUN;
+		const bool follows = plot->isViewFollowingLatestData();
+
+		if (running)
 		{
-			auto settings = traceDataHandler->getSettings();
-			const double min = time.getOldestValue();
-			const double max = time.getNewestValue();
-			const double viewportWidth = (max - min) * (settings.maxViewportPointsPercent / 100.0);
-			ImPlot::SetupAxisLimits(ImAxis_X1, max - viewportWidth, max, ImPlotCond_Always);
+			if (follows)
+			{
+				auto settings = traceDataHandler->getSettings();
+				const double min = time.getOldestValue();
+				const double max = time.getNewestValue();
+				const double viewportWidth = (max - min) * (settings.maxViewportPointsPercent / 100.0);
+				ImPlot::SetupAxisLimits(ImAxis_X1, max - viewportWidth, max, ImPlotCond_Always);
+			}
 		}
 		else
 			ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel);
+
+		/* This subplot links the horizontal axis of every trace plot to one
+		   shared pair of numbers, so the view leaves the live end for all of
+		   them at once: whichever plot stopped writing the range would be
+		   pulled back by the next one still writing it. */
+		if (running && follows && plotViewWasAskedForByHand())
+		{
+			for (const std::shared_ptr<Plot>& other : *tracePlotHandler)
+				other->setViewFollowsLatestData(false);
+		}
 
 		if (plot->getDomain() == Plot::Domain::DIGITAL)
 		{
@@ -113,6 +129,16 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 
 			ImPlot::SetNextMarkerStyle(ImPlotMarker_Cross, 6, ImVec4(1, 1, 0, 1), 3, ImVec4(1, 1, 0, 1));
 			ImPlot::PlotScatter("###point3", delayed3Timestamps.data(), values.data(), delayed3Timestamps.size(), false);
+		}
+
+		/* One control for the whole stack. The plots share a horizontal axis,
+		   so they leave the live end together and come back to it together,
+		   and one button on the top plot says so without repeating itself
+		   down the stack. */
+		if (running && first && drawBackToLiveButton(*plot))
+		{
+			for (const std::shared_ptr<Plot>& other : *tracePlotHandler)
+				other->setViewFollowsLatestData(true);
 		}
 
 		ImPlot::EndPlot();

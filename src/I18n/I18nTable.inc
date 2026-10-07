@@ -49,6 +49,7 @@ static const Entry table[] = {
 	{"Ask for location:##askForScreenshotLocation", "每次询问位置:##askForScreenshotLocation"},
 	{"Auto-detected from the TI C2000 code generation tools / Code Composer Studio install. Override here if not found automatically.", "自动从 TI C2000 代码生成工具 / Code Composer Studio 的安装目录中查找。未能自动找到时，在此手动指定。"},
 	{"Autosave project", "自动保存工程"},
+	{"Back to live", "回到实时"},
 	{"Bar", "柱状图"},
 	{"Baudrate", "波特率"},
 	{"Baudrate:", "波特率:"},

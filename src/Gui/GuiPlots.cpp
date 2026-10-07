@@ -17,6 +17,100 @@ void Gui::dragAndDropPlot(std::shared_ptr<Plot> plot)
 	}
 }
 
+/* Whether the input arriving this frame asks the plot being drawn for a view
+   other than the one it is showing.
+
+   Comparing the axis range before and after the frame is the obvious way to
+   tell, and it does not work here. Reading a range back from ImPlot locks
+   the rest of the setup for that plot, and a range written by this code in
+   the same frame is the range that would be read back, so a change made by
+   the reader between the two is never visible in either direction.
+
+   The input is asked instead. A wheel, a drag with the pan button and a drag
+   with the select button are the three ways a plot view can be moved, and
+   the keys they sit on come from ImPlot's own map, so a gesture counts here
+   exactly when ImPlot would have acted on it.
+
+   Only the area the trace is drawn in is watched, so a wheel turned over an
+   axis label is missed. It would move the same view from the same call, and
+   a reader who wants to move a view puts the pointer on the trace, where
+   they are looking. */
+bool Gui::plotViewWasAskedForByHand()
+{
+	if (!ImPlot::IsPlotHovered())
+		return false;
+
+	/* A variable dragged onto a plot is held by the same button that pans
+	   one, and that gesture belongs to the drop rather than to the view. */
+	if (ImGui::GetDragDropPayload() != nullptr)
+		return false;
+
+	const ImGuiIO& io = ImGui::GetIO();
+	const ImPlotInputMap& inputMap = ImPlot::GetInputMap();
+
+	/* ImPlot reads a modifier as a requirement when the map names one and as
+	   an absence of any requirement when it names none, which is what this
+	   leaves it as. */
+	auto modifierHeld = [&io](int modifier) { return (io.KeyMods & modifier) == modifier; };
+
+	/* Ctrl is ImPlot's key for standing aside and letting whatever lies
+	   under the plot have the mouse, so a gesture holding it is not meant
+	   for the axes. */
+	if (inputMap.OverrideMod != ImGuiMod_None && modifierHeld(inputMap.OverrideMod))
+		return false;
+
+	if (io.MouseWheel != 0.0f && modifierHeld(inputMap.ZoomMod))
+		return true;
+
+	if (ImGui::IsMouseDragging(inputMap.Pan) && modifierHeld(inputMap.PanMod))
+		return true;
+
+	return ImGui::IsMouseDragging(inputMap.Select) && modifierHeld(inputMap.SelectMod);
+}
+
+bool Gui::drawBackToLiveButton(const Plot& plot)
+{
+	if (plot.isViewFollowingLatestData())
+		return false;
+
+	const ImVec2 tracePos = ImPlot::GetPlotPos();
+	const ImVec2 traceSize = ImPlot::GetPlotSize();
+
+	const char* label = I18n::tr("Back to live");
+	const ImVec2 labelSize = ImGui::CalcTextSize(label);
+	const ImVec2 padding(8.0f * GuiHelper::contentScale, 4.0f * GuiHelper::contentScale);
+	const ImVec2 buttonSize(labelSize.x + 2 * padding.x, labelSize.y + 2 * padding.y);
+
+	/* Put it in the top right corner of the trace area. A view the reader
+	   moved by hand is usually looking at older data, so the newest samples
+	   are off to the right and the corner it is drawn in is the one they are
+	   least likely to be reading. */
+	const ImVec2 buttonPos(tracePos.x + traceSize.x - buttonSize.x - padding.x, tracePos.y + padding.y);
+	const ImVec2 buttonEnd(buttonPos.x + buttonSize.x, buttonPos.y + buttonSize.y);
+	const ImVec2 textPos(buttonPos.x + padding.x, buttonPos.y + padding.y);
+
+	/* The control is read and drawn by hand rather than through
+	   ImGui::Button. A plot answers the mouse over the whole of its area, and
+	   a widget placed inside that area loses the press to it: ImGui would
+	   have to be told which of the two comes first, and it cannot be told
+	   without also changing how the plot itself takes input. Reading the
+	   pointer here leaves the plot's own handling exactly as it was, and a
+	   left click means nothing to a plot on its own - it pans only once it is
+	   dragged. */
+	const ImVec2 mouse = ImGui::GetIO().MousePos;
+	const bool over = mouse.x >= buttonPos.x && mouse.x <= buttonEnd.x &&
+					  mouse.y >= buttonPos.y && mouse.y <= buttonEnd.y;
+	const bool pressed = over && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	const ImU32 fill = ImGui::GetColorU32(over ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
+	drawList->AddRectFilled(buttonPos, buttonEnd, fill, ImGui::GetStyle().FrameRounding);
+	drawList->AddRect(buttonPos, buttonEnd, ImGui::GetColorU32(ImGuiCol_Border), ImGui::GetStyle().FrameRounding);
+	drawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), label);
+
+	return pressed;
+}
+
 void Gui::drawPlots()
 {
 	uint32_t tablePlots = 0;
@@ -80,14 +174,28 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 		const std::string xLabel = plot->getEffectiveXAxisLabel();
 		const std::string yLabel = plot->getEffectiveYAxisLabel();
 
-		if (viewerDataHandler->getState() == DataHandlerBase::State::RUN)
-			ImPlot::SetupAxes(xLabel.c_str(), yLabel.c_str(), ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
+		const bool running = viewerDataHandler->getState() == DataHandlerBase::State::RUN;
+		const bool follows = plot->isViewFollowingLatestData();
+
+		/* Both axes are fitted while the view is being carried along. Once
+		   the reader has taken the view over, fitting either of them again
+		   would keep pulling back the axis they just moved. */
+		if (running)
+		{
+			const ImPlotAxisFlags fit = follows ? ImPlotAxisFlags_AutoFit : ImPlotAxisFlags_None;
+			ImPlot::SetupAxes(xLabel.c_str(), yLabel.c_str(), fit, fit);
+		}
 		else
 		{
 			ImPlot::SetupAxes(xLabel.c_str(), yLabel.c_str(), 0, 0);
 			ImPlot::SetupAxisLimits(ImAxis_X1, -1, 10, ImPlotCond_Once);
 			ImPlot::SetupAxisLimits(ImAxis_Y1, -0.1, 0.1, ImPlotCond_Once);
 		}
+
+		/* Asked only while the view is still being carried along, since
+		   there is nothing left to hand over once the reader has it. */
+		if (running && follows && plotViewWasAskedForByHand())
+			plot->setViewFollowsLatestData(false);
 
 		plot->setIsHovered(ImPlot::IsPlotHovered());
 		dragAndDropPlot(plot);
@@ -131,6 +239,9 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 			ImPlot::PlotLine(key.c_str(), time.getFirstElementCopy(), serPtr->buffer->getFirstElementCopy(), size, 0, offset, sizeof(double));
 		}
 
+		if (running && drawBackToLiveButton(*plot))
+			plot->setViewFollowsLatestData(true);
+
 		ImPlot::EndPlot();
 	}
 }
@@ -147,15 +258,27 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 		const std::string xLabel = plot->getEffectiveXAxisLabel();
 		const std::string yLabel = plot->getEffectiveYAxisLabel();
 
-		if (viewerDataHandler->getState() == DataHandlerBase::State::RUN)
+		const bool running = viewerDataHandler->getState() == DataHandlerBase::State::RUN;
+		const bool follows = plot->isViewFollowingLatestData();
+
+		if (running)
 		{
 			ViewerDataHandler::Settings settings = viewerDataHandler->getSettings();
-			ImPlot::SetupAxis(ImAxis_Y1, yLabel.c_str(), ImPlotAxisFlags_AutoFit);
+
+			/* The vertical axis is fitted to the data only while the view is
+			   being carried along. Fitting it again after the reader has
+			   taken the view over would keep pulling back the axis they just
+			   moved. */
+			ImPlot::SetupAxis(ImAxis_Y1, yLabel.c_str(), follows ? ImPlotAxisFlags_AutoFit : ImPlotAxisFlags_None);
 			ImPlot::SetupAxis(ImAxis_X1, xLabel.c_str(), 0);
-			const double viewportWidth = (1.0 / viewerDataHandler->getAverageSamplingFrequency()) * settings.maxViewportPoints;
-			const double min = *time.getLastElement() < viewportWidth ? 0.0f : *time.getLastElement() - viewportWidth;
-			const double max = min == 0.0f ? *time.getLastElement() : min + viewportWidth;
-			ImPlot::SetupAxisLimits(ImAxis_X1, min, max, ImPlotCond_Always);
+
+			if (follows)
+			{
+				const double viewportWidth = (1.0 / viewerDataHandler->getAverageSamplingFrequency()) * settings.maxViewportPoints;
+				const double min = *time.getLastElement() < viewportWidth ? 0.0f : *time.getLastElement() - viewportWidth;
+				const double max = min == 0.0f ? *time.getLastElement() : min + viewportWidth;
+				ImPlot::SetupAxisLimits(ImAxis_X1, min, max, ImPlotCond_Always);
+			}
 		}
 		else
 		{
@@ -163,6 +286,11 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 			ImPlot::SetupAxisLimits(ImAxis_X1, -1, 10, ImPlotCond_Once);
 			ImPlot::SetupAxisLimits(ImAxis_Y1, -0.1, 0.1, ImPlotCond_Once);
 		}
+
+		/* Asked only while the view is still being carried along, since
+		   there is nothing left to hand over once the reader has it. */
+		if (running && follows && plotViewWasAskedForByHand())
+			plot->setViewFollowsLatestData(false);
 
 		plot->setIsHovered(ImPlot::IsPlotHovered());
 		dragAndDropPlot(plot);
@@ -218,6 +346,9 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 			ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 2.0f);
 			ImPlot::PlotLine(name.c_str(), time.getFirstElementCopy(), serPtr->buffer->getFirstElementCopy(), size, ImPlotLineFlags_None, offset, sizeof(double));
 		}
+
+		if (running && drawBackToLiveButton(*plot))
+			plot->setViewFollowsLatestData(true);
 
 		ImPlot::EndPlot();
 	}

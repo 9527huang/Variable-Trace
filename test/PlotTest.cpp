@@ -403,3 +403,56 @@ TEST(CursorReadingTest, aLineOnTheMiddleGoesOutwards)
 	EXPECT_EQ(Plot::readingOffsetSignAlongX(0.0, 0.0, 0.0), 1.0);
 	EXPECT_EQ(Plot::readingOffsetSignAlongY(0.0, 0.0, 0.0), 1.0);
 }
+
+/*
+ * A running plot carries its view along with the data: it shows the newest
+ * samples and slides that window forward as more arrive. Handing that view
+ * over to the reader is a decision about one run of one plot, so it is not a
+ * setting: it is not written into a project, and a plot copied from another
+ * one does not inherit it either.
+ *
+ * What the tests below pin down is where it does have to travel. Starting a
+ * run throws the samples away, and a plot with no history has nothing to be
+ * looking at but the live end, so the view goes back there with them.
+ */
+
+TEST(PlotViewFollowTest, aPlotStartsOutFollowingTheNewestData)
+{
+	Plot plot("p");
+
+	EXPECT_TRUE(plot.isViewFollowingLatestData());
+}
+
+TEST(PlotViewFollowTest, theViewIsHandedOverAndTakenBack)
+{
+	Plot plot("p");
+
+	plot.setViewFollowsLatestData(false);
+	EXPECT_FALSE(plot.isViewFollowingLatestData());
+
+	plot.setViewFollowsLatestData(true);
+	EXPECT_TRUE(plot.isViewFollowingLatestData());
+}
+
+TEST(PlotViewFollowTest, throwingTheSamplesAwayBringsTheViewBack)
+{
+	Plot plot("p");
+
+	plot.setViewFollowsLatestData(false);
+	plot.erase();
+
+	EXPECT_TRUE(plot.isViewFollowingLatestData());
+}
+
+TEST(PlotViewFollowTest, aCopyStartsOutFollowingRatherThanInheriting)
+{
+	Plot source("p");
+	source.setViewFollowsLatestData(false);
+
+	Plot copy("q");
+	copy.copyConfigurationFrom(source);
+
+	/* The copy gets its own buffers and fills up on its own, so whatever the
+	   original was being read for says nothing about what the copy is for. */
+	EXPECT_TRUE(copy.isViewFollowingLatestData());
+}

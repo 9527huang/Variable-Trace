@@ -204,6 +204,18 @@ class Plot
 	void setIsHovered(bool isHovered);
 	bool isHovered() const;
 
+	/* Whether the view is still carried along by the arriving data.
+
+	   A running plot shows the newest samples and slides that window
+	   forward as more of them come in. The moment the reader zooms or pans
+	   by hand, that is no longer what they are asking for, so the view is
+	   handed over to them and stays where they put it until they ask for
+	   the live end back. Nothing about this is saved with a project: it
+	   describes what one run is showing, and a project opened tomorrow
+	   starts out live. */
+	void setViewFollowsLatestData(bool state);
+	bool isViewFollowingLatestData() const;
+
 	Variable* getXAxisVariable() const;
 	void setXAxisVariable(Variable* var);
 
@@ -308,6 +320,7 @@ class Plot
 	Domain domain = Domain::ANALOG;
 	TraceVarType traceVarType = TraceVarType::F32;
 	bool isHoveredOver = false;
+	bool viewFollowsLatestData = true;
 
 	bool cursorsVisible = false;
 	CursorMode cursorMode = CursorMode::X;

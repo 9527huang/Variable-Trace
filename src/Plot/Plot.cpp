@@ -197,6 +197,11 @@ void Plot::erase()
 
 	for (auto& [name, ser] : seriesMap)
 		ser->buffer->erase();
+
+	/* Throwing the samples away is what starting a run does, and a run that
+	   has just started has no history to be looking at, so the view goes
+	   back to the live end with them. */
+	viewFollowsLatestData = true;
 }
 
 void Plot::setVisibility(bool state)
@@ -312,6 +317,16 @@ void Plot::setIsHovered(bool isHovered)
 bool Plot::isHovered() const
 {
 	return isHoveredOver;
+}
+
+void Plot::setViewFollowsLatestData(bool state)
+{
+	viewFollowsLatestData = state;
+}
+
+bool Plot::isViewFollowingLatestData() const
+{
+	return viewFollowsLatestData;
 }
 
 Variable* Plot::getXAxisVariable() const
