@@ -1,4 +1,4 @@
-/* Generated from build/i18n_dict.json by build/i18n_gen.py.
+/* Generated from tools/i18n/i18n_dict.json by tools/i18n/i18n_gen.py.
  *
  * Do not edit: change the dictionary and run the generator, or the table and
  * the dictionary drift apart and the difference is invisible at run time,
