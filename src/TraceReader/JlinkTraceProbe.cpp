@@ -36,7 +36,12 @@ bool JlinkTraceProbe::startTrace(const TraceProbeSettings& probeSettings, uint32
 		return false;
 	}
 
-	if (JLINKARM_EMU_SelectByUSBSN(serialNumberInt) < 0)
+	/* Selecting by serial number is for picking one probe out of several. With
+	   none given there is nothing to pick, and opening the connection takes
+	   the first probe found; asking the selector for the probe numbered 0 is
+	   a different question, and one that has no answer on a probe carrying any
+	   other number. */
+	if (serialNumberInt != 0 && JLINKARM_EMU_SelectByUSBSN(serialNumberInt) < 0)
 	{
 		lastErrorMsg = "Could not connect to the selected probe";
 		return false;
