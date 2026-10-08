@@ -81,8 +81,10 @@ running all three after a pass.
 
 - `python tools/i18n/i18n_leftovers.py tools/i18n/i18n_sites.json`
 
-  Every string literal in the interface files, marked with whether the
-  collection pass picked it up.
+  Prints the count of string literals in the interface files, then every one of
+  them that the collection pass walked past, with its file and line number. The
+  second list is the one to look through when the interface still shows English
+  and the other passes report nothing left to do.
 
 ## `i18n_sites.json` is frozen
 
