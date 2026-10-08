@@ -387,6 +387,7 @@ namespace mcp
 					throw ToolError("Field 'max_viewport_points' must be between " + std::to_string(minPoints) + " and " + std::to_string(maxPoints) + ".");
 
 				settings.maxViewportPoints = static_cast<uint32_t>(points);
+				changed["max_viewport_points"] = points;
 			}
 
 			if (has(arguments, "viewport_width_ms"))
