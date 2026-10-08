@@ -34,19 +34,53 @@ CSVStreamer::~CSVStreamer()
 
 bool CSVStreamer::prepareFile(const std::string& directory)
 {
-	filePath = directory + logFileName;
+	const std::string wantedPath = directory + logFileName;
+
+	/* A file that is already open is the one this run is being written to, and
+	   it is left alone. The call comes once when a run starts and again on
+	   every restart inside it, and the lines of one run belong in one file.
+	   Opening a second time would cut off what has been written so far, and
+	   because a stream that is open refuses to be opened again, the attempt
+	   would instead leave it in a failed state that drops every line after it
+	   without a word. */
+	if (csvFile.is_open())
+	{
+		if (wantedPath == filePath)
+			return true;
+
+		/* The log was pointed at another directory while the run was going.
+		   What has been collected is written out and the file closed, so that
+		   the part of the run before the change is kept where it was asked
+		   for, and the rest continues in the new one. */
+		finishLogging();
+	}
+
+	filePath = wantedPath;
 	csvFile.open(filePath, std::ios::out);
 	if (!csvFile.is_open())
 	{
 		logger->error("Failed to open file: {}", filePath);
 		return false;
 	}
+
+	/* A new file has no columns named in it yet. */
+	headerWritten = false;
+
 	return true;
 }
 
 void CSVStreamer::createHeader(const std::vector<std::string>& headerNames)
 {
+	/* Written once for each set of columns. A restart in the middle of a run
+	   asks for it again, and the columns are usually still the same ones:
+	   another header line there is a line a reader of the file has to step
+	   over. When a plot has gained or lost a variable the columns differ, and
+	   then the line is what marks where they changed. */
+	if (headerWritten && headerNames == this->headerNames)
+		return;
+
 	this->headerNames = headerNames;
+	headerWritten = true;
 
 	std::string header = "time,";
 	for (const auto& value : headerNames)

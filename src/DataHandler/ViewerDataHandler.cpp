@@ -216,17 +216,39 @@ void ViewerDataHandler::dataHandler()
 		}
 
 		/* A restart rebuilds the sample list, which is what makes a variable that
-		   was just added to a plot, or a newly activated group, take effect. */
+		   was just added to a plot, or a newly activated group, take effect.
+
+		   It changes what is read from the target, and the run carries on: the
+		   samples already on the plots stay there, and what arrives now joins
+		   them at the end of the time axis. Throwing them away is the start
+		   button's job, not this one's. */
 		if (restartRequested.exchange(false) && viewerState == State::RUN)
 		{
+			/* Taken before the probe is stopped, so that the pause being
+			   measured below covers waiting for it as well. */
+			const auto restartBegan = std::chrono::steady_clock::now();
+
 			std::unique_lock<std::mutex> probeLock = lockProbe();
 			debugProbe->stopAcqusition();
 			createSampleList();
 			prepareCSVFile();
 
-			timer = 0;
-			lastT = 0.0;
-			start = std::chrono::steady_clock::now();
+			/* The clock keeps its place in the run. It is moved forward by the
+			   time the restart takes, so that the stretch the target was not
+			   read for does not show up in the history as a gap.
+
+			   Putting it back to the beginning of the run instead would append
+			   everything read from here on at the start of the time axis, and
+			   since the samples of the run are still there, the curve would
+			   fold back over the part already drawn.
+
+			   The sample counter and the previous period are left where they
+			   are along with it. Both of them measure the clock, so both still
+			   agree with it; setting them back while the clock reads minutes
+			   would let the rate limit pass every sample until they caught up
+			   again, and the target would be read as fast as the probe allows
+			   for that stretch. */
+			start += std::chrono::steady_clock::now() - restartBegan;
 
 			/* Same handling as a failing start from the state transition above. */
 			if (!debugProbe->startAcqusition(probeSettings, sampleList, settings.sampleFrequencyHz))

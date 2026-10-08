@@ -60,6 +60,11 @@ class CSVStreamer
 	Buffer* currentBuffer;
 	Buffer* processingBuffer;
 	std::vector<std::string> headerNames;
+
+	/* Whether the header of the open file has been written. Cleared when a file
+	   is opened, so that the columns of a run are named once at its start, and
+	   again inside it only when they change. */
+	bool headerWritten = false;
 };
 
 #endif
