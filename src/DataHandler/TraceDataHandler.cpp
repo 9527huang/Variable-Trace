@@ -78,8 +78,16 @@ void TraceDataHandler::setSettings(const Settings& settings)
 	traceReader->setTraceFrequency(settings.tracePrescaler);
 	traceReader->setTraceShouldReset(settings.shouldReset);
 	traceReader->setTraceTimeout(settings.timeout);
-	tracePlotHandler->setMaxPoints(settings.maxPoints);
-	this->settings = settings;
+
+	/* Cut down to what the buffers of this handler may take, the same way the
+	   viewer side is: a capacity that does not fit the memory they are allowed
+	   is refused by the plot handler, and what is kept beside it has to agree
+	   with what was allocated. */
+	Settings applied = settings;
+	applied.maxPoints = std::clamp(applied.maxPoints, static_cast<uint32_t>(1), tracePlotHandler->maxPointsForMemoryBudget());
+
+	tracePlotHandler->setMaxPoints(applied.maxPoints);
+	this->settings = applied;
 }
 
 double TraceDataHandler::getDoubleValue(const Plot& plot, uint32_t value)

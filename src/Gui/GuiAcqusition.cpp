@@ -55,12 +55,25 @@ void Gui::acqusitionSettingsViewer()
 	settings.sampleFrequencyHz = std::clamp(settings.sampleFrequencyHz, ViewerDataHandler::minSamplinFrequencyHz, ViewerDataHandler::maxSamplinFrequencyHz);
 
 	const uint32_t minPoints = 100;
-	const uint32_t maxPoints = 20000;
+
+	/* How many samples a series may keep follows from the memory the buffers
+	   of this group are allowed, and that follows from how many buffers there
+	   are. So the ceiling is asked for rather than written down here, and the
+	   arithmetic behind it is shown beside the field: a request that comes
+	   back smaller than what was typed has to say why. */
+	const uint32_t maxPoints = plotHandler->maxPointsForMemoryBudget();
+	const size_t bufferCount = plotHandler->countBuffers();
+	const uint64_t maxPointsBytes = static_cast<uint64_t>(maxPoints) * PlotHandler::bytesPerBufferedPoint * bufferCount;
+
+	std::string maxPointsHelp = I18n::tr("Max points used for a single series after which the oldest points will be overwritten.");
+	maxPointsHelp += "\n\n" + std::to_string(maxPoints) + " x " + std::to_string(bufferCount) + " x " +
+					 std::to_string(PlotHandler::bytesPerBufferedPoint) + " B = " + std::to_string(maxPointsBytes >> 20) + " MB";
+
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Max points:"), alignment);
 	ImGui::SameLine();
 	ImGui::InputScalar("##maxPoints", ImGuiDataType_U32, &settings.maxPoints, NULL, NULL, "%u");
 	ImGui::SameLine();
-	ImGui::HelpMarker(I18n::tr("Max points used for a single series after which the oldest points will be overwritten."));
+	ImGui::HelpMarker(maxPointsHelp.c_str());
 	settings.maxPoints = std::clamp(settings.maxPoints, minPoints, maxPoints);
 
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Max view points:"), alignment);
@@ -340,12 +353,24 @@ void Gui::acqusitionSettingsTrace()
 	GuiHelper::drawCenteredText(I18n::tr("General"));
 	ImGui::Separator();
 
+	/* The ceiling is the same rule as on the viewer side: what the buffers of
+	   this handler may take from memory, divided by what one sample costs in
+	   each of them. */
+	const uint32_t minPoints = 100;
+	const uint32_t maxPoints = tracePlotHandler->maxPointsForMemoryBudget();
+	const size_t bufferCount = tracePlotHandler->countBuffers();
+	const uint64_t maxPointsBytes = static_cast<uint64_t>(maxPoints) * PlotHandler::bytesPerBufferedPoint * bufferCount;
+
+	std::string maxPointsHelp = I18n::tr("Max points used for a single series after which the oldest points will be overwritten.");
+	maxPointsHelp += "\n\n" + std::to_string(maxPoints) + " x " + std::to_string(bufferCount) + " x " +
+					 std::to_string(PlotHandler::bytesPerBufferedPoint) + " B = " + std::to_string(maxPointsBytes >> 20) + " MB";
+
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Max points:"), alignment);
 	ImGui::SameLine();
 	ImGui::InputScalar("##maxPoints", ImGuiDataType_U32, &settings.maxPoints, NULL, NULL, "%u");
 	ImGui::SameLine();
-	ImGui::HelpMarker(I18n::tr("Max points used for a single series after which the oldest points will be overwritten."));
-	settings.maxPoints = std::clamp(settings.maxPoints, static_cast<uint32_t>(100), static_cast<uint32_t>(20000));
+	ImGui::HelpMarker(maxPointsHelp.c_str());
+	settings.maxPoints = std::clamp(settings.maxPoints, minPoints, maxPoints);
 
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Viewport width [%%]:"), alignment);
 	ImGui::SameLine();

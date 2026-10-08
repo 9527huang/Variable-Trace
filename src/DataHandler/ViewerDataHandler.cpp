@@ -71,6 +71,15 @@ ViewerDataHandler::Settings ViewerDataHandler::getSettings() const
 void ViewerDataHandler::setSettings(const Settings& newSettings)
 {
 	settings = newSettings;
+
+	/* What is kept here is what the buffers can hold. A capacity that does not
+	   fit the memory the buffers are allowed is refused by the plot handler,
+	   and the viewport is a fraction of that same capacity, so both are cut
+	   down to it here rather than in each caller - a project file written on
+	   a machine with more memory comes in through one of them. */
+	settings.maxPoints = std::clamp(settings.maxPoints, static_cast<uint32_t>(1), plotHandler->maxPointsForMemoryBudget());
+	settings.maxViewportPoints = std::clamp(settings.maxViewportPoints, static_cast<uint32_t>(1), settings.maxPoints);
+
 	plotHandler->setMaxPoints(settings.maxPoints);
 }
 

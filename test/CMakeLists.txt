@@ -143,6 +143,7 @@ add_executable(${EXECUTABLE} main.cpp
     CSVStreamerTest.cpp
     PlotTest.cpp
     PlotCopyTest.cpp
+    PlotHandlerTest.cpp
     PlotGroupCopyTest.cpp
     I18nTest.cpp
     ProjectHandlerTest.cpp

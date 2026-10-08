@@ -90,3 +90,70 @@ TEST_F(ScrollingBufferTest, testLinearCopy3)
 	std::vector<double> result{21, 22, 23, 24, 25, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
 	ASSERT_EQ(vec, result);
 }
+
+/*
+ * The capacity is a setting, and what is in hand is the newest stretch of the
+ * run. So a capacity raised keeps every sample that is already there, one
+ * lowered keeps as many as still fit - giving up the oldest, which is the end
+ * a running ring drops from - and asking for the capacity in use changes
+ * nothing at all.
+ *
+ * The fixture has pushed 25 samples into a ring of 20, so what it holds is 6
+ * through 25, with 6 as the oldest.
+ */
+
+TEST_F(ScrollingBufferTest, raisingTheCapacityKeepsEverySample)
+{
+	test.setMaxSize(defaultMaxSize * 2);
+
+	EXPECT_EQ(test.getSize(), defaultMaxSize);
+	EXPECT_EQ(test.getOldestValue(), 6.0);
+	EXPECT_EQ(test.getNewestValue(), 25.0);
+
+	/* And the ring carries on from where it was. */
+	test.addPoint(26.0);
+
+	EXPECT_EQ(test.getSize(), defaultMaxSize + 1);
+	EXPECT_EQ(test.getOldestValue(), 6.0);
+	EXPECT_EQ(test.getNewestValue(), 26.0);
+}
+
+TEST_F(ScrollingBufferTest, loweringTheCapacityKeepsTheNewestSamples)
+{
+	test.setMaxSize(5);
+
+	EXPECT_EQ(test.getSize(), 5);
+	EXPECT_EQ(test.getOldestValue(), 21.0);
+	EXPECT_EQ(test.getNewestValue(), 25.0);
+
+	/* What was given up went from the oldest end, and what is left is in the
+	   order it arrived in. */
+	test.copyData();
+
+	for (uint32_t i = 0; i < 5; i++)
+		EXPECT_EQ(*(test.getFirstElementCopy() + i), static_cast<double>(i + 21));
+}
+
+TEST_F(ScrollingBufferTest, askingForTheCapacityInUseChangesNothing)
+{
+	test.setMaxSize(defaultMaxSize);
+
+	EXPECT_EQ(test.getSize(), defaultMaxSize);
+	EXPECT_EQ(test.getOldestValue(), 6.0);
+	EXPECT_EQ(test.getNewestValue(), 25.0);
+}
+
+TEST_F(ScrollingBufferTest, aRingEmptiedForARunKeepsItsCapacity)
+{
+	test.setMaxSize(30);
+	test.erase();
+
+	EXPECT_EQ(test.getSize(), 0);
+	EXPECT_EQ(test.getMaxSize(), 30);
+
+	test.addPoint(1.0);
+
+	EXPECT_EQ(test.getSize(), 1);
+	EXPECT_EQ(test.getOldestValue(), 1.0);
+	EXPECT_EQ(test.getNewestValue(), 1.0);
+}

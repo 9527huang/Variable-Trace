@@ -237,6 +237,62 @@ namespace
 		   into on the way out. */
 		std::unique_ptr<ViewerDataHandler> viewerDataHandler;
 	};
+
+	/*
+	 * What the panel keeps is what the buffers can hold, and the viewport is a
+	 * fraction of that same capacity - a window onto the samples, not a second
+	 * length. A settings set that comes in from somewhere other than the panel
+	 * is cut down at this end rather than trusted, so that what the reader sees
+	 * in the field, what is allocated and what the axis is worked out from all
+	 * agree.
+	 */
+
+	TEST_F(ViewerDataHandlerTest, aViewportIsCutToTheCapacityOfTheSeries)
+	{
+		plotGroupHandler.addGroup("group");
+		plotGroupHandler.setActiveGroup("group");
+		variableHandler.addNewVariable("adc");
+
+		std::shared_ptr<Plot> target = plotHandler.addPlot("adc");
+		target->addSeries(variableHandler.getVariable("adc").get());
+
+		viewerDataHandler = std::make_unique<ViewerDataHandler>(&plotGroupHandler, &variableHandler, &plotHandler, &tracePlotHandler, applicationDone, &modelMutex, logger.get());
+
+		ViewerDataHandler::Settings settings = viewerDataHandler->getSettings();
+		settings.maxPoints = 3000;
+		settings.maxViewportPoints = 9000;
+		viewerDataHandler->setSettings(settings);
+
+		const ViewerDataHandler::Settings applied = viewerDataHandler->getSettings();
+
+		EXPECT_EQ(applied.maxPoints, 3000u);
+		EXPECT_EQ(applied.maxViewportPoints, 3000u);
+	}
+
+	TEST_F(ViewerDataHandlerTest, aCapacityBeyondTheMemoryBudgetIsCutToIt)
+	{
+		plotGroupHandler.addGroup("group");
+		plotGroupHandler.setActiveGroup("group");
+		variableHandler.addNewVariable("adc");
+
+		std::shared_ptr<Plot> target = plotHandler.addPlot("adc");
+		target->addSeries(variableHandler.getVariable("adc").get());
+
+		viewerDataHandler = std::make_unique<ViewerDataHandler>(&plotGroupHandler, &variableHandler, &plotHandler, &tracePlotHandler, applicationDone, &modelMutex, logger.get());
+
+		const uint32_t ceiling = plotHandler.maxPointsForMemoryBudget();
+
+		ViewerDataHandler::Settings settings = viewerDataHandler->getSettings();
+		settings.maxPoints = ceiling + 1000000;
+		settings.maxViewportPoints = ceiling + 1000000;
+		viewerDataHandler->setSettings(settings);
+
+		const ViewerDataHandler::Settings applied = viewerDataHandler->getSettings();
+
+		EXPECT_EQ(applied.maxPoints, ceiling);
+		EXPECT_EQ(applied.maxViewportPoints, ceiling);
+		EXPECT_EQ(target->getXAxisSeries()->getMaxSize(), ceiling);
+	}
 }  // namespace
 
 /* Importing a variable that no plot draws changes nothing about what is read

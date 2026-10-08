@@ -13,11 +13,12 @@ namespace mcp
 {
 	namespace
 	{
-		/* Limits the acquisition settings window enforces, repeated here so that an
-		   out of range request is refused with the accepted range instead of being
-		   silently adjusted. */
+		/* The floor the acquisition settings window enforces, repeated here so
+		   that an out of range request is refused with the accepted range
+		   instead of being silently adjusted. The ceiling is not a number
+		   written down on either side: it follows from how much memory the
+		   buffers may take, so it is asked of the plot handler. */
 		constexpr uint32_t minPoints = 100;
-		constexpr uint32_t maxPoints = 20000;
 
 		struct VariableRequest
 		{
@@ -350,6 +351,15 @@ namespace mcp
 		{
 			if (context.viewerDataHandler == nullptr)
 				reportUnavailable("sampling settings", "set_sampling");
+
+			if (context.plotHandler == nullptr)
+				reportUnavailable("the plot buffers", "set_sampling");
+
+			/* How many samples a series may keep follows from the memory the
+			   buffers of this group are allowed, so the ceiling is asked for
+			   rather than fixed here: the number reported back is the number
+			   that will be allocated. */
+			const uint32_t maxPoints = context.plotHandler->maxPointsForMemoryBudget();
 
 			ViewerDataHandler::Settings settings = context.viewerDataHandler->getSettings();
 

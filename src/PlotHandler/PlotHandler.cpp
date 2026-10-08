@@ -96,8 +96,37 @@ std::shared_ptr<Plot> PlotHandler::addPlotCopy(const Plot& source, const std::st
 	return copy;
 }
 
+size_t PlotHandler::countBuffers() const
+{
+	size_t buffers = 0;
+
+	for (const auto& [name, plt] : plotsMap)
+		buffers += 1 + plt->getSeriesMap().size();
+
+	return buffers;
+}
+
+uint32_t PlotHandler::maxPointsForMemoryBudget() const
+{
+	const size_t buffers = countBuffers();
+
+	if (buffers == 0)
+		return static_cast<uint32_t>(memoryBudgetBytes / bytesPerBufferedPoint);
+
+	return static_cast<uint32_t>(memoryBudgetBytes / (bytesPerBufferedPoint * buffers));
+}
+
 void PlotHandler::setMaxPoints(uint32_t maxPoints)
 {
+	if (maxPoints == 0)
+		return;
+
+	/* The entry points clamp to this as well, so that the number they show is
+	   the number that was allocated. This is the floor under them: a capacity
+	   that arrives from somewhere else - a project file written on a machine
+	   with more memory, say - is cut down here rather than trusted. */
+	maxPoints = std::min(maxPoints, maxPointsForMemoryBudget());
+
 	if (maxPoints == 0)
 		return;
 
