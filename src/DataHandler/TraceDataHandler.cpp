@@ -136,39 +136,51 @@ void TraceDataHandler::dataHandler()
 
 			time += timestamp;
 
-			double oldestTimestamp = (*tracePlotHandler->begin()).get()->getXAxisSeries()->getOldestValue();
-			auto indicators = traceReader->getTraceIndicators();
+			/* The plots and the series on them are the other half of the model
+			   the interface changes while this runs: deleting a variable takes
+			   the series that named it off every plot, and the pointer each
+			   series holds to its variable goes with it. They are read under
+			   the lock those changes are made with.
 
-			errorFrames.handle(time, oldestTimestamp, indicators.errorFramesTotal);
-			delayed3Frames.handle(time, oldestTimestamp, indicators.delayedTimestamp3);
-
-			uint32_t i = 0;
-			for (auto plot : *tracePlotHandler)
+			   Held no further than the loop below: the log write after it goes
+			   to the disk, and nothing out there reads the model. */
 			{
-				if (!plot->getVisibility())
+				auto modelLock = variableHandler->lockModel();
+
+				double oldestTimestamp = (*tracePlotHandler->begin()).get()->getXAxisSeries()->getOldestValue();
+				auto indicators = traceReader->getTraceIndicators();
+
+				errorFrames.handle(time, oldestTimestamp, indicators.errorFramesTotal);
+				delayed3Frames.handle(time, oldestTimestamp, indicators.delayedTimestamp3);
+
+				uint32_t i = 0;
+				for (auto plot : *tracePlotHandler)
 				{
+					if (!plot->getVisibility())
+					{
+						i++;
+						continue;
+					}
+
+					Plot::Series* ser = plot->getSeriesMap().begin()->second.get();
+					double newPoint = getDoubleValue(*plot, traces[i]);
+
+					if (traceTriggered == false && i == static_cast<uint32_t>(settings.triggerChannel) && newPoint > settings.triggerLevel)
+					{
+						logger->info("Trigger!");
+						traceTriggered = true;
+						timestamp = 0;
+						cnt = 0;
+					}
+
+					csvEntry[ser->var->getName()] = newPoint;
+
+					/* thread-safe part */
+					std::lock_guard<std::mutex> lock(*mtx);
+					plot->addPoint(ser->var->getName(), newPoint);
+					plot->addTimePoint(time);
 					i++;
-					continue;
 				}
-
-				Plot::Series* ser = plot->getSeriesMap().begin()->second.get();
-				double newPoint = getDoubleValue(*plot, traces[i]);
-
-				if (traceTriggered == false && i == static_cast<uint32_t>(settings.triggerChannel) && newPoint > settings.triggerLevel)
-				{
-					logger->info("Trigger!");
-					traceTriggered = true;
-					timestamp = 0;
-					cnt = 0;
-				}
-
-				csvEntry[ser->var->getName()] = newPoint;
-
-				/* thread-safe part */
-				std::lock_guard<std::mutex> lock(*mtx);
-				plot->addPoint(ser->var->getName(), newPoint);
-				plot->addTimePoint(time);
-				i++;
 			}
 
 			if (settings.shouldLog)

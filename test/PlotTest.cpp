@@ -456,3 +456,88 @@ TEST(PlotViewFollowTest, aCopyStartsOutFollowingRatherThanInheriting)
 	   original was being read for says nothing about what the copy is for. */
 	EXPECT_TRUE(copy.isViewFollowingLatestData());
 }
+
+/*
+ * Deleting a variable changes two places at once: the collection that owns it,
+ * and every plot that draws it. A trace on a plot is held in the series map and
+ * dropped by name, but the variable along the bottom of an XY plot is held
+ * apart from the series, so a delete that only walked the series would leave
+ * that pointer behind. The sampling thread reads it when it rebuilds the list of
+ * addresses, and by then the object is gone.
+ *
+ * What the removal answers is the number of traces that went, which is what a
+ * caller reports as the number of plots the variable was on. A variable that was
+ * only ever the horizontal one was not a trace, so it does not count, even
+ * though the plot has been changed.
+ */
+
+TEST(PlotSeriesRemovalTest, removingATraceForgetsTheVariableItNamed)
+{
+	Variable speed("speed");
+
+	Plot plot("p");
+	plot.addSeries(&speed);
+
+	EXPECT_TRUE(plot.removeSeries("speed"));
+	EXPECT_TRUE(plot.getSeriesMap().empty());
+}
+
+TEST(PlotSeriesRemovalTest, removingTheVariableAlongTheBottomForgetsItAsWell)
+{
+	Variable time("time");
+	Variable speed("speed");
+
+	Plot plot("xy");
+	plot.setType(Plot::Type::XY);
+	plot.setXAxisVariable(&time);
+	plot.addSeries(&speed);
+
+	/* Nothing in the series map is called "time", and the plot has to let go of
+	   it anyway. */
+	EXPECT_FALSE(plot.removeSeries("time"));
+	EXPECT_EQ(plot.getXAxisVariable(), nullptr);
+
+	/* The trace that was on the plot is untouched. */
+	EXPECT_EQ(plot.getSeriesMap().size(), 1u);
+}
+
+TEST(PlotSeriesRemovalTest, removingAnOrdinaryTraceLeavesTheHorizontalOneAlone)
+{
+	Variable time("time");
+	Variable speed("speed");
+
+	Plot plot("xy");
+	plot.setType(Plot::Type::XY);
+	plot.setXAxisVariable(&time);
+	plot.addSeries(&speed);
+
+	EXPECT_TRUE(plot.removeSeries("speed"));
+	EXPECT_EQ(plot.getXAxisVariable(), &time);
+}
+
+TEST(PlotSeriesRemovalTest, aNameThePlotNeverHeardOfChangesNothing)
+{
+	Variable time("time");
+
+	Plot plot("xy");
+	plot.setType(Plot::Type::XY);
+	plot.setXAxisVariable(&time);
+
+	EXPECT_FALSE(plot.removeSeries("nothing"));
+	EXPECT_EQ(plot.getXAxisVariable(), &time);
+}
+
+TEST(PlotSeriesRemovalTest, throwingEveryTraceAwayForgetsTheHorizontalOneToo)
+{
+	Variable time("time");
+	Variable speed("speed");
+
+	Plot plot("xy");
+	plot.setType(Plot::Type::XY);
+	plot.setXAxisVariable(&time);
+	plot.addSeries(&speed);
+
+	EXPECT_TRUE(plot.removeAllVariables());
+	EXPECT_EQ(plot.getXAxisVariable(), nullptr);
+	EXPECT_TRUE(plot.getSeriesMap().empty());
+}

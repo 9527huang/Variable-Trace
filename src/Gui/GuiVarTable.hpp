@@ -70,7 +70,13 @@ class VariableTableWindow
 
 		syncParser();
 
-		ImGui::BeginDisabled(viewerDataHandler->getState() == DataHandlerBase::State::RUN);
+		/* Nothing here is held back while acquisition runs. Adding, deleting and
+		   renaming a variable are all changes to the model the acquisition
+		   thread reads, and VariableHandler makes each of them one indivisible
+		   step under a lock the acquisition thread takes as well. The rest of
+		   this pane only reads, and the two that do change what is sampled -
+		   the address refresh and a variable going onto a plot - ask for the
+		   list of addresses to be rebuilt. */
 		ImGui::Dummy(ImVec2(-1, 5));
 		GuiHelper::drawCenteredText(I18n::tr("Variables"));
 		ImGui::SameLine();
@@ -178,14 +184,23 @@ class VariableTableWindow
 
 			if (varNameToDelete.has_value())
 			{
-				for (std::shared_ptr<Plot> plt : *plotHandler)
-					plt->removeSeries(varNameToDelete.value_or(""));
-				variableHandler->erase(varNameToDelete.value_or(""));
+				/* The editor holds its variable alive by itself, so it is told
+				   first: otherwise it would keep editing an object that no
+				   longer belongs to the collection and every field it writes
+				   would go nowhere. */
+				variableEditWindow->forgetVariable(varNameToDelete.value());
+
+				/* Takes the series that pointed at it off every plot and then
+				   drops it, as one step. */
+				variableHandler->erase(varNameToDelete.value());
+
+				/* What is read from the target is built from the plots, so a
+				   variable that has just left them has to ask for a rebuild.
+				   Ignored while stopped. */
+				viewerDataHandler->requestRestart();
 			}
 			ImGui::EndTable();
 		}
-
-		ImGui::EndDisabled();
 
 		variableEditWindow->draw();
 		importVariablesWindow->draw();
@@ -217,13 +232,29 @@ class VariableTableWindow
 		static constexpr size_t textSize = 80;
 		char buttonText[textSize]{};
 
-		if (isRefreshRunning())
+		const bool refreshing = isRefreshRunning();
+
+		if (refreshing)
+		{
+			refreshWasRunning = true;
 			snprintf(buttonText, textSize, "%s %c", I18n::tr("Update variable addresses"), "|/-\\"[(int)(ImGui::GetTime() / 0.05f) & 3]);
+		}
 		else
 		{
 			snprintf(buttonText, textSize, "%s", I18n::tr("Update variable addresses"));
 			if (refreshThread.valid() && !refreshThread.get())
 				popup.show(I18n::tr("Error!"), I18n::tr("Update error. Please check the *.elf/*.axf file path!"), 2.0f);
+
+			/* The addresses were just rewritten, and the set of them that is
+			   read from the target is built from the plots. Asking here rather
+			   than inside the pass keeps the acquisition thread doing the
+			   rebuild, which is where it already can do it without a race.
+			   Ignored while stopped, where the next start builds the list. */
+			if (refreshWasRunning)
+			{
+				refreshWasRunning = false;
+				viewerDataHandler->requestRestart();
+			}
 		}
 
 		ImGui::BeginDisabled(projectElfPath->empty());
@@ -330,4 +361,9 @@ class VariableTableWindow
 	std::future<bool> refreshThread{};
 
 	bool performVariablesUpdate = false;
+
+	/* Whether the pass above was running when the last frame was drawn, so that
+	   the frame it finishes on can be told apart from all the ones after it.
+	   The future is read once when it completes and cannot be asked again. */
+	bool refreshWasRunning = false;
 };

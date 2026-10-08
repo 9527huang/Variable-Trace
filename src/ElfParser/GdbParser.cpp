@@ -1,6 +1,10 @@
 #include "GdbParser.hpp"
 
 #include <filesystem>
+#include <memory>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 GdbParser::GdbParser(VariableHandler* variableHandler, spdlog::logger* logger) : variableHandler(variableHandler), logger(logger)
 {
@@ -85,24 +89,65 @@ bool GdbParser::updateVariableMap(const std::string& elfPath)
 	std::string cmd = currentGDBCommand + std::string(" --interpreter=mi ") + elfPath;
 	process.executeCmd(cmd, "(gdb)");
 
-	for (std::shared_ptr<Variable> var : *variableHandler)
+	/* The list is copied first, and the shared pointers with it.
+
+	   This runs on a thread of its own while the interface stays usable, so a
+	   reader can delete a variable in the middle of it: the collection would
+	   then be modified under a loop that is walking it. Copying costs one short
+	   hold of the lock and keeps the objects alive for the rest of the pass. */
+	std::vector<std::pair<std::shared_ptr<Variable>, std::string>> pending;
+
 	{
-		std::string name = var->getName();
+		auto modelLock = variableHandler->lockModel();
 
-		if (var->getShouldUpdateFromElf() == false)
-			continue;
+		for (const std::shared_ptr<Variable>& var : *variableHandler)
+		{
+			if (var->getShouldUpdateFromElf() == false)
+				continue;
 
-		var->setIsFound(false);
-		var->setType(Variable::Type::UNKNOWN);
+			pending.emplace_back(var, var->getTrackedName());
+		}
+	}
 
-		auto maybeAddress = checkAddress(var->getTrackedName());
+	/* Every answer is collected before any of them is written. Asking gdb costs
+	   a process round trip per variable, and the acquisition thread reads these
+	   same fields on every sample - a type is a string and an enumeration is a
+	   vector, so a write landing between two of its reads is not something it
+	   could survive. Holding the lock across the round trips would work as
+	   well, and would stop sampling for as long as the refresh takes. */
+	std::vector<std::tuple<std::shared_ptr<Variable>, uint32_t, Variable::Type>> found;
+	found.reserve(pending.size());
+
+	for (auto& [var, trackedName] : pending)
+	{
+		auto maybeAddress = checkAddress(trackedName);
 
 		if (!maybeAddress.has_value())
 			continue;
 
-		var->setIsFound(true);
-		var->setAddress(maybeAddress.value());
-		var->setType(checkType(var->getTrackedName(), nullptr));
+		found.emplace_back(var, maybeAddress.value(), checkType(trackedName, nullptr));
+	}
+
+	/* Written back together, and under the lock, for the reason above.
+
+	   A variable the reader deleted while this was running is written into as
+	   well, which is harmless: the copy taken at the start is the only thing
+	   keeping it alive now, and no plot names it any more. */
+	{
+		auto modelLock = variableHandler->lockModel();
+
+		for (auto& entry : pending)
+		{
+			entry.first->setIsFound(false);
+			entry.first->setType(Variable::Type::UNKNOWN);
+		}
+
+		for (auto& [var, address, type] : found)
+		{
+			var->setIsFound(true);
+			var->setAddress(address);
+			var->setType(type);
+		}
 	}
 
 	process.closePipes();

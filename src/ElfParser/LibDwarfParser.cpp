@@ -869,22 +869,31 @@ bool LibDwarfParser::updateVariableMap(const std::string& elfPath)
 			return false;
 	}
 
-	for (std::shared_ptr<Variable> var : *variableHandler)
+	/* Held across the lookup of every variable, because a reader can delete one
+	   while this runs and the collection would then be modified under a loop
+	   that is walking it. The lookups are in memory, so the whole pass costs
+	   less than one of the process round trips the gdb parser has to gather its
+	   answers around. */
 	{
-		if (!var->getShouldUpdateFromElf())
-			continue;
+		auto modelLock = variableHandler->lockModel();
 
-		var->setIsFound(false);
-		var->setType(Variable::Type::UNKNOWN);
+		for (std::shared_ptr<Variable> var : *variableHandler)
+		{
+			if (!var->getShouldUpdateFromElf())
+				continue;
 
-		Symbol symbol;
+			var->setIsFound(false);
+			var->setType(Variable::Type::UNKNOWN);
 
-		if (!lookup(var->getTrackedName(), symbol))
-			continue;
+			Symbol symbol;
 
-		var->setIsFound(true);
-		var->setAddress(symbol.address);
-		var->setType(symbol.type);
+			if (!lookup(var->getTrackedName(), symbol))
+				continue;
+
+			var->setIsFound(true);
+			var->setAddress(symbol.address);
+			var->setType(symbol.type);
+		}
 	}
 
 	setError("");

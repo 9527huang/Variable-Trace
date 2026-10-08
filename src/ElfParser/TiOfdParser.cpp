@@ -397,22 +397,30 @@ bool TiOfdParser::updateVariableMap(const std::string& elfPath)
 	if (getParsedData().empty() && !parse(elfPath))
 		return false;
 
-	for (const std::shared_ptr<Variable>& variable : *variableHandler)
+	/* Held across the lookup of every variable, because a reader can delete one
+	   while this runs and the collection would then be modified under a loop
+	   that is walking it. The lookups go through the symbol table this parser
+	   read earlier, so the whole pass is short. */
 	{
-		if (variable->getShouldUpdateFromElf() == false)
-			continue;
+		auto modelLock = variableHandler->lockModel();
 
-		variable->setIsFound(false);
-		variable->setType(Variable::Type::UNKNOWN);
+		for (const std::shared_ptr<Variable>& variable : *variableHandler)
+		{
+			if (variable->getShouldUpdateFromElf() == false)
+				continue;
 
-		Symbol symbol;
+			variable->setIsFound(false);
+			variable->setType(Variable::Type::UNKNOWN);
 
-		if (!resolveName(variable->getTrackedName(), symbol))
-			continue;
+			Symbol symbol;
 
-		variable->setIsFound(true);
-		variable->setAddress(symbol.address);
-		variable->setType(symbol.type);
+			if (!resolveName(variable->getTrackedName(), symbol))
+				continue;
+
+			variable->setIsFound(true);
+			variable->setAddress(symbol.address);
+			variable->setType(symbol.type);
+		}
 	}
 
 	return true;

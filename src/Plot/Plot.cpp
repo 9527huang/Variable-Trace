@@ -122,11 +122,29 @@ ScrollingBuffer<double>* Plot::getXAxisSeries()
 
 bool Plot::removeSeries(const std::string& name)
 {
-	if (seriesMap.find(name) == seriesMap.end())
-		return false;
+	bool removed = false;
 
-	seriesMap.erase(name);
-	return true;
+	auto entry = seriesMap.find(name);
+
+	if (entry != seriesMap.end())
+	{
+		seriesMap.erase(entry);
+		removed = true;
+	}
+
+	/* An XY plot keeps the variable it draws along the horizontal axis outside
+	   the series map, so dropping the series of that name does not drop it.
+	   Without this the pointer would be left behind by a reader who deletes
+	   the variable, and the sampling thread reads it when it rebuilds the list
+	   of addresses.
+
+	   This does not count as a removed series in the answer, which reports the
+	   series that went, and is what the caller of a delete uses to say how many
+	   plots the variable was on. */
+	if (xAxisSeries.var != nullptr && xAxisSeries.var->getName() == name)
+		xAxisSeries.var = nullptr;
+
+	return removed;
 }
 
 bool Plot::removeAllVariables()
@@ -137,6 +155,11 @@ bool Plot::removeAllVariables()
 		seriesMap[name].reset();
 	}
 	seriesMap.clear();
+
+	/* The horizontal variable of an XY plot is not one of the series above, so
+	   it is dropped here as well. */
+	xAxisSeries.var = nullptr;
+
 	return true;
 }
 

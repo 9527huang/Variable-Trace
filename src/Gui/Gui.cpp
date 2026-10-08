@@ -42,7 +42,7 @@ Gui::Gui(PlotHandler* plotHandler, VariableHandler* variableHandler, ConfigHandl
 	   it greys them out while the recorder itself is switched off. */
 	recorderHandler = std::make_unique<recorder::RecorderHandler>(logger);
 
-	plotEditWindow = std::make_shared<PlotEditWindow>(plotHandler, plotGroupHandler, variableHandler);
+	plotEditWindow = std::make_shared<PlotEditWindow>(plotHandler, plotGroupHandler, variableHandler, viewerDataHandler);
 	plotsTree = std::make_shared<PlotsTree>(viewerDataHandler, plotHandler, plotGroupHandler, variableHandler, plotEditWindow, fileHandler, recorderHandler.get(), logger);
 	variableTable = std::make_shared<VariableTableWindow>(viewerDataHandler, plotHandler, variableHandler, &projectElfPath, &projectConfigPath, logger);
 
@@ -50,6 +50,25 @@ Gui::Gui(PlotHandler* plotHandler, VariableHandler* variableHandler, ConfigHandl
 	{
 		for (std::shared_ptr<Plot> plt : *this->plotHandler)
 			plt->renameSeries(oldName, newName);
+	};
+
+	/* Deleting a variable is one change with two halves: the series that name it
+	   on a plot are bare pointers, so they have to go while the object is still
+	   there, and then the object itself. VariableHandler::erase calls this
+	   between the two, with the model lock already held, which is what lets the
+	   variable be deleted while the acquisition thread is reading the model.
+
+	   Nothing here asks for that lock again. */
+	variableHandler->removeSeriesCallback = [&](const std::string& name)
+	{
+		for (PlotHandler* handler : {this->plotHandler, this->tracePlotHandler})
+		{
+			if (handler == nullptr)
+				continue;
+
+			for (std::shared_ptr<Plot> plt : *handler)
+				plt->removeSeries(name);
+		}
 	};
 
 	/* The programmer is a child process, so it needs no probe either. */

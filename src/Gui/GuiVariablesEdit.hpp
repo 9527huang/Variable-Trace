@@ -55,6 +55,19 @@ class VariableEditWindow
 		editedVariable = variable;
 	}
 
+	/* A variable that has just been deleted cannot stay open here. This window
+	   holds it alive by itself, so it would go on drawing the fields of an
+	   object that no plot names any more, and every edit would be written into
+	   something nothing reads. */
+	void forgetVariable(const std::string& name)
+	{
+		if (editedVariable != nullptr && editedVariable->getName() == name)
+		{
+			editedVariable = nullptr;
+			showVariableEditWindow = false;
+		}
+	}
+
 	void setShowVariableEditWindowState(bool state)
 	{
 		if (showVariableEditWindow != state)

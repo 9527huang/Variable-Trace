@@ -166,7 +166,18 @@ class PlotsTree
 				ImGui::PopID();
 				ImGui::EndDisabled();
 			}
-			plt->removeSeries(seriesNameToDelete.value_or(""));
+			if (seriesNameToDelete.has_value())
+			{
+				/* A series is a bare pointer to a variable, so the change is made
+				   under the lock the acquisition thread reads the model with. */
+				auto modelLock = variableHandler->lockModel();
+				plt->removeSeries(seriesNameToDelete.value());
+
+				/* What is read from the target is built from the plots, so a
+				   series that has just left one has to ask for a rebuild. It is
+				   ignored while stopped. */
+				viewerDataHandler->requestRestart();
+			}
 
 			ImGui::EndListBox();
 		}
@@ -176,9 +187,20 @@ class PlotsTree
 			{
 				std::set<std::string>* selection = *(std::set<std::string>**)payload->Data;
 
-				for (const auto& name : *selection)
-					plt->addSeries(variableHandler->getVariable(name).get());
+				{
+					auto modelLock = variableHandler->lockModel();
+
+					for (const auto& name : *selection)
+					{
+						if (variableHandler->contains(name))
+							plt->addSeries(variableHandler->getVariable(name).get());
+					}
+				}
 				selection->clear();
+
+				/* Same reason as above: the variable is not read from the target
+				   until the list of addresses is rebuilt. */
+				viewerDataHandler->requestRestart();
 			}
 			ImGui::EndDragDropTarget();
 		}

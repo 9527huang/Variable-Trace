@@ -7,12 +7,13 @@
 #include "Plot.hpp"
 #include "PlotGroupHandler.hpp"
 #include "Popup.hpp"
+#include "ViewerDataHandler.hpp"
 #include "imgui.h"
 
 class PlotEditWindow
 {
    public:
-	PlotEditWindow(PlotHandler* plotHandler, PlotGroupHandler* plotGroupHandler, VariableHandler* variableHandler) : plotHandler(plotHandler), plotGroupHandler(plotGroupHandler), variableHandler(variableHandler)
+	PlotEditWindow(PlotHandler* plotHandler, PlotGroupHandler* plotGroupHandler, VariableHandler* variableHandler, ViewerDataHandler* viewerDataHandler) : plotHandler(plotHandler), plotGroupHandler(plotGroupHandler), variableHandler(variableHandler), viewerDataHandler(viewerDataHandler)
 	{
 		selectVariableWindow = std::make_unique<SelectVariableWindow>(variableHandler, &selection, 1);
 	}
@@ -109,8 +110,37 @@ class PlotEditWindow
 				selectedVariable = *selection.begin();
 
 			ImGui::InputText("##", &selectedVariable, 0, NULL, NULL);
-			if (variableHandler->contains(selectedVariable))
-				editedPlot->setXAxisVariable(variableHandler->getVariable(selectedVariable).get());
+
+			bool xAxisVariableChanged = false;
+
+			{
+				/* A plot names the variables it draws through bare pointers,
+				   and the acquisition thread walks the same plots while it
+				   works out what to read from the target. */
+				auto modelLock = variableHandler->lockModel();
+
+				if (variableHandler->contains(selectedVariable))
+				{
+					auto* wanted = variableHandler->getVariable(selectedVariable).get();
+
+					/* Only a real change asks for anything: the field is
+					   filled from the plot on every frame, so what it holds
+					   normally names the variable that is already there. */
+					if (editedPlot->getXAxisVariable() != wanted)
+					{
+						editedPlot->setXAxisVariable(wanted);
+						xAxisVariableChanged = true;
+					}
+				}
+			}
+
+			/* An XY plot is drawn against this variable, so it is one of the
+			   addresses read from the target, and the list of those is built
+			   from the plots. A reader who picks one on a running plot would
+			   otherwise get a flat line along the bottom. */
+			if (xAxisVariableChanged && viewerDataHandler != nullptr)
+				viewerDataHandler->requestRestart();
+
 			ImGui::SameLine();
 			if (ImGui::Button(I18n::tr("select..."), ImVec2(65 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
 				selectVariableWindow->setShowState(true);
@@ -170,6 +200,10 @@ class PlotEditWindow
 	PlotHandler* plotHandler;
 	PlotGroupHandler* plotGroupHandler;
 	VariableHandler* variableHandler;
+
+	/* Asked to rebuild what is read from the target when the variable along
+	   the horizontal axis of an XY plot changes. */
+	ViewerDataHandler* viewerDataHandler;
 
 	Popup popup;
 

@@ -81,6 +81,12 @@ void ViewerDataHandler::requestRestart()
 
 void ViewerDataHandler::updateVariables(double timestamp, const std::unordered_map<uint32_t, double>& values)
 {
+	/* The variables and the plots drawn from them are read as one model. The
+	   reader can add, delete and rename while this is running, and each of
+	   those is two changes to it - a variable and the series that name it -
+	   which are made under the same lock this holds. */
+	auto modelLock = variableHandler->lockModel();
+
 	/* get raw values and put them into variables based on addresses */
 	for (std::shared_ptr<Variable> var : *variableHandler)
 	{
@@ -231,6 +237,12 @@ void ViewerDataHandler::dataHandler()
 
 void ViewerDataHandler::createSampleList()
 {
+	/* Walks the plots and the variables, so it takes the lock the interface
+	   holds while it changes either of them. A variable added to a plot while
+	   this is running is reached through requestRestart(), which runs this
+	   again on this same thread. */
+	auto modelLock = variableHandler->lockModel();
+
 	sampleList.clear();
 
 	auto checkIfElementExists = [&](std::pair<uint32_t, uint8_t> newElement)

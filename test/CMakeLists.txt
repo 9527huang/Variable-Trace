@@ -135,6 +135,7 @@ add_executable(${EXECUTABLE} main.cpp
     TiOfdParserTest.cpp
     SerialDriverLayoutTest.cpp
     VariableTest.cpp
+    VariableHandlerTest.cpp
     PlotTest.cpp
     PlotCopyTest.cpp
     PlotGroupCopyTest.cpp

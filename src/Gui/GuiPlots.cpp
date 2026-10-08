@@ -9,12 +9,40 @@ void Gui::dragAndDropPlot(std::shared_ptr<Plot> plot)
 		{
 			std::set<std::string>* selection = *(std::set<std::string>**)payload->Data;
 
-			for (const auto& name : *selection)
-				plot->addSeries(variableHandler->getVariable(name).get());
+			addSelectionToPlot(plot, *selection);
 			selection->clear();
 		}
 		ImPlot::EndDragDropTarget();
 	}
+}
+
+/* Puts the dragged variables on the plot, and asks for the set of addresses
+   read from the target to be rebuilt so that they are actually sampled.
+
+   Without the second half a variable dropped onto a running plot would be
+   drawn only once the reader stopped and started again, because the addresses
+   come from the plots and are rebuilt on a state change. The acquisition
+   thread performs the rebuild where it already does that, which is what keeps
+   it free of races; while stopped the request is ignored and the next start
+   builds the list anyway. */
+void Gui::addSelectionToPlot(std::shared_ptr<Plot> plot, const std::set<std::string>& selection)
+{
+	if (selection.empty())
+		return;
+
+	{
+		/* The series names a variable through a bare pointer, and the
+		   acquisition thread walks the same plots. */
+		auto modelLock = variableHandler->lockModel();
+
+		for (const std::string& name : selection)
+		{
+			if (variableHandler->contains(name))
+				plot->addSeries(variableHandler->getVariable(name).get());
+		}
+	}
+
+	viewerDataHandler->requestRestart();
 }
 
 /* Whether the input arriving this frame asks the plot being drawn for a view
@@ -488,8 +516,7 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 			{
 				std::set<std::string>* selection = *(std::set<std::string>**)payload->Data;
 
-				for (const auto& name : *selection)
-					plot->addSeries(variableHandler->getVariable(name).get());
+				addSelectionToPlot(plot, *selection);
 				selection->clear();
 			}
 			ImGui::EndDragDropTarget();

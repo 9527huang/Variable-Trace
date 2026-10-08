@@ -321,6 +321,12 @@ class Gui
 	void handleDragRect(uint32_t id, Plot::DragRect& dragRect, ImPlotRect plotLimits);
 	void dragAndDropPlot(std::shared_ptr<Plot> plot);
 
+	/* Puts the dragged variables on one plot under the model lock, and asks for
+	   the addresses read from the target to be rebuilt, so that a drop made
+	   while acquisition is running is sampled at once rather than at the next
+	   stop and start. */
+	void addSelectionToPlot(std::shared_ptr<Plot> plot, const std::set<std::string>& selection);
+
 	/* Whether the input arriving this frame asks the plot being drawn for a
 	   view other than the one it is showing. Only meaningful between
 	   BeginPlot() and EndPlot(), and only asked while the view is following

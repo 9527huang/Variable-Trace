@@ -1,7 +1,13 @@
 #include "VariableHandler.hpp"
 
+std::unique_lock<std::mutex> VariableHandler::lockModel()
+{
+	return std::unique_lock<std::mutex>(modelMutex);
+}
+
 void VariableHandler::addVariable(std::shared_ptr<Variable> var)
 {
+	std::lock_guard<std::mutex> guard(modelMutex);
 	variableMap.emplace(var->getName(), var);
 }
 
@@ -12,6 +18,7 @@ std::shared_ptr<Variable> VariableHandler::getVariable(const std::string& name)
 
 void VariableHandler::clear()
 {
+	std::lock_guard<std::mutex> guard(modelMutex);
 	variableMap.clear();
 }
 
@@ -22,6 +29,15 @@ bool VariableHandler::isEmpty()
 
 void VariableHandler::erase(const std::string& nameToDelete)
 {
+	std::lock_guard<std::mutex> guard(modelMutex);
+
+	/* The plots come first. Each one names this variable through a bare
+	   pointer, and the object has to still be there while they let go of it.
+	   The callback runs on this thread with the lock held, so the acquisition
+	   thread cannot see a series that outlived its variable. */
+	if (removeSeriesCallback)
+		removeSeriesCallback(nameToDelete);
+
 	variableMap.erase(nameToDelete);
 
 	/* update tracked vars references */
@@ -50,6 +66,8 @@ bool VariableHandler::contains(const std::string& name)
 
 void VariableHandler::addNewVariable(std::string newName)
 {
+	std::lock_guard<std::mutex> guard(modelMutex);
+
 	bool copy = false;
 	std::string originalName = newName;
 
@@ -104,12 +122,16 @@ void VariableHandler::addNewVariable(std::string newName)
 
 void VariableHandler::renameVariable(const std::string& currentName, const std::string& newName)
 {
+	std::lock_guard<std::mutex> guard(modelMutex);
+
 	auto temp = variableMap.extract(currentName);
 	temp.key() = std::string(newName);
 	variableMap.insert(std::move(temp));
 
 	variableMap[newName]->rename(newName);
 
+	/* Renames the series the plots hold by the same name, which is a change to
+	   the model this lock covers, so the callback is called while it is held. */
 	if (renameCallback)
 		renameCallback(currentName, newName);
 

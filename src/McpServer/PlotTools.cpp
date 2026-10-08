@@ -108,21 +108,29 @@ namespace mcp
 			Json results = Json::array();
 			bool anyAdded = false;
 
-			for (const std::string& name : names)
 			{
-				std::string status = "added";
+				/* A series names its variable through a bare pointer, and the
+				   acquisition thread walks the same plots while it rebuilds
+				   what it reads from the target, so the walk and the change to
+				   it happen under the lock that models this pairing. */
+				auto modelLock = context.variableHandler->lockModel();
 
-				if (!context.variableHandler->contains(name))
-					status = "not_found";
-				else if (plot->getSeriesMap().contains(name))
-					status = "already_in_plot";
-				else
+				for (const std::string& name : names)
 				{
-					plot->addSeries(context.variableHandler->getVariable(name).get());
-					anyAdded = true;
-				}
+					std::string status = "added";
 
-				results.push_back(Json::object({{"name", name}, {"status", status}}));
+					if (!context.variableHandler->contains(name))
+						status = "not_found";
+					else if (plot->getSeriesMap().contains(name))
+						status = "already_in_plot";
+					else
+					{
+						plot->addSeries(context.variableHandler->getVariable(name).get());
+						anyAdded = true;
+					}
+
+					results.push_back(Json::object({{"name", name}, {"status", status}}));
+				}
 			}
 
 			const bool restarted = anyAdded && requestAcquisitionRestart(context);

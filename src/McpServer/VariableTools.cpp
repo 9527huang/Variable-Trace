@@ -117,19 +117,27 @@ namespace mcp
 
 			requireVariable(context, name);
 
-			/* A plot holds a raw pointer to the variable, so every series has to go
-			   before the variable itself is dropped. */
+			/* A plot holds a raw pointer to the variable, so the series that
+			   name it are counted here and taken off by the erase below.
+
+			   The two are separate steps because erase() takes this same lock
+			   to pair the removal with the drop. The count is the series that
+			   go, which is one per plot that had the variable. */
 			uint32_t removedSeries = 0;
 
-			for (PlotHandler* handler : {context.plotHandler, context.tracePlotHandler})
 			{
-				if (handler == nullptr)
-					continue;
+				auto modelLock = context.variableHandler->lockModel();
 
-				for (const std::shared_ptr<Plot>& plot : *handler)
+				for (PlotHandler* handler : {context.plotHandler, context.tracePlotHandler})
 				{
-					if (plot->removeSeries(name))
-						removedSeries++;
+					if (handler == nullptr)
+						continue;
+
+					for (const std::shared_ptr<Plot>& plot : *handler)
+					{
+						if (plot->getSeriesMap().contains(name))
+							removedSeries++;
+					}
 				}
 			}
 
