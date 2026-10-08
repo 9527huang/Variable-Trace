@@ -541,3 +541,56 @@ TEST(PlotSeriesRemovalTest, throwingEveryTraceAwayForgetsTheHorizontalOneToo)
 	EXPECT_EQ(plot.getXAxisVariable(), nullptr);
 	EXPECT_TRUE(plot.getSeriesMap().empty());
 }
+
+/*
+ * A live curve shows a moving window onto its samples: the right edge is the
+ * newest one, and the width comes from how fast samples are arriving. The
+ * samples themselves are kept in a buffer of a fixed length, and once that
+ * length is reached the beginning of the run is overwritten, so the oldest
+ * sample on hand is later than the run's first instant.
+ *
+ * Those two things are measured differently and need not agree. What is
+ * pinned below is the case where the window asks for more time than the
+ * samples cover: the axis must then begin at the oldest sample rather than at
+ * the instant the width would put it, because an axis reaching further back
+ * has nothing to draw there and reads as the trace losing its head.
+ */
+
+TEST(PlotLiveWindowTest, theWindowEndsOnTheNewestSample)
+{
+	const std::pair<double, double> window = Plot::liveTimeWindow(120.0, 20.0, 50.0);
+
+	EXPECT_DOUBLE_EQ(window.second, 120.0);
+	EXPECT_DOUBLE_EQ(window.first, 70.0);
+}
+
+TEST(PlotLiveWindowTest, aWindowWiderThanTheSamplesBeginsAtTheOldestOne)
+{
+	/* The run reached 120 s, the buffer has given up everything before 20 s,
+	   and the width asked for covers 150 s of it. */
+	const std::pair<double, double> window = Plot::liveTimeWindow(120.0, 20.0, 150.0);
+
+	EXPECT_DOUBLE_EQ(window.first, 20.0);
+	EXPECT_DOUBLE_EQ(window.second, 120.0);
+}
+
+TEST(PlotLiveWindowTest, aRunShorterThanTheWindowIsShownFromItsFirstSample)
+{
+	/* Nothing has been overwritten yet, so the oldest sample is the run's
+	   own beginning and the axis grows away from it. */
+	const std::pair<double, double> window = Plot::liveTimeWindow(8.0, 0.0, 50.0);
+
+	EXPECT_DOUBLE_EQ(window.first, 0.0);
+	EXPECT_DOUBLE_EQ(window.second, 8.0);
+}
+
+TEST(PlotLiveWindowTest, theTwoEndsArrivingTheWrongWayRoundStillGiveAWindow)
+{
+	/* Both ends are read from a buffer the sampling thread is writing, and
+	   the window is anchored on the newest sample whatever the other one
+	   says. */
+	const std::pair<double, double> window = Plot::liveTimeWindow(50.0, 60.0, 10.0);
+
+	EXPECT_DOUBLE_EQ(window.first, 50.0);
+	EXPECT_DOUBLE_EQ(window.second, 50.0);
+}

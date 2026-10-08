@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "ScrollingBuffer.hpp"
@@ -275,6 +276,27 @@ class Plot
 	   the horizontal one. A pair whose corners share a horizontal position
 	   has no slope, and says so rather than reporting an infinite number. */
 	static std::string formatCursorSlope(double rise, double run);
+
+	/* The stretch of time a live plot shows: a window of the given width
+	   whose right edge is the newest sample, and whose left edge is the
+	   oldest sample still held whenever the window is wider than the samples
+	   are.
+
+	   The width and the samples do not have to agree. The width is worked
+	   out from how fast samples are arriving now, and the oldest sample is
+	   where the buffer gave up keeping the run's beginning; a window
+	   narrower than the samples scrolls, and one wider than them covers all
+	   of them and stops at the first. Where it would otherwise start in
+	   empty time, the axis would open a gap in front of the trace that grows
+	   as more of the beginning is overwritten - which is read as the trace
+	   losing its beginning, which it did, but the empty axis is what makes
+	   it look like it happened on screen.
+
+	   The two ends are read one after the other from a buffer the sampling
+	   thread is writing, so the pair can also arrive the wrong way round; the
+	   right edge is the newest sample either way, since that is what the
+	   window is anchored on. */
+	static std::pair<double, double> liveTimeWindow(double newest, double oldest, double windowWidth);
 
 	/* Whether both cursors of a pair sit at the same place along their axis,
 	   in which case the span between them is zero and the readings that

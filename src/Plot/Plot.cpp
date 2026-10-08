@@ -2,11 +2,13 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <bitset>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "implot.h"
@@ -483,11 +485,21 @@ std::string Plot::formatCursorRate(double seconds)
 	return ss.str();
 }
 
+std::pair<double, double> Plot::liveTimeWindow(double newest, double oldest, double windowWidth)
+{
+	/* The left edge is where the window would start, held back no further
+	   than the oldest sample the buffer still holds. A window narrower than
+	   the samples is unaffected: it lands well after the first sample and
+	   scrolls as it should. */
+	const double left = std::min(std::max(newest - windowWidth, oldest), newest);
+
+	return {left, newest};
+}
+
 bool Plot::cursorsShareAPosition(double first, double second)
 {
 	return first == second;
 }
-
 double Plot::readingOffsetSignAlongX(double position, double low, double high)
 {
 	/* Pixel offsets grow to the right, and so does the position along this

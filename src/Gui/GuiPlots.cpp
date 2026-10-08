@@ -303,9 +303,8 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 			if (follows)
 			{
 				const double viewportWidth = (1.0 / viewerDataHandler->getAverageSamplingFrequency()) * settings.maxViewportPoints;
-				const double min = *time.getLastElement() < viewportWidth ? 0.0f : *time.getLastElement() - viewportWidth;
-				const double max = min == 0.0f ? *time.getLastElement() : min + viewportWidth;
-				ImPlot::SetupAxisLimits(ImAxis_X1, min, max, ImPlotCond_Always);
+				const std::pair<double, double> window = Plot::liveTimeWindow(*time.getLastElement(), time.getOldestValue(), viewportWidth);
+				ImPlot::SetupAxisLimits(ImAxis_X1, window.first, window.second, ImPlotCond_Always);
 			}
 		}
 		else
