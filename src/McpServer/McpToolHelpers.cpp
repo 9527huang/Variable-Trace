@@ -4,6 +4,7 @@
 #include <map>
 
 #include "McpTools.hpp"
+#include "TraceDataHandler.hpp"
 
 namespace mcp
 {
@@ -227,6 +228,23 @@ namespace mcp
 	{
 		if (!context.getApiWritesEnabled || !context.getApiWritesEnabled())
 			throw ToolError("Writing to the target through the API is disabled. Enable it in the application preferences first.");
+	}
+
+	/* Both handlers are asked, because a new or loaded project takes the plots
+	   and the variables away from whichever of them is sampling: the viewer
+	   walks the groups, the plots and the variables, and the trace reader walks
+	   its own plots plus the variables behind them. The interface applies the
+	   same pair of conditions before it offers New or Open.
+
+	   The way out is named for each, since the trace acquisition has no tool of
+	   its own here. */
+	void requireAcquisitionStopped(McpContext& context)
+	{
+		const bool viewerRunning = context.viewerDataHandler != nullptr && context.viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN;
+		const bool traceRunning = context.traceDataHandler != nullptr && context.traceDataHandler->getStateImmediate() == DataHandlerBase::State::RUN;
+
+		if (viewerRunning || traceRunning)
+			throw ToolError("An acquisition is running, and loading a project replaces every variable and plot. Call stop_acquisition first, and stop the trace acquisition in the application if that is the one running.");
 	}
 
 	bool isVariableSampled(McpContext& context, const std::string& name)

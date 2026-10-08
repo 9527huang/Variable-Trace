@@ -49,10 +49,17 @@ namespace mcp
 	std::vector<Variable::EnumLabel> enumLabelsFromJson(const Json& value, const std::string& field);
 	Json enumLabelsToJson(const std::vector<Variable::EnumLabel>& labels);
 
-	/* Both throw with the message the tool descriptions promise, so a client that
-	   calls out of order is told which step it skipped. */
+	/* Each throws with the message the tool descriptions promise, so a client
+	   that calls out of order is told which step it skipped. */
 	void requireAcquisitionRunning(McpContext& context);
 	void requireApiWritesEnabled(McpContext& context);
+
+	/* Replacing the project rebuilds the whole model at once - every variable,
+	   every plot, every group - and an acquisition that is running is walking
+	   all of it. The interface offers its own New and Open entries under the
+	   same condition, so this is that condition for the tools that reach the
+	   same two operations. */
+	void requireAcquisitionStopped(McpContext& context);
 
 	/* True when the variable belongs to a plot of the active group, which is the
 	   condition for the acquisition loop to read it. */

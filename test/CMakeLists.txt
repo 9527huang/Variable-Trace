@@ -81,6 +81,9 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/CSVStreamer/CSVStreamer.cpp
     ${CMAKE_SOURCE_DIR}/src/MovingAverage/MovingAverage.cpp
     ${CMAKE_SOURCE_DIR}/src/DataHandler/ViewerDataHandler.cpp
+    # The trace side is here for its state flag: whether it is running is one of
+    # the conditions the project tools ask about.
+    ${CMAKE_SOURCE_DIR}/src/DataHandler/TraceDataHandler.cpp
     # The symbol readers. The DWARF one is built here as well, with the library
     # itself only reached inside the guard, so that the mapping from an encoding
     # to a type is exercised by the same code the application runs.
@@ -146,6 +149,7 @@ add_executable(${EXECUTABLE} main.cpp
     PngWriterTest.cpp
     FlashingServiceTest.cpp
     FlashingToolsTest.cpp
+    ProjectToolsTest.cpp
     McpServerTest.cpp
     SerialProtocolTest.cpp
     RecorderHandlerTest.cpp

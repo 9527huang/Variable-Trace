@@ -10,6 +10,8 @@ namespace mcp
 			if (!context.newProject)
 				reportUnavailable("starting a new project", "new_project");
 
+			requireAcquisitionStopped(context);
+
 			context.newProject();
 
 			return Json::object({{"new", true}});
@@ -19,6 +21,11 @@ namespace mcp
 		{
 			if (!context.openProject)
 				reportUnavailable("opening a project", "open_project");
+
+			/* Asked before the picker, so that a caller whose acquisition is
+			   running is told why rather than being walked through a dialog
+			   that can only end in a refusal. */
+			requireAcquisitionStopped(context);
 
 			const std::optional<std::string> requested = optionalString(arguments, "path");
 			const std::string path = requested.value_or("");
@@ -50,6 +57,11 @@ namespace mcp
 
 			if (static_cast<size_t>(index) >= recent.size())
 				throw ToolError("Index " + std::to_string(index) + " is outside the recent project list, which holds " + std::to_string(recent.size()) + " entr" + (recent.size() == 1 ? "y" : "ies") + ". Call list_recent_projects first.");
+
+			/* Checked once the arguments are known to name a project, because
+			   the other two tools do the same work and this one reaches the
+			   same operation. */
+			requireAcquisitionStopped(context);
 
 			const std::string path = recent.at(static_cast<size_t>(index));
 
@@ -100,17 +112,17 @@ namespace mcp
 	void ProjectTools::registerAll(ToolRegistry& registry)
 	{
 		registry.add({.name = "new_project",
-					  .description = "Create a new empty project, resetting all current state.",
+					  .description = "Create a new empty project, resetting all current state. Requires acquisition to be stopped.",
 					  .inputSchema = objectSchema(Json::object({})),
 					  .handler = newProject});
 
 		registry.add({.name = "open_project",
-					  .description = "Open a project file. Omit 'path' to use the file picker.",
+					  .description = "Open a project file. Omit 'path' to use the file picker. Requires acquisition to be stopped.",
 					  .inputSchema = objectSchema(Json::object({{"path", stringProperty("Absolute path to the .mcvproj file")}})),
 					  .handler = openProject});
 
 		registry.add({.name = "open_recent_project",
-					  .description = "Open a project by its 0-based index in the recent list (see list_recent_projects).",
+					  .description = "Open a project by its 0-based index in the recent list (see list_recent_projects). Requires acquisition to be stopped.",
 					  .inputSchema = objectSchema(Json::object({{"index", integerProperty("Zero-based index into the recent projects list")}}), {"index"}),
 					  .handler = openRecentProject});
 
