@@ -51,11 +51,16 @@ class ViewerDataHandler : public DataHandlerBase
 	   and when the failure was the probe rather than a limit. */
 	std::string getLastWriteError() const;
 
-	/* The set of addresses read from the target is derived from the plots of the
-	   active group and is only rebuilt when the state changes. Changing the group
-	   or the plot membership while running therefore has to ask for a restart;
-	   the acquisition thread performs the stop, rebuild and start in order, which
-	   is what makes the sequence free of races. Ignored while stopped. */
+	/* Asks for the set of addresses read from the target to be built again from
+	   the plots of the active group. Changing the group, or what the plots of it
+	   draw, while running therefore has to ask for this; the acquisition thread
+	   performs the rebuild, which is what keeps the walk over the model and the
+	   change to it apart. Ignored while stopped.
+
+	   The rebuild is all that happens for most probes. Only one that is the
+	   reader itself - the serial driver, and the debug probes in the streaming
+	   mode - is stopped and started again around the new list, because only then
+	   does it have to be told. See the note in dataHandler(). */
 	void requestRestart();
 
 	IDebugProbe::DebugProbeSettings getProbeSettings() const;
@@ -97,7 +102,13 @@ class ViewerDataHandler : public DataHandlerBase
 	void updateVariables(double timestamp, const std::unordered_map<uint32_t, double>& values);
 	void dataHandler();
 	void prepareCSVFile();
-	void createSampleList();
+
+	/* Builds the list of addresses read from the target out of the plots of the
+	   active group, and reports whether it came out different from the one in
+	   hand. The answer is what says whether anything has to happen at all: a
+	   change to the model that leaves this list alone - a variable that no plot
+	   draws - costs nothing. */
+	bool createSampleList();
 
    private:
 	static constexpr size_t maxVariablesOnSinglePlot = 100;

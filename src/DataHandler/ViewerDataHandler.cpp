@@ -215,23 +215,55 @@ void ViewerDataHandler::dataHandler()
 			stateChangeOrdered = false;
 		}
 
-		/* A restart rebuilds the sample list, which is what makes a variable that
-		   was just added to a plot, or a newly activated group, take effect.
+		/* A restart builds the list of addresses read from the target again, which
+		   is what makes a variable that was just added to a plot, or a newly
+		   activated group, take effect.
 
-		   It changes what is read from the target, and the run carries on: the
-		   samples already on the plots stay there, and what arrives now joins
-		   them at the end of the time axis. Throwing them away is the start
-		   button's job, not this one's. */
+		   It changes what is read, and the run carries on: the samples already on
+		   the plots stay there, and what arrives now joins them at the end of the
+		   time axis. Throwing them away is the start button's job, not this
+		   one's. */
 		if (restartRequested.exchange(false) && viewerState == State::RUN)
 		{
-			/* Taken before the probe is stopped, so that the pause being
-			   measured below covers waiting for it as well. */
+			/* Built before anything else is decided, because how it came out is
+			   what says whether there is anything to do at all. Importing a
+			   variable that no plot draws leaves this list exactly as it was,
+			   and it is the common case - a reader picks a symbol and puts it
+			   in the table before deciding where to show it. */
+			if (!createSampleList())
+				continue;
+
+			/* Names are logged by the plot they are drawn on, so a series that
+			   has appeared or gone takes the header of the log with it. */
+			prepareCSVFile();
+
+			/* The addresses are configured on the probe's side in two cases
+			   only: the streaming mode, where the probe builds the sample
+			   stream out of the list it was handed, and the serial driver,
+			   which sweeps a list this process sends it down the port. Those
+			   have to be told again, which means putting them down and picking
+			   them up.
+
+			   Every other probe hands back a word at a time on request, and the
+			   list those requests are made from is right here, so the next
+			   sample reads the new one. Putting such a probe down would cost
+			   every sample taken while it was down - a hole in each curve that
+			   nothing asked for, and one the reader has no way to tell from a
+			   target that stopped answering. */
+			const bool theProbeReadsTheListItself = probeSettings.mode == IDebugProbe::Mode::HSS || probeSettings.debugProbe == IDebugProbe::Probe::Serial;
+
+			if (!theProbeReadsTheListItself)
+				continue;
+
+			/* Taken before the probe is touched, so that the clock below is
+			   moved along by the whole of the pause, the part spent starting it
+			   again included. */
 			const auto restartBegan = std::chrono::steady_clock::now();
 
 			std::unique_lock<std::mutex> probeLock = lockProbe();
 			debugProbe->stopAcqusition();
-			createSampleList();
-			prepareCSVFile();
+
+			const bool started = debugProbe->startAcqusition(probeSettings, sampleList, settings.sampleFrequencyHz);
 
 			/* The clock keeps its place in the run. It is moved forward by the
 			   time the restart takes, so that the stretch the target was not
@@ -251,13 +283,13 @@ void ViewerDataHandler::dataHandler()
 			start += std::chrono::steady_clock::now() - restartBegan;
 
 			/* Same handling as a failing start from the state transition above. */
-			if (!debugProbe->startAcqusition(probeSettings, sampleList, settings.sampleFrequencyHz))
+			if (!started)
 				viewerState = State::STOP;
 		}
 	}
 }
 
-void ViewerDataHandler::createSampleList()
+bool ViewerDataHandler::createSampleList()
 {
 	/* Walks the plots and the variables, so it takes the lock the interface
 	   holds while it changes either of them. A variable added to a plot while
@@ -265,12 +297,17 @@ void ViewerDataHandler::createSampleList()
 	   again on this same thread. */
 	auto modelLock = variableHandler->lockModel();
 
-	sampleList.clear();
+	/* Built beside the list in hand rather than over it, so that the two can be
+	   compared before the one replaces the other. The answer is what the caller
+	   decides on, and it has to be about the contents: the list carries the
+	   addresses and the sizes of them, so a variable that keeps its address and
+	   comes back a wider type counts as a change, as it should. */
+	SampleListType wanted;
 
 	auto checkIfElementExists = [&](std::pair<uint32_t, uint8_t> newElement)
 	{
-		return std::find_if(sampleList.begin(), sampleList.end(), [&newElement](const std::pair<uint32_t, uint8_t>& element)
-							{ return element == newElement; }) != sampleList.end();
+		return std::find_if(wanted.begin(), wanted.end(), [&newElement](const std::pair<uint32_t, uint8_t>& element)
+							{ return element == newElement; }) != wanted.end();
 	};
 
 	for (auto& [name, plotElem] : *plotGroupHandler->getActiveGroup())
@@ -288,14 +325,14 @@ void ViewerDataHandler::createSampleList()
 			std::pair<uint32_t, uint8_t> newElement = {ser->var->getAddress(), ser->var->getSize()};
 
 			if (!checkIfElementExists(newElement))
-				sampleList.push_back(newElement);
+				wanted.push_back(newElement);
 
 			Variable* maybeXAxisVariable = plot->getXAxisVariable();
 			if (plot->getType() == Plot::Type::XY && maybeXAxisVariable != nullptr)
 			{
 				newElement = {maybeXAxisVariable->getAddress(), maybeXAxisVariable->getSize()};
 				if (!checkIfElementExists(newElement))
-					sampleList.push_back(newElement);
+					wanted.push_back(newElement);
 			}
 		}
 	}
@@ -309,17 +346,23 @@ void ViewerDataHandler::createSampleList()
 			std::pair<uint32_t, uint8_t> newElement = {var->getAddress(), var->getSize()};
 
 			if (!checkIfElementExists(newElement))
-				sampleList.push_back(newElement);
+				wanted.push_back(newElement);
 		}
 	}
 
-	/* mark actively sampled varaibles */
+	const bool changed = wanted != sampleList;
+
+	sampleList = std::move(wanted);
+
+	/* mark actively sampled variables */
 	for (auto variable : *variableHandler)
 	{
 		variable->setIsCurrentlySampled(false);
 		if (std::find(sampleList.begin(), sampleList.end(), std::pair<uint32_t, uint8_t>(variable->getAddress(), variable->getSize())) != sampleList.end())
 			variable->setIsCurrentlySampled(true);
 	}
+
+	return changed;
 }
 
 void ViewerDataHandler::prepareCSVFile()
