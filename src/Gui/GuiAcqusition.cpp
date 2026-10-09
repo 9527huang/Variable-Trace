@@ -8,6 +8,48 @@
    refreshing on a change of the symbol file. */
 static constexpr size_t alignment = 36;
 
+/* Device names the J-Link takes for a core rather than for a part. They matter
+   where a named device makes the probe halt the target on every start: the
+   generic name is read without that halt, which is the difference between a
+   reading that flows and one that stops the thing being measured.
+
+   The field stays free text - picking one of these only fills it in, and a part
+   number is still typed the way it always was. */
+static const char* const jlinkGenericTargets[] = {"Cortex-M3", "Cortex-M4"};
+
+/* The target name field and the list of generic names beside it. A combo cannot
+   hold typed text, so the field is an input and the list is a combo with its
+   preview taken away - which leaves the arrow and the list, opened and closed
+   by the same code every other list in this window uses. It is drawn by both
+   probe sections, which is why it lives out here. */
+static void drawJlinkTargetName(std::string& targetName, bool& modified)
+{
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Target name:"), alignment);
+	ImGui::SameLine();
+
+	if (ImGui::InputText("##device", &targetName, 0, NULL, NULL))
+		modified = true;
+
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(ImGui::GetFrameHeight());
+
+	if (ImGui::BeginCombo("##deviceChoices", NULL, ImGuiComboFlags_NoPreview))
+	{
+		for (const char* target : jlinkGenericTargets)
+		{
+			if (ImGui::Selectable(target))
+			{
+				targetName = target;
+				modified = true;
+			}
+		}
+
+		ImGui::EndCombo();
+	}
+
+	ImGui::SameLine();
+}
+
 void Gui::drawAcqusitionSettingsScope(ActiveViewType type)
 {
 	const bool isVariableViewer = (type == ActiveViewType::VarViewer);
@@ -206,13 +248,8 @@ void Gui::drawDebugProbes()
 
 	if (probeSettings.debugProbe == IDebugProbe::Probe::Jlink)
 	{
-		GuiHelper::drawTextAlignedToSize(I18n::tr("Target name:"), alignment);
-		ImGui::SameLine();
+		drawJlinkTargetName(probeSettings.device, modified);
 
-		if (ImGui::InputText("##device", &probeSettings.device, 0, NULL, NULL))
-			modified = true;
-
-		ImGui::SameLine();
 		if (ImGui::Button("...", ImVec2(35 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
 		{
 			std::string selectedTargetName = debugProbeDevice->getTargetName();
@@ -565,13 +602,8 @@ void Gui::drawTraceProbes()
 
 	if (probeSettings.debugProbe == 1)
 	{
-		GuiHelper::drawTextAlignedToSize(I18n::tr("Target name:"), alignment);
-		ImGui::SameLine();
+		drawJlinkTargetName(probeSettings.device, modified);
 
-		if (ImGui::InputText("##device", &probeSettings.device, 0, NULL, NULL))
-			modified = true;
-
-		ImGui::SameLine();
 		if (ImGui::Button("...", ImVec2(35 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
 		{
 			std::string selectedTargetName = traceProbeDevice->getTargetName();
