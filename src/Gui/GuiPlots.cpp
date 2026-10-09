@@ -522,7 +522,13 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 
 			ImGui::BeginDisabled(!writeAvailable);
 
-			const float writeButtonWidth = ImGui::CalcTextSize(I18n::tr("write")).x + 2.0f * ImGui::GetStyle().FramePadding.x;
+			/* The table zeroes the frame padding before it draws anything, so a
+			   button sized from that padding comes out exactly as wide and as
+			   tall as its own text and reads as a label rather than as
+			   something to press. Both are given room of their own here, taken
+			   from the content scale instead of the style. */
+			const float writeButtonWidth = ImGui::CalcTextSize(I18n::tr("write")).x + 30.0f * GuiHelper::contentScale;
+			const float writeButtonHeight = ImGui::GetTextLineHeight() + 8.0f * GuiHelper::contentScale;
 			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - writeButtonWidth - ImGui::GetStyle().ItemSpacing.x);
 
 			/* Enter is taken by the field itself rather than looked for
@@ -534,7 +540,7 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 												 ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue, NULL, NULL);
 
 			ImGui::SameLine();
-			const bool writePressed = ImGui::Button(writeLabel.c_str(), ImVec2(writeButtonWidth, 0));
+			const bool writePressed = ImGui::Button(writeLabel.c_str(), ImVec2(writeButtonWidth, writeButtonHeight));
 
 			if (entered || writePressed)
 			{
