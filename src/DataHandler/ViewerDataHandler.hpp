@@ -18,11 +18,25 @@ class ViewerDataHandler : public DataHandlerBase
 	static constexpr uint32_t minSamplinFrequencyHz = 1;
 	static constexpr uint32_t maxSamplinFrequencyHz = 1000000;
 
+	/* The viewport is a length of time, so its bounds are times: a millisecond
+	   is shorter than the interval between two samples at any rate this reads
+	   at, and an hour is longer than any run it is meant to show. */
+	static constexpr uint32_t minViewportWidthMs = 1;
+	static constexpr uint32_t maxViewportWidthMs = 3600000;
+
 	typedef struct Settings
 	{
 		uint32_t sampleFrequencyHz = 100;
 		uint32_t maxPoints = 10000;
-		uint32_t maxViewportPoints = 5000;
+
+		/* How much time the viewport shows, in milliseconds.
+
+		   A length of time rather than a number of samples: the same window
+		   then means the same thing whatever rate the run happens to reach,
+		   and changing the sampling frequency does not silently change how
+		   much of the signal is on screen. What the window can show is still
+		   bounded by the samples that are kept - see Plot::liveTimeWindow. */
+		uint32_t viewportWidthMs = 50000;
 		bool refreshAddressesOnElfChange = false;
 		bool stopAcqusitionOnElfChange = false;
 		bool shouldLog = false;

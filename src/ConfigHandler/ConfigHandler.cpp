@@ -314,7 +314,12 @@ bool ConfigHandler::readConfigFile(std::string& elfPath)
 	getValue("settings", "version", globalSettings.version);
 	getValue("settings", "sample_frequency_Hz", viewerSettings.sampleFrequencyHz);
 	getValue("settings", "max_points", viewerSettings.maxPoints);
-	getValue("settings", "max_viewport_points", viewerSettings.maxViewportPoints);
+
+	/* The ini says how many samples the viewport showed. At the frequency it
+	   samples at that is a length of time, which is the form this build keeps
+	   the window in. */
+	uint32_t iniViewportPoints = 0;
+	getValue("settings", "max_viewport_points", iniViewportPoints);
 	getValue("settings", "stop_acq_on_elf_change", viewerSettings.stopAcqusitionOnElfChange);
 	getValue("settings", "refresh_on_elf_change", viewerSettings.refreshAddressesOnElfChange);
 	getValue("settings", "probe_type", debugProbeSettings.debugProbe);
@@ -362,8 +367,10 @@ bool ConfigHandler::readConfigFile(std::string& elfPath)
 	if (viewerSettings.maxPoints == 0)
 		viewerSettings.maxPoints = 1000;
 
-	if (viewerSettings.maxViewportPoints == 0)
-		viewerSettings.maxViewportPoints = viewerSettings.maxPoints;
+	if (iniViewportPoints > 0 && viewerSettings.sampleFrequencyHz > 0)
+		viewerSettings.viewportWidthMs = static_cast<uint32_t>((static_cast<uint64_t>(iniViewportPoints) * 1000) / viewerSettings.sampleFrequencyHz);
+	else if (viewerSettings.viewportWidthMs == 0)
+		viewerSettings.viewportWidthMs = ViewerDataHandler::Settings{}.viewportWidthMs;
 
 	if (debugProbeSettings.speedkHz == 0)
 		debugProbeSettings.speedkHz = 100;
@@ -427,7 +434,11 @@ mINI::INIStructure ConfigHandler::prepareSaveConfigFile(const std::string& elfPa
 
 	(configIni)["settings"]["sample_frequency_hz"] = std::to_string(viewerSettings.sampleFrequencyHz);
 	(configIni)["settings"]["max_points"] = std::to_string(viewerSettings.maxPoints);
-	(configIni)["settings"]["max_viewport_points"] = std::to_string(viewerSettings.maxViewportPoints);
+	/* Written back in the ini's own terms: the file says how many samples a
+	   viewport held, so the length of time is converted at the same frequency
+	   it is written with. */
+	(configIni)["settings"]["max_viewport_points"] = std::to_string(
+		viewerSettings.sampleFrequencyHz > 0 ? (static_cast<uint64_t>(viewerSettings.viewportWidthMs) * viewerSettings.sampleFrequencyHz) / 1000 : 0);
 	(configIni)["settings"]["refresh_on_elf_change"] = viewerSettings.refreshAddressesOnElfChange ? std::string("true") : std::string("false");
 	(configIni)["settings"]["stop_acq_on_elf_change"] = viewerSettings.stopAcqusitionOnElfChange ? std::string("true") : std::string("false");
 	(configIni)["settings"]["probe_type"] = std::to_string(debugProbeSettings.debugProbe);

@@ -389,6 +389,11 @@ namespace mcp
 				changed["max_points"] = points;
 			}
 
+			/* The viewport used to be given as a number of samples. A caller that
+			   still speaks that way is understood: at the frequency the run is
+			   configured for, a number of samples is a length of time, and that
+			   is what it becomes. The two names are not two settings - the one
+			   the caller sent last is the one that stands. */
 			if (has(arguments, "max_viewport_points"))
 			{
 				const int64_t points = *optionalInteger(arguments, "max_viewport_points");
@@ -396,26 +401,24 @@ namespace mcp
 				if (points < static_cast<int64_t>(minPoints) || points > static_cast<int64_t>(maxPoints))
 					throw ToolError("Field 'max_viewport_points' must be between " + std::to_string(minPoints) + " and " + std::to_string(maxPoints) + ".");
 
-				settings.maxViewportPoints = static_cast<uint32_t>(points);
+				if (settings.sampleFrequencyHz > 0)
+					settings.viewportWidthMs = static_cast<uint32_t>((static_cast<uint64_t>(points) * 1000) / settings.sampleFrequencyHz);
+
 				changed["max_viewport_points"] = points;
 			}
 
 			if (has(arguments, "viewport_width_ms"))
 			{
-				const double windowMs = *optionalNumber(arguments, "viewport_width_ms");
+				const int64_t windowMs = *optionalInteger(arguments, "viewport_width_ms");
 
-				if (windowMs <= 0.0)
-					throw ToolError("Field 'viewport_width_ms' must be greater than zero.");
+				if (windowMs < static_cast<int64_t>(ViewerDataHandler::minViewportWidthMs) ||
+					windowMs > static_cast<int64_t>(ViewerDataHandler::maxViewportWidthMs))
+					throw ToolError("Field 'viewport_width_ms' must be between " + std::to_string(ViewerDataHandler::minViewportWidthMs) + " and " +
+									std::to_string(ViewerDataHandler::maxViewportWidthMs) + ".");
 
-				/* The viewport of this build shows the newest maxViewportPoints
-				   samples instead of a wall clock window, and the relation between
-				   the two is seconds = points / frequency. A time window is
-				   therefore the more specific request and wins when both are sent. */
-				const double points = std::clamp((windowMs / 1000.0) * static_cast<double>(settings.sampleFrequencyHz),
-												 static_cast<double>(minPoints),
-												 static_cast<double>(std::min(settings.maxPoints, maxPoints)));
-
-				settings.maxViewportPoints = static_cast<uint32_t>(points);
+				/* A length of time is the more specific request, so it wins when
+				   both names are sent. */
+				settings.viewportWidthMs = static_cast<uint32_t>(windowMs);
 				changed["viewport_width_ms"] = windowMs;
 			}
 
@@ -423,12 +426,15 @@ namespace mcp
 				throw ToolError("No sampling parameter was provided. Pass at least one of 'sample_frequency_hz', 'max_points', "
 								"'max_viewport_points' or 'viewport_width_ms'.");
 
-			/* The rendered count can never exceed the stored count. */
-			settings.maxViewportPoints = std::clamp(settings.maxViewportPoints, minPoints, settings.maxPoints);
+			settings.viewportWidthMs = std::clamp(settings.viewportWidthMs, ViewerDataHandler::minViewportWidthMs, ViewerDataHandler::maxViewportWidthMs);
 
 			context.viewerDataHandler->setSettings(settings);
 
-			changed["max_viewport_points"] = settings.maxViewportPoints;
+			/* Both ways of saying it are answered, since both are accepted: what
+			   was stored, and what that amounts to in samples at the frequency
+			   this run is configured for. */
+			changed["viewport_width_ms"] = settings.viewportWidthMs;
+			changed["max_viewport_points"] = static_cast<int64_t>(settings.viewportWidthMs) * settings.sampleFrequencyHz / 1000;
 
 			/* The frequency is handed to the probe when it is started, so a changed
 			   value only takes effect through a restart. */
@@ -586,12 +592,12 @@ namespace mcp
 					  .description = "Configure sampling parameters. All fields optional - only provided fields are updated. "
 									 "  sample_frequency_hz : 1 - 1 000 000 "
 									 "  max_points          : total samples kept per series "
-									 "  max_viewport_points : samples rendered in viewport "
-									 "  viewport_width_ms   : visible time window in ms",
+									 "  viewport_width_ms   : visible time window in ms (1 - 3 600 000) "
+									 "  max_viewport_points : the same window given in samples, converted at the sampling frequency",
 					  .inputSchema = objectSchema(Json::object({{"sample_frequency_hz", integerProperty("Sampling frequency in Hz (1 - 1 000 000)")},
 																{"max_points", integerProperty("Max stored samples per series")},
-																{"max_viewport_points", integerProperty("Max rendered samples in viewport")},
-																{"viewport_width_ms", numberProperty("Visible time window in ms")}})),
+																{"viewport_width_ms", integerProperty("Visible time window in ms (1 - 3 600 000)")},
+																{"max_viewport_points", integerProperty("Visible time window in samples, converted at the sampling frequency")}})),
 					  .handler = setSampling});
 
 		registry.add({.name = "set_elf_parser",

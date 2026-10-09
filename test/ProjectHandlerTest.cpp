@@ -68,7 +68,7 @@ TEST_F(ProjectHandlerTest, roundTripPreservesElfAndAcquisitionSettings)
 	data.elfPath = "firmware/target.elf";
 	data.viewer.sampleFrequencyHz = 250;
 	data.viewer.maxPoints = 12345;
-	data.viewer.maxViewportPoints = 678;
+	data.viewer.viewportWidthMs = 6780;
 	data.viewer.refreshAddressesOnElfChange = true;
 	data.viewer.stopAcquisitionOnElfChange = true;
 	data.viewer.loggingEnabled = true;
@@ -107,7 +107,7 @@ TEST_F(ProjectHandlerTest, roundTripPreservesElfAndAcquisitionSettings)
 
 	EXPECT_EQ(loaded.viewer.sampleFrequencyHz, 250u);
 	EXPECT_EQ(loaded.viewer.maxPoints, 12345u);
-	EXPECT_EQ(loaded.viewer.maxViewportPoints, 678u);
+	EXPECT_EQ(loaded.viewer.viewportWidthMs, 6780u);
 	EXPECT_TRUE(loaded.viewer.refreshAddressesOnElfChange);
 	EXPECT_TRUE(loaded.viewer.stopAcquisitionOnElfChange);
 	EXPECT_TRUE(loaded.viewer.loggingEnabled);
@@ -137,6 +137,29 @@ TEST_F(ProjectHandlerTest, roundTripPreservesElfAndAcquisitionSettings)
 	EXPECT_EQ(loaded.trace.probe.targetName, "STM32F407VG");
 	EXPECT_EQ(loaded.trace.probe.speedKHz, 2000u);
 	EXPECT_TRUE(loaded.trace.probe.keepConnection);
+}
+
+TEST_F(ProjectHandlerTest, aProjectThatGaveTheViewportInSamplesIsReadAsThatWindowInTime)
+{
+	/* The viewport used to be a number of samples rather than a length of time.
+	   At the frequency the project samples at the two say the same thing, so
+	   such a project opens showing the window it was saved with rather than
+	   falling back to the default. */
+	writeFile(path("older-viewport.mcvproj"), R"({"formatVersion": 1, "elf": {"path": "old.elf"}, )"
+											 R"("acquisition": {"sampleFrequencyHz": 250, "maxViewportPoints": 500}})");
+
+	VariableHandler variables;
+	PlotHandler plots;
+	PlotGroupHandler groups;
+	ProjectHandler reader(&variables, &plots, &groups, logger.get());
+
+	ProjectData loaded;
+	ASSERT_EQ(reader.open(path("older-viewport.mcvproj"), loaded), ProjectHandler::OpenResult::Ok);
+
+	EXPECT_EQ(loaded.viewer.sampleFrequencyHz, 250u);
+
+	/* 500 samples at 250 Hz is two seconds. */
+	EXPECT_EQ(loaded.viewer.viewportWidthMs, 2000u);
 }
 
 TEST_F(ProjectHandlerTest, aProjectWrittenBeforeTheKeepConnectionSettingKeepsTheLinkClosing)

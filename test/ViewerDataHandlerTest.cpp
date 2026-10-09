@@ -239,15 +239,15 @@ namespace
 	};
 
 	/*
-	 * What the panel keeps is what the buffers can hold, and the viewport is a
-	 * fraction of that same capacity - a window onto the samples, not a second
-	 * length. A settings set that comes in from somewhere other than the panel
-	 * is cut down at this end rather than trusted, so that what the reader sees
-	 * in the field, what is allocated and what the axis is worked out from all
-	 * agree.
+	 * What the panel keeps is what the buffers can hold, and the two settings
+	 * are different kinds of thing: how many samples a series keeps is a
+	 * capacity, and how much time the viewport shows is a length. A settings set
+	 * that comes in from somewhere other than the panel is cut down at this end
+	 * rather than trusted, so that what the reader sees in the field is what was
+	 * stored.
 	 */
 
-	TEST_F(ViewerDataHandlerTest, aViewportIsCutToTheCapacityOfTheSeries)
+	TEST_F(ViewerDataHandlerTest, aViewportWidthIsKeptWithinItsBounds)
 	{
 		plotGroupHandler.addGroup("group");
 		plotGroupHandler.setActiveGroup("group");
@@ -259,14 +259,19 @@ namespace
 		viewerDataHandler = std::make_unique<ViewerDataHandler>(&plotGroupHandler, &variableHandler, &plotHandler, &tracePlotHandler, applicationDone, &modelMutex, logger.get());
 
 		ViewerDataHandler::Settings settings = viewerDataHandler->getSettings();
-		settings.maxPoints = 3000;
-		settings.maxViewportPoints = 9000;
+
+		/* A window no run could be shorter than, and one far longer than any
+		   this is meant to show: both are brought back to what the setting can
+		   express. */
+		settings.viewportWidthMs = 0;
 		viewerDataHandler->setSettings(settings);
 
-		const ViewerDataHandler::Settings applied = viewerDataHandler->getSettings();
+		EXPECT_EQ(viewerDataHandler->getSettings().viewportWidthMs, ViewerDataHandler::minViewportWidthMs);
 
-		EXPECT_EQ(applied.maxPoints, 3000u);
-		EXPECT_EQ(applied.maxViewportPoints, 3000u);
+		settings.viewportWidthMs = 100000000;
+		viewerDataHandler->setSettings(settings);
+
+		EXPECT_EQ(viewerDataHandler->getSettings().viewportWidthMs, ViewerDataHandler::maxViewportWidthMs);
 	}
 
 	TEST_F(ViewerDataHandlerTest, aCapacityBeyondTheMemoryBudgetIsCutToIt)
@@ -284,13 +289,11 @@ namespace
 
 		ViewerDataHandler::Settings settings = viewerDataHandler->getSettings();
 		settings.maxPoints = ceiling + 1000000;
-		settings.maxViewportPoints = ceiling + 1000000;
 		viewerDataHandler->setSettings(settings);
 
 		const ViewerDataHandler::Settings applied = viewerDataHandler->getSettings();
 
 		EXPECT_EQ(applied.maxPoints, ceiling);
-		EXPECT_EQ(applied.maxViewportPoints, ceiling);
 		EXPECT_EQ(target->getXAxisSeries()->getMaxSize(), ceiling);
 	}
 }  // namespace

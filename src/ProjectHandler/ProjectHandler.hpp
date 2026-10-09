@@ -38,7 +38,8 @@ struct ProjectViewerSettings
 {
 	uint32_t sampleFrequencyHz = 100;
 	uint32_t maxPoints = 10000;
-	uint32_t maxViewportPoints = 5000;
+	/* How much time the viewport shows, in milliseconds. */
+	uint32_t viewportWidthMs = 50000;
 	bool refreshAddressesOnElfChange = false;
 	bool stopAcquisitionOnElfChange = false;
 	bool loggingEnabled = false;

@@ -76,12 +76,12 @@ void Gui::acqusitionSettingsViewer()
 	ImGui::HelpMarker(maxPointsHelp.c_str());
 	settings.maxPoints = std::clamp(settings.maxPoints, minPoints, maxPoints);
 
-	GuiHelper::drawTextAlignedToSize(I18n::tr("Max view points:"), alignment);
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Viewport width [ms]:"), alignment);
 	ImGui::SameLine();
-	ImGui::InputScalar("##maxViewportPoints", ImGuiDataType_U32, &settings.maxViewportPoints, NULL, NULL, "%u");
+	ImGui::InputScalar("##viewportWidthMs", ImGuiDataType_U32, &settings.viewportWidthMs, NULL, NULL, "%u");
 	ImGui::SameLine();
-	ImGui::HelpMarker(I18n::tr("Max points used for a single series that will be shown in the viewport without scroling."));
-	settings.maxViewportPoints = std::clamp(settings.maxViewportPoints, minPoints, settings.maxPoints);
+	ImGui::HelpMarker(I18n::tr("How much time the viewport shows while acquisition is running. What can be shown is bounded by the samples that are kept: Max points at the sampling frequency."));
+	settings.viewportWidthMs = std::clamp(settings.viewportWidthMs, ViewerDataHandler::minViewportWidthMs, ViewerDataHandler::maxViewportWidthMs);
 
 	drawDebugProbes();
 	drawLoggingSettings(plotHandler, settings);

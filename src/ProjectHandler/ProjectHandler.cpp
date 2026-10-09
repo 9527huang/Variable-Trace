@@ -206,7 +206,7 @@ std::string ProjectHandler::serialize(const ProjectData& data) const
 	root["acquisition"] = json::object(
 		{{"sampleFrequencyHz", data.viewer.sampleFrequencyHz},
 		 {"maxPoints", data.viewer.maxPoints},
-		 {"maxViewportPoints", data.viewer.maxViewportPoints},
+		 {"viewportWidthMs", data.viewer.viewportWidthMs},
 		 {"refreshAddressesOnElfChange", data.viewer.refreshAddressesOnElfChange},
 		 {"stopAcquisitionOnElfChange", data.viewer.stopAcquisitionOnElfChange},
 		 {"logging", json::object({{"enabled", data.viewer.loggingEnabled}, {"directory", data.viewer.logDirectory}})},
@@ -641,7 +641,19 @@ bool ProjectHandler::deserialize(const json& root, ProjectData& data)
 
 		data.viewer.sampleFrequencyHz = acquisition.value("sampleFrequencyHz", data.viewer.sampleFrequencyHz);
 		data.viewer.maxPoints = acquisition.value("maxPoints", data.viewer.maxPoints);
-		data.viewer.maxViewportPoints = acquisition.value("maxViewportPoints", data.viewer.maxViewportPoints);
+
+		/* The viewport used to be a number of samples rather than a length of
+		   time. At the frequency the project samples at the two say the same
+		   thing, so a project written by the older build is read as the window
+		   it was showing rather than falling back to the default. */
+		if (acquisition.contains("viewportWidthMs"))
+			data.viewer.viewportWidthMs = acquisition.value("viewportWidthMs", data.viewer.viewportWidthMs);
+		else if (acquisition.contains("maxViewportPoints") && data.viewer.sampleFrequencyHz > 0)
+		{
+			const uint32_t points = acquisition.value("maxViewportPoints", 0u);
+
+			data.viewer.viewportWidthMs = static_cast<uint32_t>((static_cast<uint64_t>(points) * 1000) / data.viewer.sampleFrequencyHz);
+		}
 		data.viewer.refreshAddressesOnElfChange = acquisition.value("refreshAddressesOnElfChange", data.viewer.refreshAddressesOnElfChange);
 		data.viewer.stopAcquisitionOnElfChange = acquisition.value("stopAcquisitionOnElfChange", data.viewer.stopAcquisitionOnElfChange);
 		data.viewer.gdbCommand = acquisition.value("gdbCommand", data.viewer.gdbCommand);

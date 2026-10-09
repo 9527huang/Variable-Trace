@@ -79,11 +79,13 @@ void ViewerDataHandler::setSettings(const Settings& newSettings)
 
 	/* What is kept here is what the buffers can hold. A capacity that does not
 	   fit the memory the buffers are allowed is refused by the plot handler,
-	   and the viewport is a fraction of that same capacity, so both are cut
-	   down to it here rather than in each caller - a project file written on
-	   a machine with more memory comes in through one of them. */
+	   so both are cut down to it here rather than in each caller - a project
+	   file written on a machine with more memory comes in through one of them.
+	   The viewport is a length of time and needs only its own bounds: how much
+	   of it can actually be shown is decided where the window is worked out,
+	   from the samples that are still in hand. */
 	settings.maxPoints = std::clamp(settings.maxPoints, static_cast<uint32_t>(1), plotHandler->maxPointsForMemoryBudget());
-	settings.maxViewportPoints = std::clamp(settings.maxViewportPoints, static_cast<uint32_t>(1), settings.maxPoints);
+	settings.viewportWidthMs = std::clamp(settings.viewportWidthMs, minViewportWidthMs, maxViewportWidthMs);
 
 	plotHandler->setMaxPoints(settings.maxPoints);
 }

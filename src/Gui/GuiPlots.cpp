@@ -302,7 +302,10 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 
 			if (follows)
 			{
-				const double viewportWidth = (1.0 / viewerDataHandler->getAverageSamplingFrequency()) * settings.maxViewportPoints;
+				/* The window is a length of time. How much of it can be filled
+				   is decided by the samples that are still in hand, which is
+				   what liveTimeWindow is about. */
+				const double viewportWidth = settings.viewportWidthMs / 1000.0;
 				const double* newest = time.getLastElement();
 
 				/* A ring nothing has been put into yet has no newest sample to

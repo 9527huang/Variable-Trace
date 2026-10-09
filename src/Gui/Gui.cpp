@@ -721,7 +721,7 @@ ProjectData Gui::collectProjectData()
 	const ViewerDataHandler::Settings viewerSettings = viewerDataHandler->getSettings();
 	data.viewer.sampleFrequencyHz = viewerSettings.sampleFrequencyHz;
 	data.viewer.maxPoints = viewerSettings.maxPoints;
-	data.viewer.maxViewportPoints = viewerSettings.maxViewportPoints;
+	data.viewer.viewportWidthMs = viewerSettings.viewportWidthMs;
 	data.viewer.refreshAddressesOnElfChange = viewerSettings.refreshAddressesOnElfChange;
 	data.viewer.stopAcquisitionOnElfChange = viewerSettings.stopAcqusitionOnElfChange;
 	data.viewer.loggingEnabled = viewerSettings.shouldLog;
@@ -1453,7 +1453,7 @@ void Gui::applyProjectData(const ProjectData& data)
 	ViewerDataHandler::Settings viewerSettings = viewerDataHandler->getSettings();
 	viewerSettings.sampleFrequencyHz = data.viewer.sampleFrequencyHz;
 	viewerSettings.maxPoints = data.viewer.maxPoints;
-	viewerSettings.maxViewportPoints = data.viewer.maxViewportPoints;
+	viewerSettings.viewportWidthMs = data.viewer.viewportWidthMs;
 	viewerSettings.refreshAddressesOnElfChange = data.viewer.refreshAddressesOnElfChange;
 	viewerSettings.stopAcqusitionOnElfChange = data.viewer.stopAcquisitionOnElfChange;
 	viewerSettings.shouldLog = data.viewer.loggingEnabled;
