@@ -157,6 +157,7 @@ add_executable(${EXECUTABLE} main.cpp
     McpServerTest.cpp
     SerialProtocolTest.cpp
     GdbServerDebugProbeTest.cpp
+    DebugProbeTypesTest.cpp
     RecorderHandlerTest.cpp
     ${SOURCES})
 

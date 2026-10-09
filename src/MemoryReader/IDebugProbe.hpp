@@ -33,7 +33,23 @@ class IDebugProbe
 		/* A GDB server somebody else started, reached over the network: the way
 		   to a probe this build has no support for of its own. */
 		GdbServer = 3,
+
+		/* Not a probe: how many there are. It stays last so that the values
+		   above keep meaning what a project file recorded, and so that the
+		   table below can be checked against it while the program builds. */
+		Count,
 	};
+
+	/* The names the interface puts on a probe type, in the order of the enum
+	   above. Everything that shows a probe name reads this one table - the
+	   acquisition window's list and the connection indicator both do. They
+	   used to keep a list each, and the indicator's was three entries long
+	   while the enum had four, so a GDB server was offered in the window and
+	   then reported as STLINK up in the menu bar. */
+	inline static constexpr const char* probeNames[] = {"STLINK", "JLINK", "SERIAL", "GDBSERVER"};
+	inline static constexpr int probeNameCount = sizeof(probeNames) / sizeof(probeNames[0]);
+
+	static_assert(probeNameCount == Probe::Count, "every probe type needs a name");
 
 	/* How a J-Link is reached. The USB value is the one a project without the
 	   setting was written with. */

@@ -551,6 +551,10 @@ EXTRA = {
 
     # Reading through a GDB server somebody else started.
     "GDB server:": "GDB 服务器:",
+    # The connection indicator names it in a row of its own, the way the rows
+    # beside it are named, so the label carries no colon of its own.
+    "GDB server": "GDB 服务器",
+    "Port": "端口",
     "Address of the machine running the GDB server. OpenOCD, and the servers shipped with probes, both speak the protocol this reads through.": "运行 GDB 服务器那台机器的地址。OpenOCD 与各家探针自带的服务器都说这套协议,本软件就是通过它读内存的。",
     "Port:": "端口:",
     "Port the GDB server serves on. OpenOCD's default is 3333.": "GDB 服务器提供服务的端口。OpenOCD 默认是 3333。",

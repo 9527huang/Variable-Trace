@@ -428,10 +428,13 @@ void Gui::drawConnectionIndicator()
 	   that is showing rather than reporting a single global state. */
 	DataHandlerBase* handler = isVariableView ? static_cast<DataHandlerBase*>(viewerDataHandler) : static_cast<DataHandlerBase*>(traceDataHandler);
 
-	static const char* const probeNames[] = {"STLINK", "JLINK", "SERIAL"};
+	/* The name comes from the table the acquisition window also draws, so that
+	   a probe type cannot be named in one place and shown as another here. A
+	   value the table does not cover falls back to its first entry rather than
+	   being read past the end of it. */
 	const uint32_t probeType = isVariableView ? viewerDataHandler->getProbeSettings().debugProbe : traceDataHandler->getProbeSettings().debugProbe;
-	const size_t probeIndex = (static_cast<size_t>(probeType) < IM_ARRAYSIZE(probeNames)) ? static_cast<size_t>(probeType) : 0;
-	const char* const probeName = probeNames[probeIndex];
+	const uint32_t probeIndex = (probeType < static_cast<uint32_t>(IDebugProbe::Probe::Count)) ? probeType : static_cast<uint32_t>(IDebugProbe::Probe::Stlink);
+	const char* const probeName = IDebugProbe::probeNames[probeIndex];
 
 	std::string serialNumber;
 	std::string targetName;
@@ -441,6 +444,12 @@ void Gui::drawConnectionIndicator()
 	bool hasTargetName = false;
 	bool highSpeed = false;
 	bool keepConnection = false;
+
+	/* A GDB server has no probe of its own to enumerate and no SWD speed: the
+	   address it is reached at is the whole of what identifies it. */
+	bool gdbServer = false;
+	std::string gdbAddress;
+	uint32_t gdbPort = 0;
 
 	if (isVariableView)
 	{
@@ -454,6 +463,9 @@ void Gui::drawConnectionIndicator()
 		hasTargetName = (settings.debugProbe == IDebugProbe::Probe::Jlink);
 		highSpeed = (settings.mode == IDebugProbe::Mode::HSS);
 		keepConnection = settings.keepConnection;
+		gdbServer = (settings.debugProbe == IDebugProbe::Probe::GdbServer);
+		gdbAddress = settings.ipAddress;
+		gdbPort = settings.port;
 	}
 	else
 	{
@@ -625,6 +637,11 @@ void Gui::drawConnectionIndicator()
 	{
 		drawIndicatorRow(I18n::tr("Serial port"), serialNumber.empty() ? "-" : serialNumber);
 		drawIndicatorRow(I18n::tr("Baudrate"), std::to_string(baudrate) + " baud");
+	}
+	else if (gdbServer)
+	{
+		drawIndicatorRow(I18n::tr("GDB server"), gdbAddress.empty() ? "-" : gdbAddress);
+		drawIndicatorRow(I18n::tr("Port"), std::to_string(gdbPort));
 	}
 	else
 	{

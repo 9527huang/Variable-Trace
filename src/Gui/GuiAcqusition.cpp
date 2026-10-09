@@ -105,11 +105,10 @@ void Gui::drawDebugProbes()
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Debug probe:"), alignment);
 	ImGui::SameLine();
 
-	const char* debugProbes[] = {"STLINK", "JLINK", "SERIAL", "GDBSERVER"};
 	IDebugProbe::DebugProbeSettings probeSettings = viewerDataHandler->getProbeSettings();
 	int32_t debugProbe = static_cast<int32_t>(probeSettings.debugProbe);
 
-	if (ImGui::Combo("##debugProbe", &debugProbe, debugProbes, IM_ARRAYSIZE(debugProbes)))
+	if (ImGui::Combo("##debugProbe", &debugProbe, IDebugProbe::probeNames, IDebugProbe::probeNameCount))
 	{
 		probeSettings.debugProbe = static_cast<uint32_t>(debugProbe);
 		modified = true;
@@ -511,9 +510,13 @@ void Gui::drawTraceProbes()
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Debug probe:"), alignment);
 	ImGui::SameLine();
 
+	/* The trace stream comes out of two probes only, and neither is a GDB
+	   server, so this list belongs to the trace side. A project file naming
+	   anything else falls back to the first entry - the same one the
+	   acquisition falls back to - rather than indexing past the list. */
 	const char* debugProbes[] = {"STLINK", "JLINK"};
 	ITraceProbe::TraceProbeSettings probeSettings = traceDataHandler->getProbeSettings();
-	int32_t debugProbe = probeSettings.debugProbe;
+	int32_t debugProbe = (probeSettings.debugProbe == 1) ? 1 : 0;
 
 	if (ImGui::Combo("##debugProbe", &debugProbe, debugProbes, IM_ARRAYSIZE(debugProbes)))
 	{
