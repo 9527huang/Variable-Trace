@@ -30,7 +30,11 @@ static void drawJlinkTargetName(std::string& targetName, bool& modified)
 	if (ImGui::InputText("##device", &targetName, 0, NULL, NULL))
 		modified = true;
 
-	ImGui::SameLine();
+	/* No gap at all between the field and the arrow, and the arrow is as wide
+	   as a frame is tall: the boxes have square corners in this theme, so the
+	   two frames meet and the pair reads as the one control the combo on the
+	   row below is. With a gap it reads as a field and an unrelated button. */
+	ImGui::SameLine(0.0f, 0.0f);
 	ImGui::SetNextItemWidth(ImGui::GetFrameHeight());
 
 	if (ImGui::BeginCombo("##deviceChoices", NULL, ImGuiComboFlags_NoPreview))
