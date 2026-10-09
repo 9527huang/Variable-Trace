@@ -342,6 +342,7 @@ static const Entry table[] = {
 	{"Window", "窗口"},
 	{"With several plots, numbers each file so none is written over.", "有多个绘图时，为每个文件编号，避免互相覆盖。"},
 	{"Without this, set_variable_value is refused. Each variable can carry its own min/max range on top.", "不启用时，set_variable_value 会被拒绝。此外每个变量还可以各自设置最小/最大范围。"},
+	{"Write", "写入"},
 	{"Write Planner", "写计划器"},
 	{"Write value", "写入值"},
 	{"X-axis label:", "X 轴标签:"},

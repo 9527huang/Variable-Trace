@@ -1,6 +1,10 @@
 #include "Gui.hpp"
 #include "I18n.hpp"
 
+#include <cstdlib>
+#include <string>
+#include <unordered_map>
+
 void Gui::dragAndDropPlot(std::shared_ptr<Plot> plot)
 {
 	if (ImPlot::BeginDragDropTargetPlot())
@@ -485,33 +489,74 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 			showChangeFormatPopup("format", *plot, key);
 			ImGui::TableSetColumnIndex(3);
 
-			std::string valueToWrite = "";
+			/* A new value only goes out while the acquisition is running: the
+			   sampling thread is reading over the same link, and the write is
+			   answered on it. So the cell is disabled rather than silently
+			   swallowing what was typed. */
+			const bool writeAvailable = (viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN);
+
+			/* What was typed has to outlive the frame that drew it. The button
+			   reports its press on the frame the mouse is released, which is
+			   after the field has already been deactivated - and a buffer that
+			   was thrown away at the end of the previous frame holds nothing by
+			   then, so the press writes an empty value. Kept per row, so two
+			   rows do not share what was typed into them. */
+			static std::unordered_map<std::string, std::string> writeText;
+			std::string& valueToWrite = writeText[plot->getName() + "##" + key];
+
 			std::string inputName = "##Input" + key;
+
+			/* Every row carries a button with the same words on it, so the id
+			   has to come from somewhere else or the rows share one. */
+			std::string writeLabel = std::string(I18n::tr("Write")) + "##Write" + key;
 
 			ImVec4 cellBgColor = ImGui::GetStyle().Colors[ImGuiCol_TableRowBg];
 			ImGui::PushStyleColor(ImGuiCol_FrameBg, cellBgColor);
 			ImGui::PushStyleColor(ImGuiCol_FrameBgActive, cellBgColor);
 			ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, cellBgColor);
-			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
 
-			if (ImGui::InputText(inputName.c_str(), &valueToWrite, ImGuiInputTextFlags_CharsDecimal, NULL, NULL))
+			ImGui::BeginDisabled(!writeAvailable);
+
+			const float writeButtonWidth = ImGui::CalcTextSize(I18n::tr("Write")).x + 2.0f * ImGui::GetStyle().FramePadding.x;
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - writeButtonWidth - ImGui::GetStyle().ItemSpacing.x);
+
+			/* Enter is taken by the field itself rather than looked for
+			   afterwards: a plain InputText reads Enter as "done with this
+			   field" and reports no change, so a write keyed off the change
+			   never fires. EnterReturnsTrue makes the press come back as the
+			   field's own return value. */
+			const bool entered = ImGui::InputText(inputName.c_str(), &valueToWrite,
+												 ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue, NULL, NULL);
+
+			ImGui::SameLine();
+			const bool writePressed = ImGui::Button(writeLabel.c_str(), ImVec2(writeButtonWidth, 0));
+
+			if (entered || writePressed)
 			{
-				if (viewerDataHandler->getStateImmediate() == DataHandlerBase::State::STOP)
-				{
-					ImGui::PopStyleColor(3);
-					ImGui::EndDisabled();
-					continue;
-				}
-				if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))
+				/* CharsDecimal still lets a lone "-" or "." through, and
+				   std::stod throws on those - on this thread that ends the
+				   program, so the number is read with an answer for "not a
+				   number" instead. */
+				const char* text = valueToWrite.c_str();
+				char* end = nullptr;
+				const double value = std::strtod(text, &end);
+				const bool isNumber = (end != text) && (*end == '\0');
+
+				if (!isNumber)
+					logger->error("'{}' is not a number, nothing was written", valueToWrite);
+				else
 				{
 					logger->info("New value to be written: {}", valueToWrite);
-					if (!viewerDataHandler->writeVariable(*serPtr->var, std::stod(valueToWrite)))
+
+					if (!viewerDataHandler->writeVariable(*serPtr->var, value))
 					{
 						const std::string reason = viewerDataHandler->getLastWriteError();
 						logger->error("Error while writing new value! {}", reason);
 					}
 				}
 			}
+
+			ImGui::EndDisabled();
 			ImGui::PopStyleColor(3);
 			ImGui::EndDisabled();
 		}
