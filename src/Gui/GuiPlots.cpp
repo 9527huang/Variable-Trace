@@ -500,15 +500,20 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 			   after the field has already been deactivated - and a buffer that
 			   was thrown away at the end of the previous frame holds nothing by
 			   then, so the press writes an empty value. Kept per row, so two
-			   rows do not share what was typed into them. */
+			   rows do not share what was typed into them.
+
+			   It starts at 0 rather than empty, which is both what the writer
+			   this is modelled on shows and what keeps the button from having
+			   nothing to write the moment it is pressed. */
 			static std::unordered_map<std::string, std::string> writeText;
-			std::string& valueToWrite = writeText[plot->getName() + "##" + key];
+			const std::string rowKey = plot->getName() + "##" + key;
+			std::string& valueToWrite = writeText.emplace(rowKey, "0").first->second;
 
 			std::string inputName = "##Input" + key;
 
 			/* Every row carries a button with the same words on it, so the id
 			   has to come from somewhere else or the rows share one. */
-			std::string writeLabel = std::string(I18n::tr("Write")) + "##Write" + key;
+			std::string writeLabel = std::string(I18n::tr("write")) + "##Write" + key;
 
 			ImVec4 cellBgColor = ImGui::GetStyle().Colors[ImGuiCol_TableRowBg];
 			ImGui::PushStyleColor(ImGuiCol_FrameBg, cellBgColor);
@@ -517,7 +522,7 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 
 			ImGui::BeginDisabled(!writeAvailable);
 
-			const float writeButtonWidth = ImGui::CalcTextSize(I18n::tr("Write")).x + 2.0f * ImGui::GetStyle().FramePadding.x;
+			const float writeButtonWidth = ImGui::CalcTextSize(I18n::tr("write")).x + 2.0f * ImGui::GetStyle().FramePadding.x;
 			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - writeButtonWidth - ImGui::GetStyle().ItemSpacing.x);
 
 			/* Enter is taken by the field itself rather than looked for
