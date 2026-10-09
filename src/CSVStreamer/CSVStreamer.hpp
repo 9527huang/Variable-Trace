@@ -22,10 +22,11 @@ class CSVStreamer
 		Buffer* nextBuffer;
 	};
 
-	CSVStreamer(spdlog::logger* logger);
+	CSVStreamer(spdlog::logger* logger, const std::string& logPrefix = "logfile");
 	~CSVStreamer();
 
-	/// @brief Creates file in given directory with a fixed name
+	/// @brief Creates a file of its own for the run that is starting, in the given
+	/// directory, and keeps it for the rest of that run
 	/// @param directory directory string
 	/// @return
 	bool prepareFile(const std::string& directory);
@@ -49,11 +50,17 @@ class CSVStreamer
 	void finishLogging();
 
    private:
-	const char* logFileName = "/logfile.csv";
+	/* The name of a run's file is built from this and the moment the run began,
+	   so that a directory keeps the runs that were logged into it rather than
+	   the last one of them. The second argument tells a run that began in the
+	   same second as one already written apart from it. */
+	std::string makeRunFilePath(const std::string& directory, uint32_t attempt = 0) const;
 
 	spdlog::logger* logger;
 	std::future<void> saveTask{};
+	std::string logPrefix;
 	std::string filePath;
+	std::string logDirectory;
 	std::ofstream csvFile;
 	Buffer buffer1{};
 	Buffer buffer2{};

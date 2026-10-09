@@ -20,9 +20,11 @@ class DataHandlerBase
 		RUN = 1,
 	};
 
-	DataHandlerBase(PlotGroupHandler* plotGroupHandler, VariableHandler* variableHandler, PlotHandler* plotHandler, PlotHandler* tracePlotHandler, std::atomic<bool>& done, std::mutex* mtx, spdlog::logger* logger) : plotGroupHandler(plotGroupHandler), variableHandler(variableHandler), plotHandler(plotHandler), tracePlotHandler(tracePlotHandler), done(done), mtx(mtx), logger(logger)
+	/* The last argument names the logs this handler writes, so that the two
+	   sides logging into one directory do not land on the same file. */
+	DataHandlerBase(PlotGroupHandler* plotGroupHandler, VariableHandler* variableHandler, PlotHandler* plotHandler, PlotHandler* tracePlotHandler, std::atomic<bool>& done, std::mutex* mtx, spdlog::logger* logger, const std::string& logPrefix) : plotGroupHandler(plotGroupHandler), variableHandler(variableHandler), plotHandler(plotHandler), tracePlotHandler(tracePlotHandler), done(done), mtx(mtx), logger(logger)
 	{
-		csvStreamer = std::make_unique<CSVStreamer>(logger);
+		csvStreamer = std::make_unique<CSVStreamer>(logger, logPrefix);
 	}
 	virtual ~DataHandlerBase() = default;
 

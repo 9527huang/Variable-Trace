@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "CSVStreamer.hpp"
 #include "spdlog/sinks/null_sink.h"
@@ -62,11 +64,28 @@ namespace
 			std::filesystem::remove_all(directory, errorCode);
 		}
 
-		/* The name is fixed, so the directory is the whole of what says which
-		   file a run is in. */
+		/* A run's file is named for the moment the run began, so the directory
+		   is asked for the file it holds rather than for a name. */
 		std::string logFileIn(const std::filesystem::path& where) const
 		{
-			return (where / "logfile.csv").string();
+			const std::vector<std::filesystem::path> files = csvFilesIn(where);
+
+			return files.empty() ? (where / "no file was written").string() : files.front().string();
+		}
+
+		std::vector<std::filesystem::path> csvFilesIn(const std::filesystem::path& where) const
+		{
+			std::vector<std::filesystem::path> files;
+
+			for (const auto& entry : std::filesystem::directory_iterator(where))
+			{
+				if (entry.path().extension() == ".csv")
+					files.push_back(entry.path());
+			}
+
+			std::sort(files.begin(), files.end());
+
+			return files;
 		}
 
 		std::shared_ptr<spdlog::logger> logger;
@@ -141,4 +160,42 @@ TEST_F(CSVStreamerTest, AChangeOfLogDirectoryKeepsTheFileThatWasBeingWritten)
 
 	EXPECT_EQ(readFile(logFileIn(directory)), "time,adc\n1.000000,1.500000\n");
 	EXPECT_EQ(readFile(logFileIn(second)), "time,adc\n2.000000,1.500000\n");
+}
+
+/* Every run gets a file of its own.
+ *
+ * A directory is what the log is pointed at, and it used to hold one file with
+ * a fixed name, so the second run cut the first one off as it opened: what was
+ * collected survived only until the next run started. The name a run is given
+ * is the moment it began, and two runs that begin in the same second are told
+ * apart by a number, so nothing is lost either way. */
+TEST_F(CSVStreamerTest, EveryRunGetsAFileOfItsOwn)
+{
+	CSVStreamer streamer(logger.get());
+
+	std::unordered_map<std::string, double> firstRun{{"adc", 1.5}};
+	std::unordered_map<std::string, double> secondRun{{"adc", 2.5}};
+
+	ASSERT_TRUE(streamer.prepareFile(directory.string()));
+	streamer.createHeader({"adc"});
+	streamer.writeLine(1.0, firstRun);
+	streamer.finishLogging();
+
+	/* Back to back, which is what a run of a second or less makes. */
+	ASSERT_TRUE(streamer.prepareFile(directory.string()));
+	streamer.createHeader({"adc"});
+	streamer.writeLine(2.0, secondRun);
+	streamer.finishLogging();
+
+	const std::vector<std::filesystem::path> files = csvFilesIn(directory);
+
+	ASSERT_EQ(files.size(), 2u);
+
+	/* Both hold what was written to them, whichever order their names came out
+	   in: neither was cut off by the other. */
+	std::vector<std::string> contents{readFile(files[0].string()), readFile(files[1].string())};
+	std::sort(contents.begin(), contents.end());
+
+	EXPECT_EQ(contents[0], "time,adc\n1.000000,1.500000\n");
+	EXPECT_EQ(contents[1], "time,adc\n2.000000,2.500000\n");
 }
