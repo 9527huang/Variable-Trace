@@ -539,6 +539,15 @@ EXTRA = {
     "Keeps the connection to the probe open when a run ends. Closing it halts the target on some setups, and that halt is what the next run has to undo before it can read anything.": "停止采集后不关闭与探针的连接。部分目标在关闭连接时会把内核停住，而那个停顿正是下一次采集要先解开的。",
     "Viewport width [ms]:": "视窗宽度 [毫秒]:",
     "How much time the viewport shows while acquisition is running. What can be shown is bounded by the samples that are kept: Max points at the sampling frequency.": "采集时视窗显示多长一段时间。真正能显示多少由保留下来的样本决定，也就是 Max points 除以采样率。",
+
+    # Reaching a J-Link over the network, and running a script of one's own.
+    "Connection:": "连接方式:",
+    "How the J-Link is reached: over USB, or over the network at the address below.": "J-Link 怎么连:USB,或者走网络并用下面的地址。",
+    "IP address:": "IP 地址:",
+    "A probe reached this way is picked by its address instead of by its serial number.": "这样连接的探针按地址选取,不再按序列号。",
+    "JLink script:": "J-Link 脚本:",
+    "Runs a J-Link script of your own before the target is connected - for targets that need a watchdog stopped or a reset in a particular order.": "连接目标之前先运行一份自己的 J-Link 脚本——有些目标需要先关看门狗,或者按特定顺序复位。",
+    "script file:": "脚本文件:",
 }
 
 

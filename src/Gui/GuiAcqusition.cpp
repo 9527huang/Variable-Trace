@@ -219,6 +219,64 @@ void Gui::drawDebugProbes()
 			GuiHelper::drawCenteredText(I18n::tr("Target name is empty, the J-Link cannot connect. Enter the device name, e.g. STM32F103C8."));
 			ImGui::PopStyleColor();
 		}
+
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Connection:"), alignment);
+		ImGui::SameLine();
+
+		const char* jlinkConnections[] = {"USB", "TCP/IP"};
+		int32_t jlinkConnection = static_cast<int32_t>(probeSettings.connection);
+
+		if (ImGui::Combo("##connection", &jlinkConnection, jlinkConnections, IM_ARRAYSIZE(jlinkConnections)))
+		{
+			probeSettings.connection = static_cast<IDebugProbe::Connection>(jlinkConnection);
+			modified = true;
+		}
+
+		ImGui::SameLine();
+		ImGui::HelpMarker(I18n::tr("How the J-Link is reached: over USB, or over the network at the address below."));
+
+		if (probeSettings.connection == IDebugProbe::Connection::Network)
+		{
+			GuiHelper::drawTextAlignedToSize(I18n::tr("IP address:"), alignment);
+			ImGui::SameLine();
+
+			if (ImGui::InputText("##jlinkIp", &probeSettings.ipAddress, 0, NULL, NULL))
+				modified = true;
+
+			ImGui::SameLine();
+			ImGui::HelpMarker(I18n::tr("A probe reached this way is picked by its address instead of by its serial number."));
+		}
+
+		GuiHelper::drawTextAlignedToSize(I18n::tr("JLink script:"), alignment);
+		ImGui::SameLine();
+
+		if (ImGui::Checkbox("##scriptEnabled", &probeSettings.scriptEnabled))
+			modified = true;
+
+		ImGui::SameLine();
+		ImGui::HelpMarker(I18n::tr("Runs a J-Link script of your own before the target is connected - for targets that need a watchdog stopped or a reset in a particular order."));
+
+		if (probeSettings.scriptEnabled)
+		{
+			GuiHelper::drawTextAlignedToSize(I18n::tr("script file:"), alignment);
+			ImGui::SameLine();
+
+			if (ImGui::InputText("##scriptPath", &probeSettings.scriptPath, 0, NULL, NULL))
+				modified = true;
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("...", ImVec2(35 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
+			{
+				const std::string picked = fileHandler->openFile({{"J-Link script", "JLinkScript"}, {"All files", "*"}});
+
+				if (!picked.empty())
+				{
+					probeSettings.scriptPath = picked;
+					modified = true;
+				}
+			}
+		}
 	}
 	else if (!isSerial)
 		probeSettings.mode = IDebugProbe::Mode::NORMAL;
@@ -501,6 +559,64 @@ void Gui::drawTraceProbes()
 
 		ImGui::SameLine();
 		ImGui::HelpMarker(I18n::tr("Keeps the connection to the probe open when a run ends. Closing it halts the target on some setups, and that halt is what the next run has to undo before it can read anything."));
+
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Connection:"), alignment);
+		ImGui::SameLine();
+
+		const char* jlinkConnections[] = {"USB", "TCP/IP"};
+		int32_t jlinkConnection = static_cast<int32_t>(probeSettings.connection);
+
+		if (ImGui::Combo("##connection", &jlinkConnection, jlinkConnections, IM_ARRAYSIZE(jlinkConnections)))
+		{
+			probeSettings.connection = static_cast<ITraceProbe::Connection>(jlinkConnection);
+			modified = true;
+		}
+
+		ImGui::SameLine();
+		ImGui::HelpMarker(I18n::tr("How the J-Link is reached: over USB, or over the network at the address below."));
+
+		if (probeSettings.connection == ITraceProbe::Connection::Network)
+		{
+			GuiHelper::drawTextAlignedToSize(I18n::tr("IP address:"), alignment);
+			ImGui::SameLine();
+
+			if (ImGui::InputText("##jlinkIp", &probeSettings.ipAddress, 0, NULL, NULL))
+				modified = true;
+
+			ImGui::SameLine();
+			ImGui::HelpMarker(I18n::tr("A probe reached this way is picked by its address instead of by its serial number."));
+		}
+
+		GuiHelper::drawTextAlignedToSize(I18n::tr("JLink script:"), alignment);
+		ImGui::SameLine();
+
+		if (ImGui::Checkbox("##scriptEnabled", &probeSettings.scriptEnabled))
+			modified = true;
+
+		ImGui::SameLine();
+		ImGui::HelpMarker(I18n::tr("Runs a J-Link script of your own before the target is connected - for targets that need a watchdog stopped or a reset in a particular order."));
+
+		if (probeSettings.scriptEnabled)
+		{
+			GuiHelper::drawTextAlignedToSize(I18n::tr("script file:"), alignment);
+			ImGui::SameLine();
+
+			if (ImGui::InputText("##scriptPath", &probeSettings.scriptPath, 0, NULL, NULL))
+				modified = true;
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("...", ImVec2(35 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)))
+			{
+				const std::string picked = fileHandler->openFile({{"J-Link script", "JLinkScript"}, {"All files", "*"}});
+
+				if (!picked.empty())
+				{
+					probeSettings.scriptPath = picked;
+					modified = true;
+				}
+			}
+		}
 	}
 
 	if (devicesList.empty())

@@ -44,6 +44,10 @@ namespace
 		settings.speedKHz = probe.value("speedKHz", settings.speedKHz);
 		settings.baudrate = probe.value("baudrate", settings.baudrate);
 		settings.keepConnection = probe.value("keepConnection", settings.keepConnection);
+		settings.connection = probe.value("connection", settings.connection);
+		settings.ipAddress = probe.value("ipAddress", settings.ipAddress);
+		settings.scriptEnabled = probe.value("scriptEnabled", settings.scriptEnabled);
+		settings.scriptPath = probe.value("scriptPath", settings.scriptPath);
 
 		return settings;
 	}
@@ -56,7 +60,11 @@ namespace
 							 {"mode", probe.mode},
 							 {"speedKHz", probe.speedKHz},
 							 {"baudrate", probe.baudrate},
-							 {"keepConnection", probe.keepConnection}});
+							 {"keepConnection", probe.keepConnection},
+							 {"connection", probe.connection},
+							 {"ipAddress", probe.ipAddress},
+							 {"scriptEnabled", probe.scriptEnabled},
+							 {"scriptPath", probe.scriptPath}});
 	}
 }  // namespace
 

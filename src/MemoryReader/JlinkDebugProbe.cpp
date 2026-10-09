@@ -1,5 +1,16 @@
 #include "JlinkDebugProbe.hpp"
 
+#include <cstdio>
+
+/* Exported by the J-Link DLL this build links against, but not declared in the
+   SDK header it bundles - which is a subset. Picking a probe by its place in
+   the list the DLL gave is the one thing the header leaves out. */
+extern "C" int32_t JLINKARM_EMU_SelectByIndex(int32_t index);
+
+/* The host interfaces as the connection info describes them: 1 is USB, 2 is a
+   probe reached over the network. The header names them in a comment only. */
+constexpr int32_t jlinkHostInterfaceIp = 2;
+
 #include <spdlog/fmt/bin_to_hex.h>
 #include <spdlog/spdlog.h>
 
@@ -33,8 +44,12 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 	/* The link can be left open when a run ends. In that case there is nothing
 	   to open here - and re-connecting is the thing that halts the core - so the
 	   link is opened only when it is not up already, or when a setting that
-	   shapes it has moved since it was. */
-	const bool linkUsable = linkOpen && openedDevice == probeSettings.device && openedSpeedkHz == probeSettings.speedkHz;
+	   shapes it has moved since it was. What shapes it is written down as one
+	   string so that a field added later cannot be forgotten here. */
+	const std::string linkWanted = probeSettings.device + "|" + std::to_string(probeSettings.speedkHz) + "|" +
+								   (probeSettings.connection == IDebugProbe::Connection::Network ? probeSettings.ipAddress : "usb") + "|" +
+								   (probeSettings.scriptEnabled ? probeSettings.scriptPath : "");
+	const bool linkUsable = linkOpen && openedLink == linkWanted;
 
 	if (linkUsable)
 	{
@@ -45,12 +60,43 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 		if (linkOpen)
 			JLINKARM_Close();
 
-		/* Selecting by serial number is for picking one probe out of several.
-		   With none given there is nothing to pick, and opening the connection
-		   takes the first probe found; asking the selector for the probe
+		/* A probe reached over the network is looked for among the ones that
+		   answer, and picked by its place in that list. Naming the address
+		   straight to the selector is the other way the SDK offers and it took
+		   this build down on an address that was not there; enumerating first
+		   can also say how many probes did answer. A probe on USB is picked by
+		   serial number when the reader gave one, and by opening the first one
+		   found when they did not - asking the USB selector for the probe
 		   numbered 0 is a different question, and one that has no answer on a
 		   probe carrying any other number. */
-		if (serialNumberInt != 0 && JLINKARM_EMU_SelectByUSBSN(serialNumberInt) < 0)
+		if (probeSettings.connection == IDebugProbe::Connection::Network)
+		{
+			JLINKARM_EMU_CONNECT_INFO reachable[maxDevices]{};
+			const int32_t count = JLINKARM_EMU_GetList(jlinkHostInterfaceIp, reachable, static_cast<int32_t>(maxDevices));
+			int32_t index = -1;
+
+			for (int32_t i = 0; i < count && i < static_cast<int32_t>(maxDevices); i++)
+			{
+				char address[20]{};
+				std::snprintf(address, sizeof(address), "%u.%u.%u.%u",
+							  reachable[i].aIPAddr[0], reachable[i].aIPAddr[1], reachable[i].aIPAddr[2], reachable[i].aIPAddr[3]);
+
+				if (probeSettings.ipAddress == address)
+				{
+					index = i;
+					break;
+				}
+			}
+
+			if (index < 0 || JLINKARM_EMU_SelectByIndex(index) < 0)
+			{
+				lastErrorMsg = "No J-Link at '" + probeSettings.ipAddress + "' answered (" + std::to_string(count) + " found on the network)";
+				logger->error(lastErrorMsg);
+				linkOpen = false;
+				return false;
+			}
+		}
+		else if (serialNumberInt != 0 && JLINKARM_EMU_SelectByUSBSN(serialNumberInt) < 0)
 		{
 			lastErrorMsg = "Could not connect to the selected probe";
 			linkOpen = false;
@@ -63,8 +109,7 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 			logger->error(error);
 
 		linkOpen = true;
-		openedDevice = probeSettings.device;
-		openedSpeedkHz = probeSettings.speedkHz;
+		openedLink = linkWanted;
 
 		JLINKARM_SetSpeed(probeSettings.speedkHz > maxSpeedkHz ? maxSpeedkHz : probeSettings.speedkHz);
 		logger->info("J-Link speed set to: {}", JLINKARM_GetSpeed());
@@ -72,8 +117,23 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 		/* select interface - SWD only for now */
 		JLINKARM_TIF_Select(JLINKARM_TIF_SWD);
 
-		/* set the desired target */
+		/* A script of the reader's own goes in before the target is named and
+		   connected: it is what stands between a target that stops its watchdog
+		   on debug entry and one that does not. What the J-Link answers is
+		   logged whether or not it is a complaint, since the answer to a script
+		   that was not found is easy to miss otherwise. */
 		char acOut[256];
+		acOut[0] = 0;
+
+		if (probeSettings.scriptEnabled && !probeSettings.scriptPath.empty())
+		{
+			const std::string scriptCmd = "ScriptFile = " + probeSettings.scriptPath;
+			JLINKARM_ExecCommand(scriptCmd.c_str(), acOut, sizeof(acOut));
+			logger->info("J-Link script '{}' requested, answer: '{}'", probeSettings.scriptPath, acOut);
+			acOut[0] = 0;
+		}
+
+		/* set the desired target */
 		logger->info("J-Link target device string: '{}'", probeSettings.device);
 		auto deviceCmd = "Device = " + probeSettings.device;
 		JLINKARM_ExecCommand(deviceCmd.c_str(), acOut, sizeof(acOut));

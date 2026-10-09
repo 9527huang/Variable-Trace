@@ -47,12 +47,12 @@ class JlinkDebugProbe : public IDebugProbe
 	   the link outlives the run is the reader's choice, not the probe's. */
 	bool keepConnection = false;
 
-	/* Whether the link to the probe is open, and what it was opened with. A run
-	   that keeps the connection leaves it open for the next one, which then has
-	   nothing to open as long as these two still match. */
+	/* Whether the link to the probe is open, and what it was opened with - the
+	   settings that shape it, written down as one string. A run that keeps the
+	   connection leaves it open for the next one, which then has nothing to
+	   open as long as that string still matches. */
 	bool linkOpen = false;
-	std::string openedDevice;
-	uint32_t openedSpeedkHz = 0;
+	std::string openedLink;
 
 	std::unordered_map<uint32_t, uint8_t> addressSizeMap;
 	RingBuffer<varEntryType, fifoSize> varTable;

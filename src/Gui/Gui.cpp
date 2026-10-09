@@ -738,6 +738,10 @@ ProjectData Gui::collectProjectData()
 	data.viewer.probe.speedKHz = debugProbeSettings.speedkHz;
 	data.viewer.probe.baudrate = debugProbeSettings.baudrate;
 	data.viewer.probe.keepConnection = debugProbeSettings.keepConnection;
+	data.viewer.probe.connection = static_cast<uint32_t>(debugProbeSettings.connection);
+	data.viewer.probe.ipAddress = debugProbeSettings.ipAddress;
+	data.viewer.probe.scriptEnabled = debugProbeSettings.scriptEnabled;
+	data.viewer.probe.scriptPath = debugProbeSettings.scriptPath;
 
 	const TraceDataHandler::Settings traceSettings = traceDataHandler->getSettings();
 	data.trace.coreFrequency = traceSettings.coreFrequency;
@@ -757,6 +761,10 @@ ProjectData Gui::collectProjectData()
 	data.trace.probe.targetName = traceProbeSettings.device;
 	data.trace.probe.speedKHz = traceProbeSettings.speedkHz;
 	data.trace.probe.keepConnection = traceProbeSettings.keepConnection;
+	data.trace.probe.connection = static_cast<uint32_t>(traceProbeSettings.connection);
+	data.trace.probe.ipAddress = traceProbeSettings.ipAddress;
+	data.trace.probe.scriptEnabled = traceProbeSettings.scriptEnabled;
+	data.trace.probe.scriptPath = traceProbeSettings.scriptPath;
 
 	for (std::shared_ptr<Plot> plt : *tracePlotHandler)
 	{
@@ -1477,6 +1485,10 @@ void Gui::applyProjectData(const ProjectData& data)
 	debugProbeSettings.speedkHz = data.viewer.probe.speedKHz;
 	debugProbeSettings.baudrate = data.viewer.probe.baudrate;
 	debugProbeSettings.keepConnection = data.viewer.probe.keepConnection;
+	debugProbeSettings.connection = static_cast<IDebugProbe::Connection>(data.viewer.probe.connection);
+	debugProbeSettings.ipAddress = data.viewer.probe.ipAddress;
+	debugProbeSettings.scriptEnabled = data.viewer.probe.scriptEnabled;
+	debugProbeSettings.scriptPath = data.viewer.probe.scriptPath;
 	viewerDataHandler->setProbeSettings(debugProbeSettings);
 
 	TraceDataHandler::Settings traceSettings = traceDataHandler->getSettings();
@@ -1498,6 +1510,10 @@ void Gui::applyProjectData(const ProjectData& data)
 	traceProbeSettings.device = data.trace.probe.targetName;
 	traceProbeSettings.speedkHz = data.trace.probe.speedKHz;
 	traceProbeSettings.keepConnection = data.trace.probe.keepConnection;
+	traceProbeSettings.connection = static_cast<ITraceProbe::Connection>(data.trace.probe.connection);
+	traceProbeSettings.ipAddress = data.trace.probe.ipAddress;
+	traceProbeSettings.scriptEnabled = data.trace.probe.scriptEnabled;
+	traceProbeSettings.scriptPath = data.trace.probe.scriptPath;
 	traceDataHandler->setProbeSettings(traceProbeSettings);
 
 	applyTracePlots(data.tracePlots);

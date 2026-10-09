@@ -151,26 +151,25 @@ namespace mcp
 
 			/* The fields of probes this build does not have are reported before
 			   anything is written, so a call never applies half of its arguments. */
-			if (has(arguments, "ip") || has(arguments, "port"))
+			if (has(arguments, "port"))
 				reportUnavailable("the GDB server probe", "configure_probe");
 
 			if (has(arguments, "api_path"))
 				reportUnavailable("the ST-Link CubeProgrammer probe", "configure_probe");
 
-			if (has(arguments, "script_enabled") || has(arguments, "script_path"))
-				reportUnavailable("J-Link script files", "configure_probe");
-
 			const bool deviceProvided = has(arguments, "device");
 			const bool connectionProvided = has(arguments, "connection");
 			const bool baudrateProvided = has(arguments, "baudrate");
+			const bool ipProvided = has(arguments, "ip");
+			const bool scriptProvided = has(arguments, "script_enabled") || has(arguments, "script_path");
 
 			/* Every probe accepts the settings that belong to it and nothing
 			   else, so a field written for the wrong probe is refused instead of
 			   being stored where it would never be read. */
 			if (type == serialProbe)
 			{
-				if (deviceProvided || connectionProvided)
-					throw ToolError("'device' and 'connection' apply to the J-Link probe, and the active probe is 'serial'. Set the port with set_debug_probe and the line speed with 'baudrate'.");
+				if (deviceProvided || connectionProvided || ipProvided)
+					throw ToolError("'device', 'connection' and 'ip' apply to the J-Link probe, and the active probe is 'serial'. Set the port with set_debug_probe and the line speed with 'baudrate'.");
 
 				if (!baudrateProvided)
 					throw ToolError("No probe setting was provided. Pass 'baudrate'.");
@@ -180,12 +179,12 @@ namespace mcp
 				if (baudrateProvided)
 					throw ToolError("'baudrate' applies to the serial probe, and the active probe is 'jlink'.");
 
-				if (!deviceProvided && !connectionProvided)
-					throw ToolError("No probe setting was provided. Pass 'device' and/or 'connection'.");
+				if (!deviceProvided && !connectionProvided && !ipProvided && !scriptProvided)
+					throw ToolError("No probe setting was provided. Pass 'device', 'connection', 'ip' and/or the script fields.");
 			}
 			else
 			{
-				if (deviceProvided || connectionProvided || baudrateProvided)
+				if (deviceProvided || connectionProvided || baudrateProvided || ipProvided || scriptProvided)
 					throw ToolError("The active probe '" + probeTypeToString(type) + "' has no type specific settings.");
 			}
 
@@ -229,18 +228,49 @@ namespace mcp
 			{
 				const std::string connection = optionalString(arguments, "connection").value_or("");
 
-				if (connection == "tcp_ip")
-					reportUnavailable("the J-Link TCP/IP connection", "configure_probe");
+				if (connection == "usb")
+					updated.connection = IDebugProbe::Connection::Usb;
+				else if (connection == "tcp_ip")
+					updated.connection = IDebugProbe::Connection::Network;
+				else
+					throw ToolError("Unknown J-Link connection '" + connection + "'. Use 'usb' or 'tcp_ip'.");
+			}
 
-				if (connection != "usb")
-					throw ToolError("Unknown J-Link connection '" + connection + "'. Use 'usb'.");
+			if (ipProvided)
+			{
+				const std::string address = optionalString(arguments, "ip").value_or("");
+
+				if (address.empty())
+					throw ToolError("Field 'ip' must not be empty. Pass the network address of the J-Link, for example '192.168.1.50'.");
+
+				updated.ipAddress = address;
+
+				/* An address is only read by a probe that is reached over the
+				   network, so asking for one is asking for that. */
+				updated.connection = IDebugProbe::Connection::Network;
+			}
+
+			if (has(arguments, "script_enabled"))
+				updated.scriptEnabled = optionalBool(arguments, "script_enabled").value_or(false);
+
+			if (has(arguments, "script_path"))
+			{
+				updated.scriptPath = optionalString(arguments, "script_path").value_or("");
+
+				/* A script named is a script wanted, and one cleared is a script
+				   turned off: otherwise a path on its own would sit in the
+				   settings and never be run. */
+				updated.scriptEnabled = !updated.scriptPath.empty();
 			}
 
 			context.viewerDataHandler->setProbeSettings(updated);
 
 			return Json::object({{"probe", probeTypeToString(updated.debugProbe)},
 								 {"device", updated.device},
-								 {"connection", "usb"}});
+								 {"connection", updated.connection == IDebugProbe::Connection::Network ? "tcp_ip" : "usb"},
+								 {"ip", updated.ipAddress},
+								 {"script_enabled", updated.scriptEnabled},
+								 {"script_path", updated.scriptPath}});
 		}
 
 		Json startAcquisition(McpContext& context, const Json&)
@@ -312,15 +342,15 @@ namespace mcp
 
 		registry.add({.name = "configure_probe",
 					  .description = "Configure probe-type-specific settings (call set_debug_probe first). "
-									 "  J-Link   : device, connection ('usb'/'tcp_ip'), script_enabled (0/1), script_path. "
-									 "  GDB server: ip, port. "
+									 "  J-Link   : device, connection ('usb'/'tcp_ip'), ip, script_enabled (0/1), script_path. "
+									 "  GDB server: ip, port (not in this build). "
 									 "  Serial   : baudrate. "
-									 "  CubeProg : api_path (empty = auto-detect).",
+									 "  CubeProg : api_path (not in this build).",
 					  .inputSchema = objectSchema(Json::object({{"device", stringProperty("J-Link target device (e.g. 'STM32F407VG')")},
 																{"connection", enumProperty("J-Link connection: 'usb' or 'tcp_ip'", {"usb", "tcp_ip"})},
-																{"script_enabled", booleanProperty("J-Link script: 1=on, 0=off")},
-																{"script_path", stringProperty("J-Link script file path")},
-																{"ip", stringProperty("GDB server IP address")},
+																{"ip", stringProperty("J-Link network address, used when the connection is 'tcp_ip'")},
+																{"script_enabled", booleanProperty("J-Link script: 1=on, 0=off. Sending 'script_path' sets it as well")},
+																{"script_path", stringProperty("J-Link script file path; an empty path turns the script off")},
 																{"port", integerProperty("GDB server port")},
 																{"baudrate", integerProperty("Serial baud rate")},
 																{"api_path", stringProperty("CubeProgrammer API library path (empty = auto-detect)")}})),

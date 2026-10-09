@@ -32,6 +32,14 @@ class IDebugProbe
 		Serial = 2,
 	};
 
+	/* How a J-Link is reached. The USB value is the one a project without the
+	   setting was written with. */
+	enum class Connection
+	{
+		Usb = 0,
+		Network = 1,
+	};
+
 	typedef struct
 	{
 		uint32_t debugProbe = 0;
@@ -44,6 +52,17 @@ class IDebugProbe
 		   setups, and that halt is what the next run has to undo before it can
 		   read anything, so the link can be asked to outlive the run instead. */
 		bool keepConnection = false;
+
+		/* J-Link only. How the probe is reached, and where it is when it is
+		   reached over the network rather than over USB. */
+		Connection connection = Connection::Usb;
+		std::string ipAddress = "";
+
+		/* J-Link only. A script of the reader's own, run before the target is
+		   connected: some targets need one to stop a watchdog or to be reset in
+		   a particular order, and there is no way to reach them without it. */
+		bool scriptEnabled = false;
+		std::string scriptPath = "";
 
 		/* Serial probe only. The port name travels in serialNumber, which is the
 		   field the settings window and the project file already carry. */

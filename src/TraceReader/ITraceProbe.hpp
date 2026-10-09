@@ -9,6 +9,16 @@
 class ITraceProbe
 {
    public:
+	/* How a J-Link is reached. Kept here rather than borrowed from the debug
+	   probe: the two hierarchies are independent, and the value is only ever
+	   written down as a number in a project file. The USB value is the one a
+	   project without the setting was written with. */
+	enum class Connection
+	{
+		Usb = 0,
+		Network = 1,
+	};
+
 	typedef struct
 	{
 		uint32_t debugProbe = 0;
@@ -19,6 +29,14 @@ class ITraceProbe
 		/* J-Link only, and the same setting as on the variable side: closing the
 		   link when a run ends halts the target on some setups. */
 		bool keepConnection = false;
+
+		/* J-Link only. How the probe is reached, where it is when that is over
+		   the network, and a script of the reader's own to run before the target
+		   is connected. */
+		Connection connection = Connection::Usb;
+		std::string ipAddress = "";
+		bool scriptEnabled = false;
+		std::string scriptPath = "";
 
 	} TraceProbeSettings;
 

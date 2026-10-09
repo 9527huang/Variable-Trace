@@ -28,11 +28,11 @@ class JlinkTraceProbe : public ITraceProbe
 	   the link outlives the run is the reader's choice. */
 	bool keepConnection = false;
 
-	/* Whether the link is open, and what it was opened with: a run that keeps
-	   the connection leaves it open for the next one. */
+	/* Whether the link is open, and what it was opened with - the settings that
+	   shape it, written down as one string. A run that keeps the connection
+	   leaves it open for the next one. */
 	bool linkOpen = false;
-	std::string openedDevice;
-	uint32_t openedSpeedkHz = 0;
+	std::string openedLink;
 
 	spdlog::logger* logger;
 };

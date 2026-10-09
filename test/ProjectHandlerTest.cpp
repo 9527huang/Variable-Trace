@@ -78,6 +78,10 @@ TEST_F(ProjectHandlerTest, roundTripPreservesElfAndAcquisitionSettings)
 	data.viewer.ofd2000Command = "C:/ti/ccs/tools/compiler/ti-cgt-c2000/ofd2000.exe";
 	data.viewer.probe = {1, "SERIAL-VIEWER", "STM32F103C8", 1, 4000};
 	data.viewer.probe.keepConnection = true;
+	data.viewer.probe.connection = 1;
+	data.viewer.probe.ipAddress = "192.168.1.50";
+	data.viewer.probe.scriptEnabled = true;
+	data.viewer.probe.scriptPath = "C:/scripts/stm32.JLinkScript";
 
 	data.trace.coreFrequency = 72000000;
 	data.trace.tracePrescaler = 4;
@@ -121,6 +125,10 @@ TEST_F(ProjectHandlerTest, roundTripPreservesElfAndAcquisitionSettings)
 	EXPECT_EQ(loaded.viewer.probe.mode, 1u);
 	EXPECT_EQ(loaded.viewer.probe.speedKHz, 4000u);
 	EXPECT_TRUE(loaded.viewer.probe.keepConnection);
+	EXPECT_EQ(loaded.viewer.probe.connection, 1u);
+	EXPECT_EQ(loaded.viewer.probe.ipAddress, "192.168.1.50");
+	EXPECT_TRUE(loaded.viewer.probe.scriptEnabled);
+	EXPECT_EQ(loaded.viewer.probe.scriptPath, "C:/scripts/stm32.JLinkScript");
 
 	EXPECT_EQ(loaded.trace.coreFrequency, 72000000u);
 	EXPECT_EQ(loaded.trace.tracePrescaler, 4u);
@@ -183,6 +191,14 @@ TEST_F(ProjectHandlerTest, aProjectWrittenBeforeTheKeepConnectionSettingKeepsThe
 	EXPECT_EQ(loaded.viewer.probe.type, 1u);
 	EXPECT_EQ(loaded.viewer.probe.speedKHz, 4000u);
 	EXPECT_FALSE(loaded.viewer.probe.keepConnection);
+
+	/* A probe reached over the network, and a script, were added to the probe
+	   settings later as well: a project that carries neither is read as a probe
+	   on USB with no script. */
+	EXPECT_EQ(loaded.viewer.probe.connection, 0u);
+	EXPECT_EQ(loaded.viewer.probe.ipAddress, "");
+	EXPECT_FALSE(loaded.viewer.probe.scriptEnabled);
+	EXPECT_EQ(loaded.viewer.probe.scriptPath, "");
 	EXPECT_FALSE(loaded.trace.probe.keepConnection);
 }
 

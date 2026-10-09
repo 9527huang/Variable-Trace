@@ -32,6 +32,13 @@ struct ProjectProbeSettings
 	uint32_t baudrate = 115200;
 	/* J-Link only: whether the link outlives a run. */
 	bool keepConnection = false;
+	/* J-Link only: how the probe is reached (0 = USB, 1 = network), where it is
+	   when that is over the network, and a script of the reader's own to run
+	   before the target is connected. */
+	uint32_t connection = 0;
+	std::string ipAddress = "";
+	bool scriptEnabled = false;
+	std::string scriptPath = "";
 };
 
 struct ProjectViewerSettings
