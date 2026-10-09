@@ -48,6 +48,11 @@ std::string ViewerDataHandler::getLastReaderError() const
 	return debugProbe->getLastErrorMsg();
 }
 
+bool ViewerDataHandler::isProbeHeld() const
+{
+	return debugProbe != nullptr && debugProbe->isValid();
+}
+
 void ViewerDataHandler::setDebugProbe(std::shared_ptr<IDebugProbe> probe)
 {
 	debugProbe = probe;

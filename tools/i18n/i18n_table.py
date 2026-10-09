@@ -532,6 +532,11 @@ EXTRA = {
     "not a valid project file": "不是有效的工程文件",
     "created by a newer version": "由更新的版本创建",
     "unknown error": "未知错误",
+
+    # Keeping the probe connection open past a run. Keyed rather than
+    # positional, so it goes in here and i18n_sites.json is left alone.
+    "Keep connection:": "保持连接:",
+    "Keeps the connection to the probe open when a run ends. Closing it halts the target on some setups, and that halt is what the next run has to undo before it can read anything.": "停止采集后不关闭与探针的连接。部分目标在关闭连接时会把内核停住，而那个停顿正是下一次采集要先解开的。",
 }
 
 

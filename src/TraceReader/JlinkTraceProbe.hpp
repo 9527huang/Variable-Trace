@@ -18,10 +18,22 @@ class JlinkTraceProbe : public ITraceProbe
 	std::string getTargetName() override;
 	std::vector<std::string> getConnectedDevices() override;
 	std::string getLastErrorMsg() const override;
+	bool isLinkOpen() const override;
 
    private:
 	static constexpr uint32_t maxSpeedkHz = 50000;
 	static constexpr size_t maxDevices = 10;
+
+	/* Taken from the settings when a run starts and read when it ends: whether
+	   the link outlives the run is the reader's choice. */
+	bool keepConnection = false;
+
+	/* Whether the link is open, and what it was opened with: a run that keeps
+	   the connection leaves it open for the next one. */
+	bool linkOpen = false;
+	std::string openedDevice;
+	uint32_t openedSpeedkHz = 0;
+
 	spdlog::logger* logger;
 };
 #endif

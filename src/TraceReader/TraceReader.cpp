@@ -73,6 +73,11 @@ bool TraceReader::isValid() const
 	return isRunning;
 }
 
+bool TraceReader::isLinkOpen() const
+{
+	return TraceProbe != nullptr && TraceProbe->isLinkOpen();
+}
+
 bool TraceReader::readTrace(double& timestamp, std::array<uint32_t, 10>& trace)
 {
 	if (!isRunning || traceTable.size() == 0)

@@ -438,6 +438,7 @@ void Gui::drawConnectionIndicator()
 	bool serialPort = false;
 	bool hasTargetName = false;
 	bool highSpeed = false;
+	bool keepConnection = false;
 
 	if (isVariableView)
 	{
@@ -450,6 +451,7 @@ void Gui::drawConnectionIndicator()
 		serialPort = (settings.debugProbe == IDebugProbe::Probe::Serial);
 		hasTargetName = (settings.debugProbe == IDebugProbe::Probe::Jlink);
 		highSpeed = (settings.mode == IDebugProbe::Mode::HSS);
+		keepConnection = settings.keepConnection;
 	}
 	else
 	{
@@ -459,6 +461,7 @@ void Gui::drawConnectionIndicator()
 		targetName = settings.device;
 		speedkHz = settings.speedkHz;
 		hasTargetName = (settings.debugProbe == 1);
+		keepConnection = settings.keepConnection;
 	}
 
 	/* The requested state is stored the moment the button is pressed, so the
@@ -486,7 +489,12 @@ void Gui::drawConnectionIndicator()
 	ImVec4 stateFaceHovered = GuiHelper::redLight();
 	ImVec4 stateFaceActive = GuiHelper::redLightDim();
 
-	if (acquired)
+	/* What this segment reports is the link to the target, not whether samples
+	   are flowing: the two part company once the connection is asked to outlive
+	   the run, and then the probe is still there to be read from. */
+	const bool linkUp = acquired || handler->isProbeHeld();
+
+	if (linkUp)
 	{
 		stateText = stateTexts[ConnectedName];
 		stateFace = GuiHelper::green();
@@ -496,10 +504,19 @@ void Gui::drawConnectionIndicator()
 
 	if (transitioning)
 	{
-		stateText = acquired ? stateTexts[ConnectingName] : stateTexts[DisconnectingName];
-		stateFace = GuiHelper::orange();
-		stateFaceHovered = GuiHelper::orangeLight();
-		stateFaceActive = GuiHelper::orangeLightDim();
+		/* Starting a run opens the link and ending one closes it - unless it was
+		   asked to stay open, in which case nothing about the link changes and
+		   there is no state of its own to report. */
+		const bool openingLink = acquired;
+		const bool closingLink = !acquired && !keepConnection;
+
+		if (openingLink || closingLink)
+		{
+			stateText = openingLink ? stateTexts[ConnectingName] : stateTexts[DisconnectingName];
+			stateFace = GuiHelper::orange();
+			stateFaceHovered = GuiHelper::orangeLight();
+			stateFaceActive = GuiHelper::orangeLightDim();
+		}
 	}
 
 	const float scale = GuiHelper::contentScale;
@@ -720,6 +737,7 @@ ProjectData Gui::collectProjectData()
 	data.viewer.probe.mode = static_cast<uint32_t>(debugProbeSettings.mode);
 	data.viewer.probe.speedKHz = debugProbeSettings.speedkHz;
 	data.viewer.probe.baudrate = debugProbeSettings.baudrate;
+	data.viewer.probe.keepConnection = debugProbeSettings.keepConnection;
 
 	const TraceDataHandler::Settings traceSettings = traceDataHandler->getSettings();
 	data.trace.coreFrequency = traceSettings.coreFrequency;
@@ -738,6 +756,7 @@ ProjectData Gui::collectProjectData()
 	data.trace.probe.serialNumber = traceProbeSettings.serialNumber;
 	data.trace.probe.targetName = traceProbeSettings.device;
 	data.trace.probe.speedKHz = traceProbeSettings.speedkHz;
+	data.trace.probe.keepConnection = traceProbeSettings.keepConnection;
 
 	for (std::shared_ptr<Plot> plt : *tracePlotHandler)
 	{
@@ -1457,6 +1476,7 @@ void Gui::applyProjectData(const ProjectData& data)
 	debugProbeSettings.mode = static_cast<IDebugProbe::Mode>(data.viewer.probe.mode);
 	debugProbeSettings.speedkHz = data.viewer.probe.speedKHz;
 	debugProbeSettings.baudrate = data.viewer.probe.baudrate;
+	debugProbeSettings.keepConnection = data.viewer.probe.keepConnection;
 	viewerDataHandler->setProbeSettings(debugProbeSettings);
 
 	TraceDataHandler::Settings traceSettings = traceDataHandler->getSettings();
@@ -1477,6 +1497,7 @@ void Gui::applyProjectData(const ProjectData& data)
 	traceProbeSettings.serialNumber = data.trace.probe.serialNumber;
 	traceProbeSettings.device = data.trace.probe.targetName;
 	traceProbeSettings.speedkHz = data.trace.probe.speedKHz;
+	traceProbeSettings.keepConnection = data.trace.probe.keepConnection;
 	traceDataHandler->setProbeSettings(traceProbeSettings);
 
 	applyTracePlots(data.tracePlots);

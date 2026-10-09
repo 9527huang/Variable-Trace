@@ -39,6 +39,12 @@ class IDebugProbe
 		std::string device = "";
 		Mode mode = Mode::NORMAL;
 		uint32_t speedkHz = 10000;
+
+		/* J-Link only. Closing the link when a run ends halts the target on some
+		   setups, and that halt is what the next run has to undo before it can
+		   read anything, so the link can be asked to outlive the run instead. */
+		bool keepConnection = false;
+
 		/* Serial probe only. The port name travels in serialNumber, which is the
 		   field the settings window and the project file already carry. */
 		uint32_t baudrate = 115200;

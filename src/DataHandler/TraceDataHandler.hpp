@@ -37,6 +37,10 @@ class TraceDataHandler : public DataHandlerBase
 	std::vector<double> getDelayed3Timestamps();
 	std::string getLastReaderError() const;
 
+	/* The link is open while a trace is being read, and stays open afterwards
+	   when the settings ask for it. */
+	bool isProbeHeld() const override;
+
 	void setTriggerChannel(int32_t triggerChannel);
 	int32_t getTriggerChannel() const;
 

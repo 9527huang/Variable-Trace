@@ -43,6 +43,7 @@ namespace
 		settings.mode = probe.value("mode", settings.mode);
 		settings.speedKHz = probe.value("speedKHz", settings.speedKHz);
 		settings.baudrate = probe.value("baudrate", settings.baudrate);
+		settings.keepConnection = probe.value("keepConnection", settings.keepConnection);
 
 		return settings;
 	}
@@ -54,7 +55,8 @@ namespace
 							 {"targetName", probe.targetName},
 							 {"mode", probe.mode},
 							 {"speedKHz", probe.speedKHz},
-							 {"baudrate", probe.baudrate}});
+							 {"baudrate", probe.baudrate},
+							 {"keepConnection", probe.keepConnection}});
 	}
 }  // namespace
 

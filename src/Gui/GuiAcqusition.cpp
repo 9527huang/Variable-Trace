@@ -204,6 +204,15 @@ void Gui::drawDebugProbes()
 		ImGui::SameLine();
 		ImGui::HelpMarker(I18n::tr("Select normal or high speed sampling (HSS) mode"));
 
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Keep connection:"), alignment);
+		ImGui::SameLine();
+
+		if (ImGui::Checkbox("##keepConnection", &probeSettings.keepConnection))
+			modified = true;
+
+		ImGui::SameLine();
+		ImGui::HelpMarker(I18n::tr("Keeps the connection to the probe open when a run ends. Closing it halts the target on some setups, and that halt is what the next run has to undo before it can read anything."));
+
 		if (probeSettings.device.empty())
 		{
 			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
@@ -483,6 +492,15 @@ void Gui::drawTraceProbes()
 			GuiHelper::drawCenteredText(I18n::tr("Target name is empty, the J-Link cannot connect. Enter the device name, e.g. STM32F103C8."));
 			ImGui::PopStyleColor();
 		}
+
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Keep connection:"), alignment);
+		ImGui::SameLine();
+
+		if (ImGui::Checkbox("##keepConnection", &probeSettings.keepConnection))
+			modified = true;
+
+		ImGui::SameLine();
+		ImGui::HelpMarker(I18n::tr("Keeps the connection to the probe open when a run ends. Closing it halts the target on some setups, and that halt is what the next run has to undo before it can read anything."));
 	}
 
 	if (devicesList.empty())

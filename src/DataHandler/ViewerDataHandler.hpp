@@ -42,6 +42,10 @@ class ViewerDataHandler : public DataHandlerBase
 
 	std::string getLastReaderError() const;
 
+	/* The link is open while a run is going, and stays open afterwards when the
+	   settings ask for it. */
+	bool isProbeHeld() const override;
+
 	/* Writes a value to the target. The per variable range guard lives here
 	   rather than in the caller, so that the plot table and the API are checked
 	   the same way. Set the limits with Variable::setWriteLimits. */

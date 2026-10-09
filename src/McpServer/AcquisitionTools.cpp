@@ -76,10 +76,15 @@ namespace mcp
 			const bool typeProvided = has(arguments, "type");
 			const uint32_t type = typeProvided ? probeTypeFromString(requireString(arguments, "type")) : settings.debugProbe;
 
-			/* The interface of the J-Link is opened over USB and closed when a run
-			   ends, so a request to hold it open cannot be honoured. */
-			if (has(arguments, "keep_connection") && optionalBool(arguments, "keep_connection").value_or(false))
-				throw ToolError("This build closes the probe connection after every run, so 'keep_connection' cannot be enabled. Omit the field.");
+			/* Holding the link open past the end of a run is a J-Link setting:
+			   it is the one whose close is known to halt a target. */
+			if (has(arguments, "keep_connection"))
+			{
+				if (type != jlinkProbe)
+					throw ToolError("'keep_connection' applies to the J-Link probe, and the active probe is '" + probeTypeToString(type) + "'.");
+
+				settings.keepConnection = optionalBool(arguments, "keep_connection").value_or(false);
+			}
 
 			if (has(arguments, "mode"))
 			{
@@ -126,7 +131,7 @@ namespace mcp
 										{"serial_number", settings.serialNumber},
 										{"speed_khz", settings.speedkHz},
 										{"mode", settings.mode == IDebugProbe::Mode::HSS ? "hss" : "normal"},
-										{"keep_connection", false}});
+										{"keep_connection", settings.keepConnection}});
 
 			/* The port name travels in the field the two hardware probes use for
 			   the serial number, so the reply labels it for what it is. */

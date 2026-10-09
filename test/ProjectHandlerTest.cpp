@@ -77,6 +77,7 @@ TEST_F(ProjectHandlerTest, roundTripPreservesElfAndAcquisitionSettings)
 	data.viewer.elfParser = "c2000";
 	data.viewer.ofd2000Command = "C:/ti/ccs/tools/compiler/ti-cgt-c2000/ofd2000.exe";
 	data.viewer.probe = {1, "SERIAL-VIEWER", "STM32F103C8", 1, 4000};
+	data.viewer.probe.keepConnection = true;
 
 	data.trace.coreFrequency = 72000000;
 	data.trace.tracePrescaler = 4;
@@ -89,6 +90,7 @@ TEST_F(ProjectHandlerTest, roundTripPreservesElfAndAcquisitionSettings)
 	data.trace.loggingEnabled = true;
 	data.trace.logDirectory = "logs/trace";
 	data.trace.probe = {0, "SERIAL-TRACE", "STM32F407VG", 0, 2000};
+	data.trace.probe.keepConnection = true;
 
 	const std::string file = path("settings.mcvproj");
 	ASSERT_TRUE(handler.save(file, data));
@@ -118,6 +120,7 @@ TEST_F(ProjectHandlerTest, roundTripPreservesElfAndAcquisitionSettings)
 	EXPECT_EQ(loaded.viewer.probe.targetName, "STM32F103C8");
 	EXPECT_EQ(loaded.viewer.probe.mode, 1u);
 	EXPECT_EQ(loaded.viewer.probe.speedKHz, 4000u);
+	EXPECT_TRUE(loaded.viewer.probe.keepConnection);
 
 	EXPECT_EQ(loaded.trace.coreFrequency, 72000000u);
 	EXPECT_EQ(loaded.trace.tracePrescaler, 4u);
@@ -133,6 +136,31 @@ TEST_F(ProjectHandlerTest, roundTripPreservesElfAndAcquisitionSettings)
 	EXPECT_EQ(loaded.trace.probe.serialNumber, "SERIAL-TRACE");
 	EXPECT_EQ(loaded.trace.probe.targetName, "STM32F407VG");
 	EXPECT_EQ(loaded.trace.probe.speedKHz, 2000u);
+	EXPECT_TRUE(loaded.trace.probe.keepConnection);
+}
+
+TEST_F(ProjectHandlerTest, aProjectWrittenBeforeTheKeepConnectionSettingKeepsTheLinkClosing)
+{
+	/* Whether the link outlives a run was added to the probe settings later, so
+	   a project saved by the previous version does not carry it. Closing the
+	   link is what every build before that did, and opening such a project has
+	   to leave that behaviour alone rather than hold a connection open that
+	   nobody asked to keep. */
+	writeFile(path("older-probe.mcvproj"), R"({"formatVersion": 1, "elf": {"path": "old.elf"}, )"
+										   R"("acquisition": {"sampleFrequencyHz": 100, "probe": {"type": 1, "speedKHz": 4000}}})");
+
+	VariableHandler variables;
+	PlotHandler plots;
+	PlotGroupHandler groups;
+	ProjectHandler reader(&variables, &plots, &groups, logger.get());
+
+	ProjectData loaded;
+	ASSERT_EQ(reader.open(path("older-probe.mcvproj"), loaded), ProjectHandler::OpenResult::Ok);
+
+	EXPECT_EQ(loaded.viewer.probe.type, 1u);
+	EXPECT_EQ(loaded.viewer.probe.speedKHz, 4000u);
+	EXPECT_FALSE(loaded.viewer.probe.keepConnection);
+	EXPECT_FALSE(loaded.trace.probe.keepConnection);
 }
 
 TEST_F(ProjectHandlerTest, aProjectWrittenBeforeTheParserSettingKeepsTheDefault)

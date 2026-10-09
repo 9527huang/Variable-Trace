@@ -42,6 +42,11 @@ std::string TraceDataHandler::getLastReaderError() const
 	return traceReaderMsg.empty() ? lastErrorMsg : traceReaderMsg;
 }
 
+bool TraceDataHandler::isProbeHeld() const
+{
+	return traceReader != nullptr && traceReader->isLinkOpen();
+}
+
 void TraceDataHandler::setTriggerChannel(int32_t triggerChannel)
 {
 	settings.triggerChannel = triggerChannel;

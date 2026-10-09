@@ -32,6 +32,10 @@ class TraceReader
 	bool stopAcqusition();
 	bool isValid() const;
 
+	/* Whether the link to the target is open. It can be asked to outlive a run,
+	   so this is not the same question as whether the reader is running. */
+	bool isLinkOpen() const;
+
 	bool readTrace(double& timestamp, std::array<uint32_t, 10>& trace);
 
 	std::string getLastErrorMsg() const;

@@ -30,6 +30,8 @@ struct ProjectProbeSettings
 	uint32_t speedKHz = 10000;
 	/* Serial probe only, and the port name travels in serialNumber. */
 	uint32_t baudrate = 115200;
+	/* J-Link only: whether the link outlives a run. */
+	bool keepConnection = false;
 };
 
 struct ProjectViewerSettings

@@ -28,6 +28,11 @@ class DataHandlerBase
 
 	virtual std::string getLastReaderError() const = 0;
 
+	/* Whether the link to the target is open right now. A run that ends closes
+	   it unless the reader asked for it to be kept, so the interface can say
+	   which of the two it is looking at instead of guessing from the run. */
+	virtual bool isProbeHeld() const { return false; }
+
 	void setState(State state)
 	{
 		if (state == viewerState)
