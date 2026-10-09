@@ -117,6 +117,7 @@ set(SOURCES
     # even though no test opens a real one.
     ${CMAKE_SOURCE_DIR}/src/MemoryReader/SerialPort.cpp
     ${CMAKE_SOURCE_DIR}/src/MemoryReader/SerialDebugProbe.cpp
+    ${CMAKE_SOURCE_DIR}/src/MemoryReader/GdbServerDebugProbe.cpp
     ${CMAKE_SOURCE_DIR}/src/Recorder/RecorderLayout.cpp
     ${CMAKE_SOURCE_DIR}/src/Recorder/RecorderHandler.cpp
     # The string table the interface draws from. Nothing in it needs a window,
@@ -155,6 +156,7 @@ add_executable(${EXECUTABLE} main.cpp
     ProjectToolsTest.cpp
     McpServerTest.cpp
     SerialProtocolTest.cpp
+    GdbServerDebugProbeTest.cpp
     RecorderHandlerTest.cpp
     ${SOURCES})
 

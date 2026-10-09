@@ -30,6 +30,9 @@ class IDebugProbe
 		Stlink = 0,
 		Jlink = 1,
 		Serial = 2,
+		/* A GDB server somebody else started, reached over the network: the way
+		   to a probe this build has no support for of its own. */
+		GdbServer = 3,
 	};
 
 	/* How a J-Link is reached. The USB value is the one a project without the
@@ -67,6 +70,11 @@ class IDebugProbe
 		/* Serial probe only. The port name travels in serialNumber, which is the
 		   field the settings window and the project file already carry. */
 		uint32_t baudrate = 115200;
+
+		/* GDB server only. The address is the server's, and travels in
+		   ipAddress the way a J-Link's address does; this is the port it serves
+		   the protocol on. 3333 is what OpenOCD uses by default. */
+		uint32_t port = 3333;
 
 	} DebugProbeSettings;
 

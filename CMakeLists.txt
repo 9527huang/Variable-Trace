@@ -168,6 +168,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/SerialProtocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/SerialPort.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/SerialDebugProbe.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/GdbServerDebugProbe.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MemoryReader/SerialDriverLayout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Recorder/RecorderLayout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Recorder/RecorderHandler.cpp

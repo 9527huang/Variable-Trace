@@ -114,6 +114,7 @@ class Gui
 	std::shared_ptr<IDebugProbe> stlinkProbe;
 	std::shared_ptr<IDebugProbe> jlinkProbe;
 	std::shared_ptr<IDebugProbe> serialProbe;
+	std::shared_ptr<IDebugProbe> gdbServerProbe;
 	std::shared_ptr<IDebugProbe> debugProbeDevice;
 	std::vector<std::string> devicesList{};
 	const std::string noDevices = I18n::tr("No debug probes found!");

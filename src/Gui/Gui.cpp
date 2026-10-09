@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 
+#include "GdbServerDebugProbe.hpp"
 #include "PlotHandler.hpp"
 #include "RecorderHandler.hpp"
 #include "SerialDebugProbe.hpp"
@@ -169,6 +170,7 @@ void Gui::mainThread(std::string externalPath)
 	jlinkProbe = std::make_shared<JlinkDebugProbe>(logger);
 	stlinkProbe = std::make_shared<StlinkDebugProbe>(logger);
 	serialProbe = std::make_shared<SerialDebugProbe>(logger);
+	gdbServerProbe = std::make_shared<GdbServerDebugProbe>(logger);
 	debugProbeDevice = stlinkProbe;
 	viewerDataHandler->setDebugProbe(debugProbeDevice);
 
@@ -742,6 +744,7 @@ ProjectData Gui::collectProjectData()
 	data.viewer.probe.ipAddress = debugProbeSettings.ipAddress;
 	data.viewer.probe.scriptEnabled = debugProbeSettings.scriptEnabled;
 	data.viewer.probe.scriptPath = debugProbeSettings.scriptPath;
+	data.viewer.probe.port = debugProbeSettings.port;
 
 	const TraceDataHandler::Settings traceSettings = traceDataHandler->getSettings();
 	data.trace.coreFrequency = traceSettings.coreFrequency;
@@ -1489,6 +1492,7 @@ void Gui::applyProjectData(const ProjectData& data)
 	debugProbeSettings.ipAddress = data.viewer.probe.ipAddress;
 	debugProbeSettings.scriptEnabled = data.viewer.probe.scriptEnabled;
 	debugProbeSettings.scriptPath = data.viewer.probe.scriptPath;
+	debugProbeSettings.port = data.viewer.probe.port;
 	viewerDataHandler->setProbeSettings(debugProbeSettings);
 
 	TraceDataHandler::Settings traceSettings = traceDataHandler->getSettings();
@@ -1592,6 +1596,9 @@ std::shared_ptr<IDebugProbe> Gui::probeForType(uint32_t type) const
 
 		case IDebugProbe::Probe::Serial:
 			return serialProbe;
+
+		case IDebugProbe::Probe::GdbServer:
+			return gdbServerProbe;
 
 		default:
 			return stlinkProbe;

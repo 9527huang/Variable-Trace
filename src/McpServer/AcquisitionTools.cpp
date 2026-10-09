@@ -13,6 +13,7 @@ namespace mcp
 		constexpr uint32_t stlinkProbe = IDebugProbe::Probe::Stlink;
 		constexpr uint32_t jlinkProbe = IDebugProbe::Probe::Jlink;
 		constexpr uint32_t serialProbe = IDebugProbe::Probe::Serial;
+		constexpr uint32_t gdbServerProbe = IDebugProbe::Probe::GdbServer;
 
 		/* The highest baud rate a serial port can be driven at is well below
 		   this, and the field has to stay inside the processor's range. */
@@ -27,6 +28,9 @@ namespace mcp
 
 				case serialProbe:
 					return "serial";
+
+				case gdbServerProbe:
+					return "gdbserver";
 
 				default:
 					return "stlink";
@@ -44,10 +48,13 @@ namespace mcp
 			if (name == "serial")
 				return serialProbe;
 
-			if (name == "gdbserver" || name == "stlink_cubeprog")
+			if (name == "gdbserver")
+				return gdbServerProbe;
+
+			if (name == "stlink_cubeprog")
 				reportUnavailable("the '" + name + "' debug probe", "set_debug_probe");
 
-			throw ToolError("Unknown probe type '" + name + "'. Use 'stlink', 'jlink' or 'serial'.");
+			throw ToolError("Unknown probe type '" + name + "'. Use 'stlink', 'jlink', 'serial' or 'gdbserver'.");
 		}
 
 		/* Probe settings are read by the acquisition thread when it starts the
@@ -149,11 +156,8 @@ namespace mcp
 			const IDebugProbe::DebugProbeSettings settings = context.viewerDataHandler->getProbeSettings();
 			const uint32_t type = settings.debugProbe;
 
-			/* The fields of probes this build does not have are reported before
-			   anything is written, so a call never applies half of its arguments. */
-			if (has(arguments, "port"))
-				reportUnavailable("the GDB server probe", "configure_probe");
-
+			/* The probes this build does not have are reported before anything is
+			   written, so a call never applies half of its arguments. */
 			if (has(arguments, "api_path"))
 				reportUnavailable("the ST-Link CubeProgrammer probe", "configure_probe");
 
@@ -161,6 +165,7 @@ namespace mcp
 			const bool connectionProvided = has(arguments, "connection");
 			const bool baudrateProvided = has(arguments, "baudrate");
 			const bool ipProvided = has(arguments, "ip");
+			const bool portProvided = has(arguments, "port");
 			const bool scriptProvided = has(arguments, "script_enabled") || has(arguments, "script_path");
 
 			/* Every probe accepts the settings that belong to it and nothing
@@ -168,23 +173,31 @@ namespace mcp
 			   being stored where it would never be read. */
 			if (type == serialProbe)
 			{
-				if (deviceProvided || connectionProvided || ipProvided)
-					throw ToolError("'device', 'connection' and 'ip' apply to the J-Link probe, and the active probe is 'serial'. Set the port with set_debug_probe and the line speed with 'baudrate'.");
+				if (deviceProvided || connectionProvided || ipProvided || portProvided)
+					throw ToolError("'device', 'connection', 'ip' and 'port' apply to other probes, and the active probe is 'serial'. Set the port with set_debug_probe and the line speed with 'baudrate'.");
 
 				if (!baudrateProvided)
 					throw ToolError("No probe setting was provided. Pass 'baudrate'.");
 			}
 			else if (type == jlinkProbe)
 			{
-				if (baudrateProvided)
-					throw ToolError("'baudrate' applies to the serial probe, and the active probe is 'jlink'.");
+				if (baudrateProvided || portProvided)
+					throw ToolError("'baudrate' and 'port' apply to other probes, and the active probe is 'jlink'.");
 
 				if (!deviceProvided && !connectionProvided && !ipProvided && !scriptProvided)
 					throw ToolError("No probe setting was provided. Pass 'device', 'connection', 'ip' and/or the script fields.");
 			}
+			else if (type == gdbServerProbe)
+			{
+				if (deviceProvided || connectionProvided || baudrateProvided || scriptProvided)
+					throw ToolError("'device', 'connection', 'baudrate' and the script fields belong to other probes; the GDB server takes 'ip' and 'port'.");
+
+				if (!ipProvided && !portProvided)
+					throw ToolError("No probe setting was provided. Pass 'ip' and/or 'port'.");
+			}
 			else
 			{
-				if (deviceProvided || connectionProvided || baudrateProvided || ipProvided || scriptProvided)
+				if (deviceProvided || connectionProvided || baudrateProvided || ipProvided || portProvided || scriptProvided)
 					throw ToolError("The active probe '" + probeTypeToString(type) + "' has no type specific settings.");
 			}
 
@@ -241,13 +254,25 @@ namespace mcp
 				const std::string address = optionalString(arguments, "ip").value_or("");
 
 				if (address.empty())
-					throw ToolError("Field 'ip' must not be empty. Pass the network address of the J-Link, for example '192.168.1.50'.");
+					throw ToolError("Field 'ip' must not be empty. Pass the network address of the J-Link, or the address the GDB server runs at.");
 
 				updated.ipAddress = address;
 
-				/* An address is only read by a probe that is reached over the
-				   network, so asking for one is asking for that. */
-				updated.connection = IDebugProbe::Connection::Network;
+				/* An address on its own means a probe reached over the network.
+				   For a J-Link that is a setting of its own; a GDB server is
+				   always reached that way. */
+				if (updated.debugProbe == jlinkProbe)
+					updated.connection = IDebugProbe::Connection::Network;
+			}
+
+			if (portProvided)
+			{
+				const int64_t port = *optionalInteger(arguments, "port");
+
+				if (port < 1 || port > 65535)
+					throw ToolError("Field 'port' must be between 1 and 65535.");
+
+				updated.port = static_cast<uint32_t>(port);
 			}
 
 			if (has(arguments, "script_enabled"))
@@ -269,6 +294,7 @@ namespace mcp
 								 {"device", updated.device},
 								 {"connection", updated.connection == IDebugProbe::Connection::Network ? "tcp_ip" : "usb"},
 								 {"ip", updated.ipAddress},
+								 {"port", updated.port},
 								 {"script_enabled", updated.scriptEnabled},
 								 {"script_path", updated.scriptPath}});
 		}
@@ -342,16 +368,16 @@ namespace mcp
 
 		registry.add({.name = "configure_probe",
 					  .description = "Configure probe-type-specific settings (call set_debug_probe first). "
-									 "  J-Link   : device, connection ('usb'/'tcp_ip'), ip, script_enabled (0/1), script_path. "
-									 "  GDB server: ip, port (not in this build). "
-									 "  Serial   : baudrate. "
-									 "  CubeProg : api_path (not in this build).",
+									 "  J-Link    : device, connection ('usb'/'tcp_ip'), ip, script_enabled (0/1), script_path. "
+									 "  GDB server: ip, port (a server somebody else started: OpenOCD or a vendor tool). "
+									 "  Serial    : baudrate. "
+									 "  CubeProg  : api_path (not in this build).",
 					  .inputSchema = objectSchema(Json::object({{"device", stringProperty("J-Link target device (e.g. 'STM32F407VG')")},
 																{"connection", enumProperty("J-Link connection: 'usb' or 'tcp_ip'", {"usb", "tcp_ip"})},
-																{"ip", stringProperty("J-Link network address, used when the connection is 'tcp_ip'")},
+																{"ip", stringProperty("J-Link network address (connection 'tcp_ip'), or the address the GDB server runs at")},
+																{"port", integerProperty("Port the GDB server serves on (1 - 65535, OpenOCD's default is 3333)")},
 																{"script_enabled", booleanProperty("J-Link script: 1=on, 0=off. Sending 'script_path' sets it as well")},
 																{"script_path", stringProperty("J-Link script file path; an empty path turns the script off")},
-																{"port", integerProperty("GDB server port")},
 																{"baudrate", integerProperty("Serial baud rate")},
 																{"api_path", stringProperty("CubeProgrammer API library path (empty = auto-detect)")}})),
 					  .handler = configureProbe});

@@ -34,11 +34,13 @@ struct ProjectProbeSettings
 	bool keepConnection = false;
 	/* J-Link only: how the probe is reached (0 = USB, 1 = network), where it is
 	   when that is over the network, and a script of the reader's own to run
-	   before the target is connected. */
+	   before the target is connected. `ipAddress` is also the address a GDB
+	   server runs at, and `port` is the port it serves on. */
 	uint32_t connection = 0;
 	std::string ipAddress = "";
 	bool scriptEnabled = false;
 	std::string scriptPath = "";
+	uint32_t port = 3333;
 };
 
 struct ProjectViewerSettings

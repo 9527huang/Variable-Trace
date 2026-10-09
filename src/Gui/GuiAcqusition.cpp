@@ -105,7 +105,7 @@ void Gui::drawDebugProbes()
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Debug probe:"), alignment);
 	ImGui::SameLine();
 
-	const char* debugProbes[] = {"STLINK", "JLINK", "SERIAL"};
+	const char* debugProbes[] = {"STLINK", "JLINK", "SERIAL", "GDBSERVER"};
 	IDebugProbe::DebugProbeSettings probeSettings = viewerDataHandler->getProbeSettings();
 	int32_t debugProbe = static_cast<int32_t>(probeSettings.debugProbe);
 
@@ -122,27 +122,33 @@ void Gui::drawDebugProbes()
 	}
 
 	const bool isSerial = probeSettings.debugProbe == IDebugProbe::Probe::Serial;
+	const bool isGdbServer = probeSettings.debugProbe == IDebugProbe::Probe::GdbServer;
 
-	GuiHelper::drawTextAlignedToSize(isSerial ? "Serial port:" : "Debug probe S/N:", alignment);
-	ImGui::SameLine();
-
-	if (ImGui::Combo("##debugProbeSN", &SNptr, devicesList))
+	/* A GDB server is not a device that can be listed: it is reached at an
+	   address, which the branch below asks for. */
+	if (!isGdbServer)
 	{
-		probeSettings.serialNumber = devicesList[SNptr];
-		modified = true;
-	}
+		GuiHelper::drawTextAlignedToSize(isSerial ? "Serial port:" : "Debug probe S/N:", alignment);
+		ImGui::SameLine();
 
-	ImGui::SameLine();
-
-	if (ImGui::Button("@", ImVec2(35 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)) || shouldListDevices || devicesList.empty())
-	{
-		devicesList = debugProbeDevice->getConnectedDevices();
-		if (!devicesList.empty())
+		if (ImGui::Combo("##debugProbeSN", &SNptr, devicesList))
 		{
-			probeSettings.serialNumber = devicesList[0];
+			probeSettings.serialNumber = devicesList[SNptr];
 			modified = true;
 		}
-		shouldListDevices = false;
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("@", ImVec2(35 * GuiHelper::contentScale, 19 * GuiHelper::contentScale)) || shouldListDevices || devicesList.empty())
+		{
+			devicesList = debugProbeDevice->getConnectedDevices();
+			if (!devicesList.empty())
+			{
+				probeSettings.serialNumber = devicesList[0];
+				modified = true;
+			}
+			shouldListDevices = false;
+		}
 	}
 
 	if (isSerial)
@@ -158,6 +164,37 @@ void Gui::drawDebugProbes()
 		ImGui::SameLine();
 		ImGui::HelpMarker(I18n::tr("Line speed of the serial port. It has to match the baud rate the target firmware configures for its UART."));
 		probeSettings.mode = IDebugProbe::Mode::NORMAL;
+	}
+	else if (isGdbServer)
+	{
+		/* Nothing here reaches the target on its own: a GDB server does the
+		   reaching, and this says where it is. */
+		probeSettings.mode = IDebugProbe::Mode::NORMAL;
+
+		GuiHelper::drawTextAlignedToSize(I18n::tr("GDB server:"), alignment);
+		ImGui::SameLine();
+
+		if (ImGui::InputText("##gdbAddress", &probeSettings.ipAddress, 0, NULL, NULL))
+			modified = true;
+
+		ImGui::SameLine();
+		ImGui::HelpMarker(I18n::tr("Address of the machine running the GDB server. OpenOCD, and the servers shipped with probes, both speak the protocol this reads through."));
+
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Port:"), alignment);
+		ImGui::SameLine();
+
+		if (ImGui::InputScalar("##gdbPort", ImGuiDataType_U32, &probeSettings.port, NULL, NULL, "%u"))
+			modified = true;
+
+		ImGui::SameLine();
+		ImGui::HelpMarker(I18n::tr("Port the GDB server serves on. OpenOCD's default is 3333."));
+
+		if (probeSettings.ipAddress.empty())
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
+			GuiHelper::drawCenteredText(I18n::tr("No GDB server address, the acquisition cannot connect without one."));
+			ImGui::PopStyleColor();
+		}
 	}
 	else
 	{

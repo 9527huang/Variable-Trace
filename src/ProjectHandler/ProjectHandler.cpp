@@ -48,6 +48,7 @@ namespace
 		settings.ipAddress = probe.value("ipAddress", settings.ipAddress);
 		settings.scriptEnabled = probe.value("scriptEnabled", settings.scriptEnabled);
 		settings.scriptPath = probe.value("scriptPath", settings.scriptPath);
+		settings.port = probe.value("port", settings.port);
 
 		return settings;
 	}
@@ -64,7 +65,8 @@ namespace
 							 {"connection", probe.connection},
 							 {"ipAddress", probe.ipAddress},
 							 {"scriptEnabled", probe.scriptEnabled},
-							 {"scriptPath", probe.scriptPath}});
+							 {"scriptPath", probe.scriptPath},
+							 {"port", probe.port}});
 	}
 }  // namespace
 
