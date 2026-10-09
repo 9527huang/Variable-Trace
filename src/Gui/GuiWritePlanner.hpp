@@ -92,7 +92,11 @@ class WritePlannerWindow
 
 			ImGui::SameLine();
 
-			if (ImGui::Selectable(name.c_str(), name == selectedPlan, 0, ImVec2(-1, 0)))
+			/* No size given on purpose. Selectable() fills the space left on
+			   the row only when its width argument is 0 - a negative width is
+			   taken literally, and the row ends up a few pixels wide with the
+			   name clipped to its first letter. */
+			if (ImGui::Selectable(name.c_str(), name == selectedPlan))
 				selectedPlan = name;
 
 			ImGui::PopID();
