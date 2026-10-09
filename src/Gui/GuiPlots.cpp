@@ -202,7 +202,7 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 		const std::string xLabel = plot->getEffectiveXAxisLabel();
 		const std::string yLabel = plot->getEffectiveYAxisLabel();
 
-		const bool running = viewerDataHandler->getState() == DataHandlerBase::State::RUN;
+		const bool running = viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN;
 		const bool follows = plot->isViewFollowingLatestData();
 
 		/* Both axes are fitted while the view is being carried along. Once
@@ -233,7 +233,7 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 		   slope of that rectangle is the reading this kind of plot is
 		   usually opened for, and it comes out of a pair on both
 		   directions, so the mode is asked rather than assumed. */
-		if (viewerDataHandler->getState() == DataHandlerBase::State::STOP)
+		if (viewerDataHandler->getStateImmediate() == DataHandlerBase::State::STOP)
 		{
 			ImPlotRect plotLimits = ImPlot::GetPlotLimits();
 
@@ -286,7 +286,7 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 		const std::string xLabel = plot->getEffectiveXAxisLabel();
 		const std::string yLabel = plot->getEffectiveYAxisLabel();
 
-		const bool running = viewerDataHandler->getState() == DataHandlerBase::State::RUN;
+		const bool running = viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN;
 		const bool follows = plot->isViewFollowingLatestData();
 
 		if (running)
@@ -303,8 +303,17 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 			if (follows)
 			{
 				const double viewportWidth = (1.0 / viewerDataHandler->getAverageSamplingFrequency()) * settings.maxViewportPoints;
-				const std::pair<double, double> window = Plot::liveTimeWindow(*time.getLastElement(), time.getOldestValue(), viewportWidth);
-				ImPlot::SetupAxisLimits(ImAxis_X1, window.first, window.second, ImPlotCond_Always);
+				const double* newest = time.getLastElement();
+
+				/* A ring nothing has been put into yet has no newest sample to
+				   hang the window on - which is what a run looks like for the
+				   frames between the buffers being emptied and the first sample
+				   arriving. The axis is left where it is until one does. */
+				if (newest != nullptr)
+				{
+					const std::pair<double, double> window = Plot::liveTimeWindow(*newest, time.getOldestValue(), viewportWidth);
+					ImPlot::SetupAxisLimits(ImAxis_X1, window.first, window.second, ImPlotCond_Always);
+				}
 			}
 		}
 		else
@@ -322,7 +331,7 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 		plot->setIsHovered(ImPlot::IsPlotHovered());
 		dragAndDropPlot(plot);
 
-		if (viewerDataHandler->getState() == DataHandlerBase::State::STOP)
+		if (viewerDataHandler->getStateImmediate() == DataHandlerBase::State::STOP)
 		{
 			ImPlotRect plotLimits = ImPlot::GetPlotLimits();
 
@@ -457,7 +466,7 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 			if (!serPtr->visible)
 				continue;
 
-			ImGui::BeginDisabled(!serPtr->var->getIsCurrentlySampled() && viewerDataHandler->getState() == DataHandlerBase::State::RUN);
+			ImGui::BeginDisabled(!serPtr->var->getIsCurrentlySampled() && viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN);
 
 			ImGui::TableNextRow();
 			ImGui::TableSetColumnIndex(0);
@@ -484,7 +493,7 @@ void Gui::drawPlotTable(std::shared_ptr<Plot> plot)
 
 			if (ImGui::InputText(inputName.c_str(), &valueToWrite, ImGuiInputTextFlags_CharsDecimal, NULL, NULL))
 			{
-				if (viewerDataHandler->getState() == DataHandlerBase::State::STOP)
+				if (viewerDataHandler->getStateImmediate() == DataHandlerBase::State::STOP)
 				{
 					ImGui::PopStyleColor(3);
 					ImGui::EndDisabled();

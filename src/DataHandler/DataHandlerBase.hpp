@@ -44,18 +44,16 @@ class DataHandlerBase
 		stateChangeOrdered = true;
 		transitionStarted = std::chrono::steady_clock::now();
 	}
-	State getState() const
-	{
-		/* TODO possible deadlock */
-		while (stateChangeOrdered);
-		return viewerState;
-	}
+	/* The state, as the interface asks for it: what was asked for, available at
+	   once.
 
-	/* Reads the state without waiting for a pending transition to be processed.
-	   getState() spins until the acquisition thread has finished the transition,
-	   and that transition contains the probe connect, so a caller on the
-	   interface thread would be held for as long as the connect takes. Callers
-	   that only need to know whether acquisition runs use this one. */
+	   There is deliberately no accessor that waits for a pending transition to
+	   be carried out. That transition contains the probe connect, so a caller
+	   on the interface thread would be held for as long as the connect takes -
+	   a fraction of a second on a healthy probe, tens of seconds on one that
+	   was left in a bad state - and the window would stop drawing while it
+	   waited. What the interface says about a transition is its own flag,
+	   isTransitionPending(). */
 	State getStateImmediate() const
 	{
 		return viewerState.load();

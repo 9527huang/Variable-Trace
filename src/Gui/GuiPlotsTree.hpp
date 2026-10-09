@@ -128,7 +128,7 @@ class PlotsTree
 		/* The cursors are put away while the plot is being filled with
 		   samples, because a measurement taken on data that is still
 		   arriving is a measurement of nothing. */
-		if (viewerDataHandler->getState() == ViewerDataHandler::State::RUN)
+		if (viewerDataHandler->getStateImmediate() == ViewerDataHandler::State::RUN)
 		{
 			plt->setCursorsVisible(false);
 			plt->setStatisticsVisible(false);
@@ -152,7 +152,7 @@ class PlotsTree
 			std::optional<std::string> seriesNameToDelete = {};
 			for (auto& [name, ser] : plt->getSeriesMap())
 			{
-				ImGui::BeginDisabled(!ser->var->getIsCurrentlySampled() && viewerDataHandler->getState() == DataHandlerBase::State::RUN);
+				ImGui::BeginDisabled(!ser->var->getIsCurrentlySampled() && viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN);
 				ImGui::PushID(name.c_str());
 				ImGui::Checkbox("", &ser->visible);
 				ImGui::PopID();

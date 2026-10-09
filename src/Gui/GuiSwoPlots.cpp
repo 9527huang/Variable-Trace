@@ -35,7 +35,7 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 		else
 			ImPlot::SetupAxis(ImAxis_X1, I18n::tr("time[s]"), ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel);
 
-		const bool running = traceDataHandler->getState() == DataHandlerBase::State::RUN;
+		const bool running = traceDataHandler->getStateImmediate() == DataHandlerBase::State::RUN;
 		const bool follows = plot->isViewFollowingLatestData();
 
 		if (running)
@@ -79,7 +79,7 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 			plot->trigger.setValue(triggerLevel);
 		}
 
-		if (traceDataHandler->getState() == DataHandlerBase::State::STOP)
+		if (traceDataHandler->getStateImmediate() == DataHandlerBase::State::STOP)
 		{
 			ImPlotRect plotLimits = ImPlot::GetPlotLimits();
 
@@ -118,7 +118,7 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 			ImPlot::PlotScatter("###point", &timepoint, &value, 1, false);
 		}
 
-		if (traceDataHandler->getState() == DataHandlerBase::State::STOP)
+		if (traceDataHandler->getStateImmediate() == DataHandlerBase::State::STOP)
 		{
 			auto errorTimestamps = traceDataHandler->getErrorTimestamps();
 			auto delayed3Timestamps = traceDataHandler->getDelayed3Timestamps();

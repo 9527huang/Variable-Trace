@@ -9,7 +9,7 @@ void Gui::drawSettingsSwo()
 	ImGui::Separator();
 
 	auto settings = traceDataHandler->getSettings();
-	auto state = traceDataHandler->getState();
+	auto state = traceDataHandler->getStateImmediate();
 
 	if (state == DataHandlerBase::State::RUN)
 		ImGui::BeginDisabled();
@@ -104,7 +104,7 @@ void Gui::drawPlotsTreeSwo()
 	ImGui::BeginChild(I18n::windowTitle("Plot Tree").c_str(), ImVec2(-1, windowHeight));
 	ImGui::BeginChild("left pane", ImVec2(treeWidth, -1), true);
 
-	auto state = traceDataHandler->getState();
+	auto state = traceDataHandler->getStateImmediate();
 	int32_t iter = 0;
 
 	for (std::shared_ptr<Plot> plt : *tracePlotHandler)
@@ -165,7 +165,7 @@ void Gui::drawPlotsTreeSwo()
 	/* Cursors are put away while the trace is running, for the same reason as
 	   on the variable side: a measurement of data that is still arriving is a
 	   measurement of nothing. */
-	bool cursorsVisible = (traceDataHandler->getState() == DataHandlerBase::State::RUN) ? false : plt->getCursorsVisible();
+	bool cursorsVisible = (traceDataHandler->getStateImmediate() == DataHandlerBase::State::RUN) ? false : plt->getCursorsVisible();
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Cursors:"), alignment);
 	ImGui::SameLine();
 	if (ImGui::Checkbox("##cursors", &cursorsVisible))
@@ -191,7 +191,7 @@ void Gui::drawPlotsTreeSwo()
 
 	/* Put away while running for the same reason as the cursors: a window
 	   that measures a trace still being written is measuring nothing. */
-	bool statisticsVisible = (traceDataHandler->getState() == DataHandlerBase::State::RUN) ? false : plt->getStatisticsVisible();
+	bool statisticsVisible = (traceDataHandler->getStateImmediate() == DataHandlerBase::State::RUN) ? false : plt->getStatisticsVisible();
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Statistics:"), alignment);
 	ImGui::SameLine();
 	if (ImGui::Checkbox("##statistics", &statisticsVisible))

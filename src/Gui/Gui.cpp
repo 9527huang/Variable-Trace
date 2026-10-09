@@ -191,7 +191,7 @@ void Gui::mainThread(std::string externalPath)
 			continue;
 		}
 
-		if (glfwGetWindowAttrib(window, GLFW_FOCUSED) || (traceDataHandler->getState() == DataHandlerBase::State::RUN) || (viewerDataHandler->getState() == DataHandlerBase::State::RUN))
+		if (glfwGetWindowAttrib(window, GLFW_FOCUSED) || (traceDataHandler->getStateImmediate() == DataHandlerBase::State::RUN) || (viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN))
 			glfwSwapInterval(1);
 		else
 			glfwSwapInterval(4);
@@ -344,7 +344,7 @@ void Gui::drawMenu()
 	bool shouldSaveOnNew = false;
 	ImGui::BeginMainMenuBar();
 
-	bool active = !(viewerDataHandler->getState() == DataHandlerBase::State::RUN || traceDataHandler->getState() == DataHandlerBase::State::RUN);
+	bool active = !(viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN || traceDataHandler->getStateImmediate() == DataHandlerBase::State::RUN);
 
 	if (ImGui::BeginMenu(I18n::tr("File")))
 	{
@@ -826,7 +826,7 @@ void Gui::drawStartButton(DataHandlerBase* activeDataHandler)
 	bool shouldDisableButton = (!devicesList.empty() && devicesList.front() == noDevices);
 	ImGui::BeginDisabled(shouldDisableButton);
 
-	DataHandlerBase::State state = activeDataHandler->getState();
+	DataHandlerBase::State state = activeDataHandler->getStateImmediate();
 
 	if (state == DataHandlerBase::State::RUN)
 	{
@@ -1708,7 +1708,7 @@ void Gui::checkShortcuts()
 
 	/* The File menu disables these entries while an acquisition is running,
 	   because loading a project replaces the whole variable and plot model. */
-	const bool active = !(viewerDataHandler->getState() == DataHandlerBase::State::RUN || traceDataHandler->getState() == DataHandlerBase::State::RUN);
+	const bool active = !(viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN || traceDataHandler->getStateImmediate() == DataHandlerBase::State::RUN);
 
 	if (!io.KeyCtrl || !active)
 		return;
