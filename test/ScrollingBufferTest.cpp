@@ -157,3 +157,26 @@ TEST_F(ScrollingBufferTest, aRingEmptiedForARunKeepsItsCapacity)
 	EXPECT_EQ(test.getOldestValue(), 1.0);
 	EXPECT_EQ(test.getNewestValue(), 1.0);
 }
+
+TEST_F(ScrollingBufferTest, anEmptyRingHandsOutNoNewestSample)
+{
+	/* getLastElement() hands out a place inside the ring, and a ring with
+	   nothing in it has none: it is the one accessor that answers with a null
+	   pointer. A caller that reads through it without asking first ends the
+	   program - which is what the bar plot did when a variable was dropped
+	   into it before the first sample arrived. No other test here covers that,
+	   so the contract is written down.
+
+	   getFirstElementCopy() is a different matter: it points into the copy,
+	   which is allocated at full size whatever the ring holds, so it is never
+	   null and reading a slot that has not been written yet cannot fall off
+	   the end. */
+	test.erase();
+	test.copyData();
+
+	EXPECT_EQ(test.getSize(), 0);
+	EXPECT_EQ(test.getLastElement(), nullptr);
+	EXPECT_EQ(test.getNewestValue(), 0.0);
+
+	EXPECT_NE(test.getFirstElementCopy(), nullptr);
+}

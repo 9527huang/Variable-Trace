@@ -434,7 +434,14 @@ void Gui::drawPlotBar(std::shared_ptr<Plot> plot)
 		{
 			if (!series->visible)
 				continue;
-			double value = *series->buffer->getLastElement();
+
+			/* A ring nothing has been put into yet has no newest sample to
+			   stand a bar on - which is what a variable just dropped into a bar
+			   plot looks like until the first sample arrives. It reads as zero
+			   rather than through a pointer that is not there; reading through
+			   it is what an access violation looks like from the outside. */
+			const double* newest = series->buffer->getLastElement();
+			const double value = (newest != nullptr) ? *newest : 0.0;
 
 			ImPlot::SetNextLineStyle(GuiHelper::traceColor(series->var->getColor().r, series->var->getColor().g, series->var->getColor().b));
 			ImPlot::SetNextFillStyle(GuiHelper::traceColor(series->var->getColor().r, series->var->getColor().g, series->var->getColor().b));
