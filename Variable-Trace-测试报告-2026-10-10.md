@@ -417,7 +417,13 @@ time [s],fastRamp,fastSine,fastSquare,fastTriangle
 
 ## 本轮确定的
 
-- **记录器的机制全通**：探测（`recorder 8.3, 6 variables, 8192 samples, timestep 50000 ns, float triggers`）、配置下发（4 变量 / 11 字节）、触发、运行、回读（`Copied 8184 bytes: 744 samples`）都有实测数字。
+- **记录器的机制全通**：探测（`recorder 8.3, 6 variables, 8192 samples, timestep 50000 ns, float triggers`）、配置下发（4 变量 / 11 字节）、触发、运行、回读（`Copied 8184 bytes: 744 samples`）都有实测数字。日志里的两行也是证据：
+
+  ```
+  [23:51:07.449] Recorder detected at 0x2000077C: recorder 8.3, 6 variables, 8192 samples, timestep 50000 ns, float triggers
+  [23:51:07.472] Recorder started in normal mode with 4 variables, 11 bytes per sample, skipping 0
+  ```
+
 - **窗口判据通过**：744 × 50 µs = 37.2 ms（清单写 25 ms 是按 4 个 float = 16 字节算的）。
 - **数值判据不通过**：相邻样本差 1、2.0 ms 周期、跳采样 n+1 都无从谈起，因为字节就是错的。
 - 补的这条取数路径本身是对的——**正是它把「数值全错」这件事从「看不见」变成了「一眼可见」**。
