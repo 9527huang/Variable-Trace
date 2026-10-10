@@ -239,8 +239,19 @@ void Gui::mainThread(std::string externalPath)
 			viewerDataHandler->setState(DataHandlerBase::State::STOP);
 			traceDataHandler->setState(DataHandlerBase::State::STOP);
 
+			/* A window that is opened by a flag is opened again every frame, and
+			   each opening takes the popup slot away from the Save? prompt. With
+			   one of them on screen the prompt is drawn and replaced within the
+			   same frame, so it never shows and the application never closes.
+			   They are closed first, which is what lets the question be asked. */
+			closeOpenWindows();
+
+			/* The question about saving is asked from the menu, in the one place
+			   that draws the box - see exitRequested. Asking it here as well
+			   would begin the same modal twice in one frame, and the second
+			   begin leaves its buttons without the identities to answer with. */
 			if (projectHandler->isSavingRequired(collectProjectData()))
-				askShouldSaveOnExit(glfwWindowShouldClose(window));
+				exitRequested = true;
 			else
 				done = true;
 		}
@@ -342,7 +353,9 @@ void Gui::mainThread(std::string externalPath)
 
 void Gui::drawMenu()
 {
-	bool shouldSaveOnClose = false;
+	/* The close button in the title bar asks the same question as the Quit
+	   entry below, so both arrive here rather than at a box of their own. */
+	bool shouldSaveOnClose = exitRequested;
 	bool shouldSaveOnNew = false;
 	ImGui::BeginMainMenuBar();
 
@@ -909,6 +922,16 @@ void Gui::drawAcqusitionSettingsWindow(ActiveViewType type)
 	ImGui::SetNextWindowSize(ImVec2(950 * GuiHelper::contentScale, 600 * GuiHelper::contentScale));
 	if (ImGui::BeginPopupModal(I18n::windowTitle("Acqusition Settings").c_str(), &showAcqusitionSettingsWindow, 0))
 	{
+		const float buttonHeight = 25.0f * GuiHelper::contentScale;
+		const float footerHeight = buttonHeight + ImGui::GetStyle().ItemSpacing.y + ImGui::GetStyle().WindowPadding.y;
+
+		/* The settings are taller than the window, so they scroll - and they get
+		   a region of their own to scroll in, with the button below it. Placing
+		   the button at a spot counted from the bottom of the window instead put
+		   it on top of whatever the content had reached by then, which is the
+		   Advanced section at the end of the list. */
+		ImGui::BeginChild("##acqusitionSettingsBody", ImVec2(0, -footerHeight));
+
 		drawAcqusitionSettingsScope(type);
 
 		if (type == ActiveViewType::VarViewer)
@@ -916,10 +939,9 @@ void Gui::drawAcqusitionSettingsWindow(ActiveViewType type)
 		else if (type == ActiveViewType::TraceViewer)
 			acqusitionSettingsTrace();
 
-		acqusitionErrorPopup.handle();
+		ImGui::EndChild();
 
-		const float buttonHeight = 25.0f * GuiHelper::contentScale;
-		ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowSize().y - buttonHeight / 2.0f - ImGui::GetFrameHeightWithSpacing()));
+		acqusitionErrorPopup.handle();
 
 		if (ImGui::Button(I18n::tr("Done"), ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
 		{
@@ -1276,6 +1298,27 @@ void Gui::drawPreferencesWindow()
 	}
 }
 
+/* Every window that is opened by a flag, and would therefore be opened again on
+   the next frame. The application is on its way out, so these are closed rather
+   than left to compete with the Save? prompt for the one popup slot ImGui draws
+   from - which is exactly what stopped that prompt from ever being seen. */
+void Gui::closeOpenWindows()
+{
+	showAcqusitionSettingsWindow = false;
+	showAboutWindow = false;
+	showPreferencesWindow = false;
+	showSelectVariablesWindow = false;
+	showRecorderWindow = false;
+	showFlashingSettingsWindow = false;
+	showFlashOutputWindow = false;
+	showWritePlannerWindow = false;
+	showC2000ParserSuggestion = false;
+	plotExportDialogOpen = false;
+
+	if (plotEditWindow)
+		plotEditWindow->setShowPlotEditWindowState(false);
+}
+
 void Gui::askShouldSaveOnExit(bool shouldOpenPopup)
 {
 	if (shouldOpenPopup)
@@ -1283,15 +1326,23 @@ void Gui::askShouldSaveOnExit(bool shouldOpenPopup)
 
 	auto onYes = [&]()
 	{
+		exitRequested = false;
 		done = true;
 		if (!saveProject())
 			saveProjectAs();
 	};
 
 	auto onNo = [&]()
-	{ done = true; };
+	{
+		exitRequested = false;
+		done = true;
+	};
 	auto onCancel = [&]()
-	{ done = false; };
+	{
+		/* The window stays, so the request is dropped with the question. */
+		exitRequested = false;
+		done = false;
+	};
 
 	if (variableHandler->isEmpty() && projectElfPath.empty() && shouldOpenPopup)
 		done = true;

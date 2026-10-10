@@ -258,6 +258,12 @@ class Gui
 	   them. The suggestion waits here until the frame that draws the window,
 	   because the file picker runs outside it. */
 	bool showC2000ParserSuggestion = false;
+
+	/* Set when the title bar close button has been pressed and the project needs
+	   saving. The question itself is asked from the one place that draws the
+	   box, so that it is begun once per frame - see drawMenu and
+	   askShouldSaveOnExit. */
+	bool exitRequested = false;
 	bool c2000SuggestionOpened = false;
 	std::string c2000SuggestionPath;
 
@@ -345,6 +351,7 @@ class Gui
 
 	void showQuestionBox(const char* id, const char* question, std::function<void()> onYes, std::function<void()> onNo, std::function<void()> onCancel);
 	void askShouldSaveOnExit(bool shouldOpenPopup);
+	void closeOpenWindows();
 	void askShouldSaveOnNew(bool shouldOpenPopup);
 	ProjectData collectProjectData();
 	void applyProjectData(const ProjectData& data);
