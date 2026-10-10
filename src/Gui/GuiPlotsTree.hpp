@@ -468,10 +468,7 @@ class PlotsTree
 		ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_FramePadding | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_OpenOnArrow;
 
 		if (selectedGroup == name)
-		{
 			nodeFlags |= ImGuiTreeNodeFlags_Selected;
-			plotGroupHandler->setActiveGroup(name);
-		}
 
 		/* A group that holds other groups opens by default, so a project that was
 		   just loaded shows its whole shape instead of one collapsed line. */
@@ -481,7 +478,15 @@ class PlotsTree
 		const bool state = ImGui::TreeNodeEx(group->getName().c_str(), nodeFlags);
 
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Left) || ImGui::IsItemClicked(ImGuiMouseButton_Right))
+		{
 			selectedGroup = name;
+
+			/* The active group follows the click rather than the selection.
+			   Re-asserting the selection every frame would undo an active group
+			   that was set from elsewhere - the API sets one, and a project load
+			   restores one - on the very next frame. */
+			plotGroupHandler->setActiveGroup(name);
+		}
 
 		drawMenuGroupPopup(name);
 
