@@ -2,6 +2,9 @@
 #include <implot.h>
 
 #include <algorithm>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -498,10 +501,19 @@ void Gui::drawRecorderWindow()
 
 			for (size_t index = 0; index < downloaded.series.size(); index++)
 			{
+				/* What came back is raw bytes, and a float channel is its bit
+				   pattern until its type is applied - which is done here, once,
+				   so the preview and the export both read the values the variable
+				   itself would read. */
+				const bool known = variableHandler != nullptr && index < config.variables.size() &&
+								   variableHandler->contains(config.variables[index].name);
+				std::shared_ptr<Variable> variable = known ? variableHandler->getVariable(config.variables[index].name) : nullptr;
+
 				captureValues[index].reserve(downloaded.series[index].size());
 
 				for (uint32_t raw : downloaded.series[index])
-					captureValues[index].push_back(static_cast<double>(raw));
+					captureValues[index].push_back(variable != nullptr ? variable->transformToDouble(raw)
+																		: static_cast<double>(raw));
 			}
 
 			report("Copied " + std::to_string(recorderHandler->getLastDownloadSize()) + " bytes: " +
@@ -512,10 +524,73 @@ void Gui::drawRecorderWindow()
 	}
 
 	ImGui::SameLine();
-	ImGui::HelpMarker(I18n::tr("Copies the whole buffer out of the target and rebuilds the samples from the ring state. "
-							   "The sampling loop pauses for the duration of the copy."));
+		ImGui::HelpMarker(I18n::tr("Copies the whole buffer out of the target and rebuilds the samples from the ring state. "
+								   "The sampling loop pauses for the duration of the copy."));
 
 	ImGui::EndDisabled();
+
+	/* The capture is written beside the project, named after it and the moment:
+	   a second capture does not overwrite the first, and nothing stands between
+	   the button and the file. The columns carry what the variables' own types
+	   make of the bytes - what came back is raw, and a float channel is its bit
+	   pattern until its type is applied. */
+	if (ImGui::Button(I18n::tr("Export capture to *.csv"), ImVec2(200 * GuiHelper::contentScale, 0)))
+	{
+		errorMessage.clear();
+
+		if (captureValues.empty() || captureTimes.empty())
+			fail(I18n::tr("There is nothing to write yet. Press Download first."));
+		else
+		{
+			std::filesystem::path target(projectConfigPath);
+			target.replace_extension();
+
+			const std::time_t now = std::time(nullptr);
+			std::tm local = {};
+			localtime_s(&local, &now);
+
+			char stamp[32] = {};
+			std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
+
+			const std::string path = target.string() + "_recorder_" + stamp + ".csv";
+			std::ofstream file(path);
+
+			if (!file)
+				fail(I18n::tr("The capture could not be written to ") + path);
+			else
+			{
+				file << "time [s]";
+
+				for (const std::string& name : captureNames)
+					file << "," << name;
+
+				file << "\n";
+
+				const size_t samples = captureTimes.size();
+
+				for (size_t index = 0; index < samples; ++index)
+				{
+					file << captureTimes[index];
+
+					for (size_t column = 0; column < captureValues.size() && column < captureNames.size(); ++column)
+					{
+						if (index < captureValues[column].size())
+							file << "," << captureValues[column][index];
+						else
+							file << ",";
+					}
+
+					file << "\n";
+				}
+
+				report(I18n::tr("Wrote ") + path + " (" + std::to_string(samples) + " samples).");
+			}
+		}
+	}
+
+	ImGui::SameLine();
+	ImGui::HelpMarker(I18n::tr("Writes the capture beside the project file, one column per variable, "
+							   "with the values the variables' own types give them."));
 
 	if (!errorMessage.empty())
 	{

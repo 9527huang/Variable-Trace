@@ -145,8 +145,14 @@ uint8_t Variable::getSize()
 	}
 }
 
-double Variable::transformToDouble()
+/* The same conversion, for a raw value handed in instead of the one the
+   acquisition last stored. The recorder reads bytes out of the target, and a
+   float channel is its bit pattern until the type is applied - which is what
+   this does, so an exporter does not have to write the conversion again. */
+double Variable::transformToDouble(uint32_t raw)
 {
+	double result = 0.0;
+
 	uint32_t size = getSize();
 
 	if (HighLevelType::SIGNEDFRAC == highLevelType)
@@ -158,24 +164,24 @@ double Variable::transformToDouble()
 		{
 			case 1:
 			{
-				int8_t temp = rawValue & 0xff;
-				value = (static_cast<double>(temp) / (1 << (fractional.fractionalBits))) * fractional.base;
+				int8_t temp = raw & 0xff;
+				result = (static_cast<double>(temp) / (1 << (fractional.fractionalBits))) * fractional.base;
 				break;
 			}
 			case 2:
 			{
-				int16_t temp = rawValue & 0xffff;
-				value = (static_cast<double>(temp) / (1 << (fractional.fractionalBits))) * fractional.base;
+				int16_t temp = raw & 0xffff;
+				result = (static_cast<double>(temp) / (1 << (fractional.fractionalBits))) * fractional.base;
 				break;
 			}
 			case 4:
 			{
-				int32_t temp = rawValue;
-				value = (static_cast<double>(temp) / (1 << (fractional.fractionalBits))) * fractional.base;
+				int32_t temp = raw;
+				result = (static_cast<double>(temp) / (1 << (fractional.fractionalBits))) * fractional.base;
 				break;
 			}
 		}
-		return value;
+		return result;
 	}
 	else if (HighLevelType::UNSIGNEDFRAC == highLevelType)
 	{
@@ -186,53 +192,60 @@ double Variable::transformToDouble()
 		{
 			case 1:
 			{
-				uint8_t temp = rawValue & 0xff;
-				value = (static_cast<double>(temp) / (1 << fractional.fractionalBits)) * fractional.base;
+				uint8_t temp = raw & 0xff;
+				result = (static_cast<double>(temp) / (1 << fractional.fractionalBits)) * fractional.base;
 				break;
 			}
 			case 2:
 			{
-				uint16_t temp = rawValue & 0xffff;
-				value = (static_cast<double>(temp) / (1 << fractional.fractionalBits)) * fractional.base;
+				uint16_t temp = raw & 0xffff;
+				result = (static_cast<double>(temp) / (1 << fractional.fractionalBits)) * fractional.base;
 				break;
 			}
 			case 4:
 			{
-				uint32_t temp = rawValue;
-				value = (static_cast<double>(temp) / (1 << fractional.fractionalBits)) * fractional.base;
+				uint32_t temp = raw;
+				result = (static_cast<double>(temp) / (1 << fractional.fractionalBits)) * fractional.base;
 				break;
 			}
 		}
-		return value;
+		return result;
 	}
 
 	switch (type)
 	{
 		case Variable::Type::U8:
-			value = static_cast<double>(*reinterpret_cast<uint8_t*>(&rawValue));
+			result = static_cast<double>(*reinterpret_cast<uint8_t*>(&raw));
 			break;
 		case Variable::Type::I8:
-			value = static_cast<double>(*reinterpret_cast<int8_t*>(&rawValue));
+			result = static_cast<double>(*reinterpret_cast<int8_t*>(&raw));
 			break;
 		case Variable::Type::U16:
-			value = static_cast<double>(*reinterpret_cast<uint16_t*>(&rawValue));
+			result = static_cast<double>(*reinterpret_cast<uint16_t*>(&raw));
 			break;
 		case Variable::Type::I16:
-			value = static_cast<double>(*reinterpret_cast<int16_t*>(&rawValue));
+			result = static_cast<double>(*reinterpret_cast<int16_t*>(&raw));
 			break;
 		case Variable::Type::U32:
-			value = static_cast<double>(*reinterpret_cast<uint32_t*>(&rawValue));
+			result = static_cast<double>(*reinterpret_cast<uint32_t*>(&raw));
 			break;
 		case Variable::Type::I32:
-			value = static_cast<double>(*reinterpret_cast<int32_t*>(&rawValue));
+			result = static_cast<double>(*reinterpret_cast<int32_t*>(&raw));
 			break;
 		case Variable::Type::F32:
-			value = static_cast<double>(*reinterpret_cast<float*>(&rawValue));
+			result = static_cast<double>(*reinterpret_cast<float*>(&raw));
 			break;
 		default:
-			value = static_cast<double>(*reinterpret_cast<uint32_t*>(&rawValue));
+			result = static_cast<double>(*reinterpret_cast<uint32_t*>(&raw));
 			break;
 	}
+
+	return result;
+}
+
+double Variable::transformToDouble()
+{
+	value = transformToDouble(rawValue);
 
 	return value;
 }

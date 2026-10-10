@@ -124,6 +124,11 @@ class Variable
 	uint32_t getRawFromDouble(double value);
 	double transformToDouble();
 
+	/* The same conversion for a raw value handed in rather than the one the
+	   acquisition last stored, so a reader of raw bytes - the recorder's capture
+	   - can put them on the same scale without touching the model. */
+	double transformToDouble(uint32_t raw);
+
 	/* Range guard for writes to the target. Disabled by default, so the previous
 	   behaviour is unchanged until limits are configured explicitly.
 	   MCP clients are expected to set them through configure_variable. */
