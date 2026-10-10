@@ -60,8 +60,17 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 				auto settings = traceDataHandler->getSettings();
 				const double min = time.getOldestValue();
 				const double max = time.getNewestValue();
-				const double viewportWidth = (max - min) * (settings.maxViewportPointsPercent / 100.0);
-				ImPlot::SetupAxisLimits(ImAxis_X1, max - viewportWidth, max, ImPlotCond_Always);
+
+				/* A trace that has produced one sample so far spans nothing, and
+				   handing ImPlot an axis range of zero width sends its tick
+				   locator off generating ticks without bound - the frame never
+				   finishes and the process grows by gigabytes. The comparison is
+				   written so a NaN fails it too. */
+				if (max > min)
+				{
+					const double viewportWidth = (max - min) * (settings.maxViewportPointsPercent / 100.0);
+					ImPlot::SetupAxisLimits(ImAxis_X1, max - viewportWidth, max, ImPlotCond_Always);
+				}
 			}
 		}
 

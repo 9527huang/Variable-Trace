@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <limits>
 #include <string>
 
 #include "Plot.hpp"
@@ -588,9 +590,41 @@ TEST(PlotLiveWindowTest, theTwoEndsArrivingTheWrongWayRoundStillGiveAWindow)
 {
 	/* Both ends are read from a buffer the sampling thread is writing, and
 	   the window is anchored on the newest sample whatever the other one
-	   says. */
+	   says. Holding the left edge back to the other one would put it on top
+	   of the newest sample, and an axis of zero width is not something ImPlot
+	   can lay out: its tick locator keeps generating ticks, the frame never
+	   finishes and the process grows by gigabytes. So the width asked for is
+	   kept when the two ends leave no room for it. */
 	const std::pair<double, double> window = Plot::liveTimeWindow(50.0, 60.0, 10.0);
 
-	EXPECT_DOUBLE_EQ(window.first, 50.0);
+	EXPECT_DOUBLE_EQ(window.first, 40.0);
 	EXPECT_DOUBLE_EQ(window.second, 50.0);
+}
+
+TEST(PlotLiveWindowTest, aBufferHoldingOneSampleStillHasAnInterval)
+{
+	/* The frames between the buffers being emptied and the second sample
+	   arriving: the oldest sample is the newest one. */
+	const std::pair<double, double> window = Plot::liveTimeWindow(2.0, 2.0, 50.0);
+
+	EXPECT_DOUBLE_EQ(window.first, -48.0);
+	EXPECT_DOUBLE_EQ(window.second, 2.0);
+}
+
+TEST(PlotLiveWindowTest, aWidthOfNothingFallsBackToTheSmallestInterval)
+{
+	const std::pair<double, double> window = Plot::liveTimeWindow(5.0, 5.0, 0.0);
+
+	EXPECT_DOUBLE_EQ(window.first, 4.0);
+	EXPECT_DOUBLE_EQ(window.second, 5.0);
+}
+
+TEST(PlotLiveWindowTest, endsThatAreNotNumbersGiveAnIntervalToo)
+{
+	const std::pair<double, double> window = Plot::liveTimeWindow(
+		std::numeric_limits<double>::quiet_NaN(), 0.0, 50.0);
+
+	EXPECT_TRUE(std::isfinite(window.first));
+	EXPECT_TRUE(std::isfinite(window.second));
+	EXPECT_LT(window.first, window.second);
 }

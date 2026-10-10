@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -490,8 +491,26 @@ std::pair<double, double> Plot::liveTimeWindow(double newest, double oldest, dou
 	/* The left edge is where the window would start, held back no further
 	   than the oldest sample the buffer still holds. A window narrower than
 	   the samples is unaffected: it lands well after the first sample and
-	   scrolls as it should. */
-	const double left = std::min(std::max(newest - windowWidth, oldest), newest);
+	   scrolls as it should.
+
+	   A range that is not an interval must not come out of here. ImPlot lays
+	   an axis out by generating ticks across its range, and a range of zero
+	   width - or one whose ends are not numbers - makes that generation run
+	   without bound: the frame never finishes and the buffer the tick labels
+	   are appended to grows by gigabytes. The interface stops responding and
+	   the process keeps growing. A buffer holding a single sample is exactly
+	   that case: holding the left edge back to the oldest sample would put it
+	   on top of the newest one, so the configured width is kept instead. A
+	   width that was configured as zero gets the smallest one that still has
+	   an interval to draw. */
+	if (!std::isfinite(newest) || !std::isfinite(oldest))
+		return {0.0, 1.0};
+
+	const double width = (std::isfinite(windowWidth) && windowWidth > 0.0) ? windowWidth : 1.0;
+	const double left = std::min(std::max(newest - width, oldest), newest);
+
+	if (left >= newest)
+		return {newest - width, newest};
 
 	return {left, newest};
 }
