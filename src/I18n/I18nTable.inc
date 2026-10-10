@@ -415,6 +415,7 @@ static const Entry table[] = {
 	{"trigger channel", "触发通道"},
 	{"trigger level", "触发电平"},
 	{"type", "类型"},
+	{"type a name", "输入器件名"},
 	{"type:", "类型:"},
 	{"unknown error", "未知错误"},
 	{"update from *.elf/*.axf:", "从 *.elf/*.axf 更新:"},

@@ -17,31 +17,36 @@ static constexpr size_t alignment = 36;
    number is still typed the way it always was. */
 static const char* const jlinkGenericTargets[] = {"Cortex-M3", "Cortex-M4"};
 
-/* The target name field and the list of generic names beside it. A combo cannot
-   hold typed text, so the field is an input and the list is a combo with its
-   preview taken away - which leaves the arrow and the list, opened and closed
-   by the same code every other list in this window uses. It is drawn by both
-   probe sections, which is why it lives out here. */
+/* The target name, as a combo: the box carries the current name and the list
+   opens on a click anywhere on it, exactly the way the Mode list below
+   behaves. Typing is the first row of that list rather than a field beside the
+   box - a combo cannot hold text of its own, and a field next to one reads as
+   two controls instead of one.
+
+   It is drawn by both probe sections, which is why it lives out here. */
 static void drawJlinkTargetName(std::string& targetName, bool& modified)
 {
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Target name:"), alignment);
 	ImGui::SameLine();
 
-	if (ImGui::InputText("##device", &targetName, 0, NULL, NULL))
-		modified = true;
-
-	/* No gap at all between the field and the arrow, and the arrow is as wide
-	   as a frame is tall: the boxes have square corners in this theme, so the
-	   two frames meet and the pair reads as the one control the combo on the
-	   row below is. With a gap it reads as a field and an unrelated button. */
-	ImGui::SameLine(0.0f, 0.0f);
-	ImGui::SetNextItemWidth(ImGui::GetFrameHeight());
-
-	if (ImGui::BeginCombo("##deviceChoices", NULL, ImGuiComboFlags_NoPreview))
+	if (ImGui::BeginCombo("##device", targetName.c_str()))
 	{
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+
+		/* Typed whole, then closed with Enter: half a part number is not
+		   something to hand the probe. */
+		if (ImGui::InputTextWithHint("##typed", I18n::tr("type a name"), &targetName,
+									 ImGuiInputTextFlags_EnterReturnsTrue, NULL, NULL))
+		{
+			modified = true;
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::Separator();
+
 		for (const char* target : jlinkGenericTargets)
 		{
-			if (ImGui::Selectable(target))
+			if (ImGui::Selectable(target, targetName == target))
 			{
 				targetName = target;
 				modified = true;

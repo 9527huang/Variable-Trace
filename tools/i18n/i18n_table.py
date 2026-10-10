@@ -556,6 +556,7 @@ EXTRA = {
     # The button in the table plot's write cell. The acquisition window already
     # has a "Write value" column heading, which is translated separately.
     "write": "写入",
+    "type a name": "输入器件名",
     "GDB server": "GDB 服务器",
     "Port": "端口",
     "Address of the machine running the GDB server. OpenOCD, and the servers shipped with probes, both speak the protocol this reads through.": "运行 GDB 服务器那台机器的地址。OpenOCD 与各家探针自带的服务器都说这套协议,本软件就是通过它读内存的。",
