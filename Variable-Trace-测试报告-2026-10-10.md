@@ -271,3 +271,65 @@ const double left = std::min(std::max(newest - windowWidth, oldest), newest);
 ```
 
 `0x20000000` 是**地址没解析成功时的占位值**——也就是说采集线程正在按占位地址采样，而且这次读没有返回。这与已知的那条「地址没解析成功的变量会保留占位值 0x20000000 并且照样按它采样」是同一件事，属于**独立于本次卡死**的问题（本次卡死修的就是界面的刻度爆炸）。它挡住的是通路 B（记录器）。
+
+---
+
+# 地址解析：`add_variable` 从不解析地址（已修）
+
+## 隔离
+
+用「存工程再读回变量的 `address` 字段」来量（工程文件里地址是存下来的，一看就知道应用解析出了什么）：
+
+| 操作 | `txTail`（普通符号，gdb 查到 `0x20000082`） | 三个 `____` 记录器符号 |
+| --- | --- | --- |
+| `add_variable` 之后 | **`0x20000000`** | **`0x20000000`** |
+| 再 `refresh_variable_addresses` 之后 | `0x20000082` ✅ | 全部正确 ✅ |
+
+也就是说：**连普通符号也一样**，与下划线、与结构体都无关。`add_variable` 只做 `addNewVariable` + `setType`，从头到尾没碰地址。
+
+同时说明**真正的解析方是 `refresh_variable_addresses`**：它之后 `found 59 / not_found 0`，四个符号的地址全部正确。
+
+## 为什么查不到：符号表只有开过导入对话框才有内容
+
+应用本来打算用解析器的符号表回答「这个名字的地址是多少」。但全项目**唯一**调用 `parse()`（填表）的地方是导入变量对话框：
+
+```
+GuiImportVariables.hpp:64   refreshThread = std::async(..., &IElfParser::parse, parser, ...);
+```
+
+纯 MCP 会话里没人打开那个对话框，所以 `getParsedData()` 一直是空的——查表必然查不到。
+
+## 修复
+
+给 MCP 上下文加了一个「按名字查地址」的回调（`McpContext::lookupSymbolAddresses`，由 Gui 侧从符号表批量查一次），`add_variable` 现在：
+
+- 表里**查到** → 立刻把地址写进变量 ✅；
+- 表里**查不到** → 如实回 `"is_found": false` 并附一句 hint 指向 `refresh_variable_addresses`，**不再用一个光秃秃的 `status: "created"` 假装创建成功**。
+
+不在这里直接跑解析是刻意的：解析要起 gdb 进程，而按这个项目的约定，「起解析进程」的活儿应该在请求线程上跑，而这个 handler 跑在界面线程上。
+
+## 复验
+
+```
+add     : [{"is_found":false, "name":"txTail", "hint":"The address is not resolved yet, ... Call refresh_variable_addresses ..."}, ...]
+refresh : {"found":59, "not_found":0}
+保存后读回：____recorderSettings 0x200000D8 ✅  ____recorder 0x2000077C ✅
+            ____serialDriverSettings 0x200000F0 ✅  txTail 0x20000082 ✅
+```
+
+482 项单元测试全部通过。
+
+## 顺带的收获：通路 B 的拦路虎没了
+
+地址一正确，**记录器探测在 ST-Link 下直接通过**：
+
+```json
+{"detected":true,"version":8,"revision":3,"max_variables":6,
+ "max_buf_size":8192,"timestep_ns":50000,"sampling_hz":20000,"float_support":true}
+```
+
+正是清单期望的「recorder 8.3，6 variables，8192 samples，timestep 50000 ns，float triggers」。通路 B 现在只剩「缓冲回读与波形」那几步没验。
+
+## 顺带发现的另一处（未改）
+
+`GdbParser::checkAddress` 里 `stoi` 抛异常被 `catch (...)` 吞掉之后，仍然 `return addressValue`（此时是 **0**）而不是 `nullopt`——解析失败会变成一个看起来合法的地址 0。这一处先记下，没动。
