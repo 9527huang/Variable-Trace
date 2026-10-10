@@ -203,3 +203,71 @@ ITM 打开之后仍然是 `No trace registered for 2s!`。对照 **ST-Link 的�
 ### 撤回一条先前写错的结论
 
 上一版这里写着「`StlinkDebugProbe::readMemory` 有一处静默错误：`bool result = ...` 算完从不使用」。**这条不成立**——函数的最后一行是 `return result;`，读失败会正确地报给调用方（`ViewerDataHandler` 收到 false 会停下采集）。当时只看了中间那段移位逻辑就下了判断，没有读到函数末尾。读回垃圾值的原因已经查清，是板上固件不同，与这段代码无关。
+
+---
+
+# 界面卡死：根因与修复
+
+## 症状
+
+界面停止重绘，MCP 调用全部超时（只能强杀进程），进程内存持续膨胀。早先记下的「`set_sampling{max_points}` 之后停/启，窗口无响应、进程涨到 8.4 GB」与本次是**同一个病**。
+
+## 抓法
+
+按当时的步骤复现（打开带记录器组的工程 → `add_variable` 导入三个记录器符号 → 把 `____recorderSettings` 挂进图 → 启动采集），界面立刻不响应。趁进程还在，直接 attach：
+
+```
+gdb -batch -p <pid> -ex "thread apply all bt 30" -ex detach
+```
+
+界面线程的栈：
+
+```
+#0 msvcrt!memmove
+#1 ImVector<char>::reserve (new_capacity=1073746881)   ← 申请 1 GB
+#2 ImGuiTextBuffer::append
+#3 ImPlotTicker::AddTick
+#4 ImPlot::Locator_Default (vertical=false)
+#5 ImPlot::SetupFinish
+#6 ImPlot::SetupLock
+#7 ImPlot::IsPlotHovered
+#8 Gui::plotViewWasAskedForByHand
+#9 Gui::drawPlotCurve
+#10 Gui::drawPlots
+```
+
+界面线程**不是在等锁**，而是在无休止地生成刻度，把刻度标签往一个文本缓冲里塞。
+
+## 根因
+
+`Plot::liveTimeWindow()` 会把窗口左端夹到 `oldest` 上：
+
+```cpp
+const double left = std::min(std::max(newest - windowWidth, oldest), newest);
+```
+
+缓冲里只有一个样本时 `oldest == newest`，夹完 `left == newest` —— **区间宽度为零**。ImPlot 的刻度定位器在这种范围上不会收敛，每帧都往缓冲里追加，直到内存被吃掉。启动采集后的头几帧正好落在这个窗口里，界面从此不再重绘。配置宽度为 0、或两端出现 NaN 时同理。
+
+## 修复与复验
+
+| 位置 | 处理 |
+| --- | --- |
+| `Plot::liveTimeWindow` | 保证返回真实区间：夹不出宽度就用配置的宽度；宽度配成 0 时退到最小可用宽度（1 s）；两端不是数时给一个确定的安全区间 |
+| `GuiSwoPlots.cpp` 的跟踪 X 范围 | 只在 `max > min` 时才设限（写成一个比较，NaN 自然落选） |
+| `test/PlotTest.cpp` | 旧用例里**钉住零宽度的那条期望已改正**，并补三条：单样本、宽度为 0、两端为 NaN |
+
+复验：同一条复现路径重跑，界面连续 12 秒保持响应，`detect_recorder` 与状态查询都正常返回；482 项单元测试全部通过。
+
+## 同一个栈里发现的另一个独立问题
+
+采集线程卡在 ST-Link 的 USB 写里：
+
+```
+#9  send_recv            ← libusb_bulk_transfer / WinUsb_WritePipe
+#10 _stlink_usb_read_debug32
+#11 stlink_read_debug32
+#12 StlinkDebugProbe::readMemory (address=536870912 = 0x20000000)
+#13 ViewerDataHandler::dataHandler:187
+```
+
+`0x20000000` 是**地址没解析成功时的占位值**——也就是说采集线程正在按占位地址采样，而且这次读没有返回。这与已知的那条「地址没解析成功的变量会保留占位值 0x20000000 并且照样按它采样」是同一件事，属于**独立于本次卡死**的问题（本次卡死修的就是界面的刻度爆炸）。它挡住的是通路 B（记录器）。
