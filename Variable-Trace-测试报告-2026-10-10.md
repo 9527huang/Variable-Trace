@@ -333,3 +333,41 @@ refresh : {"found":59, "not_found":0}
 ## 顺带发现的另一处（未改）
 
 `GdbParser::checkAddress` 里 `stoi` 抛异常被 `catch (...)` 吞掉之后，仍然 `return addressValue`（此时是 **0**）而不是 `nullopt`——解析失败会变成一个看起来合法的地址 0。这一处先记下，没动。
+
+---
+
+# 通路 B 的当前进度：主机侧全通，卡在「记录器只能从界面启动」
+
+## 已经过了的
+
+| 步骤 | 结果 |
+| --- | --- |
+| `detect_recorder` | `version 8 / revision 3 / max_variables 6 / max_buf_size 8192 / timestep_ns 50000 / float_support true` ✅ |
+| `set_recorder_enabled(true)` | ✅ |
+| `set_recorder_trigger`（`fastTriangle` / rising / 预触发 100） | ✅（**`normal` 模式必须先设触发源**，否则报 `Mode 'normal' needs a trigger`） |
+| `set_recorder_mode('normal')` | ✅ |
+
+## 卡在哪
+
+`set_recorder_enabled` **只切一个标志**，真正的 start / stop 在记录器面板的两个按钮上（`GuiRecorder.cpp`）：
+
+```
+Start    → recorderHandler->detect(...) && recorderHandler->start(...)
+Download → 缓冲填满后把整块搬回来
+```
+
+提示原文就是「Recording. The target fills its buffer on its own, press Download when it has filled.」。
+所以**API 能配置记录器，但不能启动它、也不能回读它**——`get_recorder_settings` 里 `running` 一直是 `false` 就是这个原因。
+
+**没有为此加工具**：`test/McpServerTest.cpp:704-728` 把工具面锁成 **46 个**并逐个列名，注释写明这些名字来自参考构建、是给 agent prompt 用的契约（`EXPECT_EQ(registered.size(), 46u)`）。要加就得先改这份契约，那是另一个决定。
+
+## 本轮的另一个障碍：UI 自动化在这个环境里失效
+
+三种注入方式**全部无效**：`SendInput` 绝对坐标、投递 `WM_LBUTTONDOWN/UP`（带客户端坐标）、`mouse_event`。而界面确实在重绘（前后两次截图差异区域 `(729,55)-(1901,1005)`，页签区不动），窗口确实是前景窗口，`WindowFromPoint` 命中的也正是它——**输入进不去，不是应用死了**。
+
+顺带查出并修掉自己的一处 bug：测试脚本里的鼠标移动按**虚拟桌面**换算绝对坐标是错的。这台机器虚拟桌面是 **3627×1399**（1920×1080 主屏之外还有一块屏），实测 `move(150, 61)` 把光标放到了 `(79, 293)`。改成 `SetCursorPos` 后标定 `(100,100) / (500,400) / (1500,900)` 全部精确命中——但点击仍进不去，所以问题不在这一步。
+
+## 要往下走，需要其中之一
+
+1. 人工点一下（应用已经停在这个状态：`addrcheck6` 工程、采集 RUN、记录器已 enable、触发已设）——`Window → Recorder → Start`，等缓冲填满再按 `Download`；
+2. 或者决定把记录器的启动/回读也做成 API 工具（要同时改那份 46 工具的契约与对应测试）。
