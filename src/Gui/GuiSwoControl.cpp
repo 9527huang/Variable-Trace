@@ -1,6 +1,7 @@
 #include "Gui.hpp"
 #include "GuiStatisticsWindow.hpp"
 #include "I18n.hpp"
+#include "PlotCsvExport.hpp"
 
 void Gui::drawSettingsSwo()
 {
@@ -196,8 +197,15 @@ void Gui::drawPlotsTreeSwo()
 	ImGui::SameLine();
 	if (ImGui::Checkbox("##statistics", &statisticsVisible))
 		plt->setStatisticsVisible(statisticsVisible);
+	/* Kept at the bottom of the panel, where room for it was already being left
+	   - and offered while the trace runs, because that is when the data is
+	   worth keeping. The very same button sits in the plots tree on the
+	   variable side; both call one export so the columns match. */
 	ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX(), ImGui::GetWindowSize().y - 25 * GuiHelper::contentScale / 2.0f - ImGui::GetFrameHeightWithSpacing()));
-	// drawExportPlotToCSVButton(plt);
+
+	if (ImGui::Button(I18n::tr("Export plot to *.csv"), ImVec2(-1, 25 * GuiHelper::contentScale)))
+		exportPlotToCSV(plt, fileHandler, logger);
+
 	ImGui::PopID();
 	ImGui::EndGroup();
 	ImGui::EndChild();

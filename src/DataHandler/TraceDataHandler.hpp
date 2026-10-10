@@ -34,6 +34,7 @@ class TraceDataHandler : public DataHandlerBase
 
 	TraceReader::TraceIndicators getTraceIndicators() const;
 	std::vector<double> getErrorTimestamps();
+	std::vector<double> getDelayed2Timestamps();
 	std::vector<double> getDelayed3Timestamps();
 	std::string getLastReaderError() const;
 
@@ -99,6 +100,7 @@ class TraceDataHandler : public DataHandlerBase
 	std::unique_ptr<TraceReader> traceReader;
 
 	MarkerTimestamps errorFrames{};
+	MarkerTimestamps delayed2Frames{};
 	MarkerTimestamps delayed3Frames{};
 
 	std::string lastErrorMsg{};

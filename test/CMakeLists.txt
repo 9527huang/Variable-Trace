@@ -46,6 +46,7 @@ include_directories(${EXECUTABLE}
     ${CMAKE_SOURCE_DIR}/src/WritePlanner
     ${CMAKE_SOURCE_DIR}/src/Screenshot
     ${CMAKE_SOURCE_DIR}/src/I18n
+    ${CMAKE_SOURCE_DIR}/src/FileHandler
     ${CMAKE_SOURCE_DIR}/src/CSVStreamer)
 
 include_directories(${EXECUTABLE} SYSTEM PRIVATE
@@ -149,6 +150,7 @@ add_executable(${EXECUTABLE} main.cpp
     I18nTest.cpp
     ProjectHandlerTest.cpp
     WritePlannerTest.cpp
+    PlotCsvExportTest.cpp
     PlotExportTest.cpp
     PngWriterTest.cpp
     FlashingServiceTest.cpp

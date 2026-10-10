@@ -11,6 +11,7 @@
 #include "I18n.hpp"
 #include "IFileHandler.hpp"
 #include "Plot.hpp"
+#include "PlotCsvExport.hpp"
 #include "PlotGroupHandler.hpp"
 #include "RecorderHandler.hpp"
 #include "ViewerDataHandler.hpp"
@@ -564,39 +565,7 @@ class PlotsTree
 	void drawExportPlotToCSVButton(std::shared_ptr<Plot> plt)
 	{
 		if (ImGui::Button(I18n::tr("Export plot to *.csv"), ImVec2(-1, 25 * GuiHelper::contentScale)))
-		{
-			std::string path = fileHandler->saveFile({{"CSV", "csv"}});
-			std::ofstream csvFile(path);
-
-			if (!csvFile)
-			{
-				logger->info("Error opening the file: {}", path);
-				return;
-			}
-
-			uint32_t dataSize = plt->getXAxisSeries()->getSize();
-
-			csvFile << "time [s],";
-
-			for (auto& [name, ser] : plt->getSeriesMap())
-				csvFile << name << ",";
-
-			csvFile << std::endl;
-
-			for (size_t i = 0; i < dataSize; ++i)
-			{
-				uint32_t offset = plt->getXAxisSeries()->getOffset();
-				uint32_t index = (offset + i < dataSize) ? offset + i : i - (dataSize - offset);
-				csvFile << plt->getXAxisSeries()->getFirstElementCopy()[index] << ",";
-
-				for (auto& [name, ser] : plt->getSeriesMap())
-					csvFile << ser->buffer->getFirstElementCopy()[index] << ",";
-
-				csvFile << std::endl;
-			}
-
-			csvFile.close();
-		}
+			exportPlotToCSV(plt, fileHandler, logger);
 	}
 
 	/* The menu a group node answers a right click with.

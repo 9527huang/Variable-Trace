@@ -131,15 +131,28 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 
 		if (traceDataHandler->getStateImmediate() == DataHandlerBase::State::STOP)
 		{
-			auto errorTimestamps = traceDataHandler->getErrorTimestamps();
-			auto delayed3Timestamps = traceDataHandler->getDelayed3Timestamps();
-			std::array<double, 100> values{0};
+			/* Red for the frames that were not understood, yellow for the two
+			   kinds that arrived late - which is how the documentation reads
+			   them, and the data around either is not to be trusted.
 
-			ImPlot::SetNextMarkerStyle(ImPlotMarker_Cross, 8, ImVec4(1, 0, 0, 1), 3, ImVec4(1, 0, 0, 1));
-			ImPlot::PlotScatter("###point2", errorTimestamps.data(), values.data(), errorTimestamps.size(), false);
+			   The line of zeroes they hang on exists only to give the markers a
+			   place on the axis, so it is built to the length of what is being
+			   drawn rather than to a number written down elsewhere and left to
+			   agree with it. */
+			auto drawMarkers = [](const char* id, const std::vector<double>& timestamps, float markerSize, const ImVec4& colour)
+			{
+				if (timestamps.empty())
+					return;
 
-			ImPlot::SetNextMarkerStyle(ImPlotMarker_Cross, 6, ImVec4(1, 1, 0, 1), 3, ImVec4(1, 1, 0, 1));
-			ImPlot::PlotScatter("###point3", delayed3Timestamps.data(), values.data(), delayed3Timestamps.size(), false);
+				const std::vector<double> zeroes(timestamps.size(), 0.0);
+
+				ImPlot::SetNextMarkerStyle(ImPlotMarker_Cross, markerSize, colour, 3, colour);
+				ImPlot::PlotScatter(id, timestamps.data(), zeroes.data(), timestamps.size(), false);
+			};
+
+			drawMarkers("###errorFrames", traceDataHandler->getErrorTimestamps(), 8, ImVec4(1, 0, 0, 1));
+			drawMarkers("###delayed2Frames", traceDataHandler->getDelayed2Timestamps(), 4, ImVec4(1, 1, 0, 1));
+			drawMarkers("###delayed3Frames", traceDataHandler->getDelayed3Timestamps(), 6, ImVec4(1, 1, 0, 1));
 		}
 
 		/* One control for the whole stack. The plots share a horizontal axis,

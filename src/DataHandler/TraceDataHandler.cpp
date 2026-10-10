@@ -31,6 +31,11 @@ std::vector<double> TraceDataHandler::getErrorTimestamps()
 	return errorFrames.getVector();
 }
 
+std::vector<double> TraceDataHandler::getDelayed2Timestamps()
+{
+	return delayed2Frames.getVector();
+}
+
 std::vector<double> TraceDataHandler::getDelayed3Timestamps()
 {
 	return delayed3Frames.getVector();
@@ -98,7 +103,16 @@ void TraceDataHandler::setSettings(const Settings& settings)
 double TraceDataHandler::getDoubleValue(const Plot& plot, uint32_t value)
 {
 	if (plot.getDomain() == Plot::Domain::DIGITAL)
-		return value == 0xaa ? 1.0 : 0.0;
+	{
+		/* The value the documented digital markers are written with: the code
+		   sets 0xaa on the way in and 0xbb on the way out. Only the high tag is
+		   named here because only it is tested - anything that is not 0xaa reads
+		   as low, so the down tag needs no special case and a channel written
+		   with plain 0 and 1 behaves the same way. */
+		static constexpr uint32_t digitalHighTag = 0xaa;
+
+		return value == digitalHighTag ? 1.0 : 0.0;
+	}
 	else if (plot.getDomain() == Plot::Domain::ANALOG)
 	{
 		switch (plot.getTraceVarType())
@@ -164,6 +178,7 @@ void TraceDataHandler::dataHandler()
 				auto indicators = traceReader->getTraceIndicators();
 
 				errorFrames.handle(time, oldestTimestamp, indicators.errorFramesTotal);
+				delayed2Frames.handle(time, oldestTimestamp, indicators.delayedTimestamp2);
 				delayed3Frames.handle(time, oldestTimestamp, indicators.delayedTimestamp3);
 
 				uint32_t i = 0;
@@ -236,6 +251,7 @@ void TraceDataHandler::dataHandler()
 					activeChannels[i++] = plot->getVisibility();
 
 				errorFrames.reset();
+				delayed2Frames.reset();
 				delayed3Frames.reset();
 				lastErrorMsg = "";
 
