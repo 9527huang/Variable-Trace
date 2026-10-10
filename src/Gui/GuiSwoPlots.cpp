@@ -9,7 +9,13 @@ void Gui::drawPlotsSwo()
 
 	float rowRatios[] = {1.2f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
 
-	if (ImPlot::BeginSubplots("##subplos", tracePlotHandler->getVisiblePlotsCount(), 1, plotSize, ImPlotSubplotFlags_LinkAllX, rowRatios))
+	/* A trace view with every channel hidden has no rows to draw, and ImPlot
+	   refuses a grid of none. One row is the smallest thing that can be handed
+	   over; the loop below then draws nothing into it. */
+	const int visiblePlots = tracePlotHandler->getVisiblePlotsCount();
+	const int rows = visiblePlots > 0 ? visiblePlots : 1;
+
+	if (ImPlot::BeginSubplots("##subplos", rows, 1, plotSize, ImPlotSubplotFlags_LinkAllX, rowRatios))
 	{
 		bool first = true;
 		for (std::shared_ptr<Plot> plt : *tracePlotHandler)
@@ -38,6 +44,15 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 		const bool running = traceDataHandler->getStateImmediate() == DataHandlerBase::State::RUN;
 		const bool follows = plot->isViewFollowingLatestData();
 
+		/* Everything ImPlot is asked about this plot goes here, before any call
+		   that is not part of the setup. ImPlot locks the setup for the rest of
+		   the frame as soon as such a call is made - reading the hover state is
+		   one of them - and SetupAxis asserts once it is locked. */
+		if (plot->getDomain() == Plot::Domain::DIGITAL)
+			ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel);
+		else
+			ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_None);
+
 		if (running)
 		{
 			if (follows)
@@ -49,26 +64,22 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 				ImPlot::SetupAxisLimits(ImAxis_X1, max - viewportWidth, max, ImPlotCond_Always);
 			}
 		}
-		else
-			ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel);
+
+		if (plot->getDomain() == Plot::Domain::DIGITAL)
+			ImPlot::SetupAxisLimits(ImAxis_Y1, -0.25, 1.25, ImPlotCond_Always);
 
 		/* This subplot links the horizontal axis of every trace plot to one
 		   shared pair of numbers, so the view leaves the live end for all of
 		   them at once: whichever plot stopped writing the range would be
-		   pulled back by the next one still writing it. */
+		   pulled back by the next one still writing it.
+
+		   It sits after the setup on purpose: it asks whether the plot is
+		   hovered, and that call locks the setup. */
 		if (running && follows && plotViewWasAskedForByHand())
 		{
 			for (const std::shared_ptr<Plot>& other : *tracePlotHandler)
 				other->setViewFollowsLatestData(false);
 		}
-
-		if (plot->getDomain() == Plot::Domain::DIGITAL)
-		{
-			ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoLabel);
-			ImPlot::SetupAxisLimits(ImAxis_Y1, -0.25, 1.25, ImPlotCond_Always);
-		}
-		else
-			ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_None);
 
 		Plot::Series* ser = plot->getSeriesMap().begin()->second.get();
 

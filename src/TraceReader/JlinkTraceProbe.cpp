@@ -11,6 +11,20 @@
    the list the DLL gave is the one thing the header leaves out. */
 extern "C" int32_t JLINKARM_EMU_SelectByIndex(int32_t index);
 
+/* Same situation, and the reason the ITM has to be written through it: the debug
+   unit routes addresses in the System Control Space through the DAP, so a plain
+   memory write reports success without the register ever being reached. */
+extern "C" int32_t JLINKARM_WriteU32(uint32_t address, uint32_t data);
+
+/* What JLINKARM_SWO_Control(JLINKARM_SWO_CMD_START, ...) expects. The bundled
+   header names the command and points at this structure without declaring it. */
+struct JlinkSwoStartInfo
+{
+	uint32_t sizeOfStruct;
+	uint32_t interface;
+	uint32_t speed;
+};
+
 /* The host interfaces as the connection info describes them: 1 is USB, 2 is a
    probe reached over the network. The header names them in a comment only. */
 constexpr int32_t jlinkHostInterfaceIp = 2;
@@ -179,6 +193,45 @@ bool JlinkTraceProbe::startTrace(const TraceProbeSettings& probeSettings, uint32
 
 	if (result == 0)
 	{
+		/* The ITM belongs to the target and the firmware is expected to switch
+		   it on, but a J-Link connect clears that configuration: the link then
+		   looks healthy, the SWO clock is programmed, and nothing ever arrives.
+		   Program what the firmware would - unlock, enable, open the stimulus
+		   ports the visible channels sit on - so the trace does not depend on
+		   when the firmware happened to set it up.
+
+		   The timestamp bit is part of it: the reader puts its time axis
+		   together from the timestamps the ITM sends, and the SDK is asked for
+		   them below with TSEnable. Without it the frames arrive without a
+		   place on the axis. */
+		const uint32_t itmLockValue = 0xC5ACCE55u;                          /* ITM->LAR */
+		const uint32_t itmControlValue = 0x00010003u;                       /* TraceBusID 1 | TSENA | ITMENA */
+		const uint32_t itmStimulusValue = activeChannelMask;                /* ITM->TER */
+		const uint32_t itmPrivilegeValue = 0x0000000Fu;                     /* ITM->TPR, every level traced */
+
+		JLINKARM_WriteU32(0xE0000FB0u, itmLockValue);
+		JLINKARM_WriteU32(0xE0000E80u, itmControlValue);
+		JLINKARM_WriteU32(0xE0000E00u, itmStimulusValue);
+		JLINKARM_WriteU32(0xE0000E40u, itmPrivilegeValue);
+
+		/* Enabling the target configures the TPIU but does not begin collecting:
+		   the capture is a separate request, and without it SWO_Read has nothing
+		   to hand back - the reader then times out with every setting looking
+		   correct. */
+		JlinkSwoStartInfo startInfo{};
+		startInfo.sizeOfStruct = sizeof(startInfo);
+		startInfo.interface = JLINKARM_SWO_IF_UART;
+		startInfo.speed = traceFrequency;
+
+		if (JLINKARM_SWO_Control(JLINKARM_SWO_CMD_START, &startInfo) < 0)
+		{
+			lastErrorMsg = "Could not start the SWO capture!";
+			logger->error(lastErrorMsg);
+			JLINKARM_Close();
+			linkOpen = false;
+			return false;
+		}
+
 		logger->info("Starting Jlink reader thread!");
 		linkOpen = true;
 		return true;
