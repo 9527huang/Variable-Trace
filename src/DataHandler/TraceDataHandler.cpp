@@ -221,10 +221,14 @@ void TraceDataHandler::dataHandler()
 				stateChangeOrdered = true;
 			}
 
+			/* Both messages say which way to turn the prescaler, because they are
+			   read from the button that carries them and the two directions are
+			   opposite: an error frame means the line is too fast for the probe,
+			   a delayed one that the probe has room left. */
 			if (errorFrames.size() > maxAllowedViewportErrors)
 			{
 				lastErrorMsg = "Too many error frames!";
-				logger->error("Too many error frames. Please modify your clock and prescaler settings. Stopping.");
+				logger->error("Too many error frames. Increase the trace prescaler and check that the core frequency matches the target. Stopping.");
 				viewerState = State::STOP;
 				stateChangeOrdered = true;
 			}
@@ -232,7 +236,7 @@ void TraceDataHandler::dataHandler()
 			if (delayed3Frames.size() > maxAllowedViewportErrors)
 			{
 				lastErrorMsg = "Too many delayed timestamp 3 frames!";
-				logger->error("Too many delayed timestamp 3 frames. Please modify your clock and prescaler settings or limit the logged channels. Stopping.");
+				logger->error("Too many delayed timestamp 3 frames. Reduce the trace prescaler, or log fewer channels. Stopping.");
 				viewerState = State::STOP;
 				stateChangeOrdered = true;
 			}

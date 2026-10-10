@@ -25,6 +25,11 @@ struct JlinkSwoStartInfo
 	uint32_t speed;
 };
 
+/* Reset the target and let it run. The bundled header leaves this one out as
+   well; the DLL exports it, and the two halves matter: a plain reset would halt
+   the core, which is not a state to start a trace from. */
+extern "C" void JLINKARM_ResetNoHalt();
+
 /* The host interfaces as the connection info describes them: 1 is USB, 2 is a
    probe reached over the network. The header names them in a comment only. */
 constexpr int32_t jlinkHostInterfaceIp = 2;
@@ -183,6 +188,17 @@ bool JlinkTraceProbe::startTrace(const TraceProbeSettings& probeSettings, uint32
 			return false;
 		}
 	}
+
+	/* Asked for before any of the trace configuration is written: a reset
+	   clears the ITM and TPIU registers this function is about to set, so a
+	   reset afterwards would leave the link configured on a target that no
+	   longer knows about it.
+
+	   ResetNoHalt rather than Reset: the target is meant to run and produce the
+	   trace, and the halt that goes with a plain reset is the one J-Link users
+	   report as the target stopping every time the trace starts. */
+	if (shouldReset)
+		JLINKARM_ResetNoHalt();
 
 	/* turn on relative timestamping */
 	JLINKARM_SWO_Config("TSEnable=1");

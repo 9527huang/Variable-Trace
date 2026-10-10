@@ -74,7 +74,10 @@ void Gui::drawIndicatorsSwo()
 	GuiHelper::drawDescriptionWithNumber("delayed timestamp 1:    ", indicators.delayedTimestamp1, "", 5, 0, {1, 1, 0, 1});
 	GuiHelper::drawDescriptionWithNumber("delayed timestamp 2:    ", indicators.delayedTimestamp2, "", 5, 0, {1, 1, 0, 1});
 	GuiHelper::drawDescriptionWithNumber("delayed timestamp 3:    ", indicators.delayedTimestamp3);
-	GuiHelper::drawDescriptionWithNumber("delayed timestamp 3 in view:    ", indicators.delayedTimestamp3InView, "", 5, 0, {1, 0, 0, 1});
+	/* Yellow, not red: this is the count of the delayed frames whose crosses are
+	   on the plot, and those crosses are yellow. Red in this panel means an
+	   error frame, and a delayed one is not that. */
+	GuiHelper::drawDescriptionWithNumber("delayed timestamp 3 in view:    ", indicators.delayedTimestamp3InView, "", 5, 0, {1, 1, 0, 1});
 }
 
 void Gui::drawPlotsTreeSwo()
