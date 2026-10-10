@@ -3,8 +3,10 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include "McpTypes.hpp"
 
@@ -98,6 +100,13 @@ struct McpContext
 	   which move whenever another symbol file is loaded. Returns false when the
 	   symbol file has no recorder in it. */
 	std::function<bool()> syncRecorderSymbols;
+
+	/* The addresses of the named symbols, as the symbol table holds them. A name
+	   the table does not have is left out of the answer rather than answered
+	   with a guess. Creating a variable leaves its address at a placeholder, and
+	   the acquisition would read there - silently, because the placeholder is a
+	   plausible address - so a name is looked up as soon as it is created. */
+	std::function<std::map<std::string, uint32_t>(const std::vector<std::string>&)> lookupSymbolAddresses;
 
 	/* ---------------------------------------------------- read-only plumbing */
 	std::function<std::string()> getProjectPath;

@@ -85,6 +85,22 @@ namespace mcp
 
 			const std::vector<VariableRequest> requests = collectVariableRequests(arguments);
 
+			/* A variable is created without an address, and the placeholder it
+			   starts with is a plausible looking one: sampling it instead of the
+			   symbol the file describes is not something a caller would notice.
+			   The symbol table is asked for every name up front, and the answer is
+			   reported, so a name the file does not hold comes back visible rather
+			   than looking resolved. */
+			std::vector<std::string> names;
+			names.reserve(requests.size());
+
+			for (const VariableRequest& request : requests)
+				names.push_back(request.name);
+
+			const std::map<std::string, uint32_t> addresses =
+				context.lookupSymbolAddresses != nullptr ? context.lookupSymbolAddresses(names)
+														 : std::map<std::string, uint32_t>{};
+
 			Json results = Json::array();
 
 			for (const VariableRequest& request : requests)
@@ -100,11 +116,36 @@ namespace mcp
 					context.variableHandler->getVariable(request.name)->setType(request.type);
 				}
 
-				const Variable::Type type = context.variableHandler->getVariable(request.name)->getType();
+				const std::shared_ptr<Variable> variable = context.variableHandler->getVariable(request.name);
+				const Variable::Type type = variable->getType();
 
-				results.push_back(Json::object({{"name", request.name},
-												{"type", variableTypeToString(type)},
-												{"status", existed ? "already_exists" : "created"}}));
+				/* The name the file is asked about is the symbol the variable
+				   tracks, which is the variable's own name until it is pointed at
+				   another one. */
+				const auto address = addresses.find(variable->getTrackedName());
+				const bool found = address != addresses.end();
+
+				if (found)
+					variable->setAddress(address->second);
+
+				variable->setIsFound(found);
+
+				Json result = Json::object({{"name", request.name},
+											{"type", variableTypeToString(type)},
+											{"status", existed ? "already_exists" : "created"},
+											{"is_found", found}});
+
+				/* Nothing was read from the symbol file here: that is a process
+				   of its own and it belongs on the request thread, which this
+				   handler does not run on. Saying so, and naming the call that
+				   does it, is what keeps a variable that is not resolved from
+				   looking like one that is. */
+				if (!found)
+					result["hint"] = "The address is not resolved yet, so it still holds the placeholder. "
+									 "Call refresh_variable_addresses to resolve the variables against the "
+									 "symbol file.";
+
+				results.push_back(result);
 			}
 
 			/* The single form answers with one object so that a caller does not
@@ -532,7 +573,7 @@ namespace mcp
 	void VariableTools::registerAll(ToolRegistry& registry)
 	{
 		registry.add({.name = "add_variable",
-					  .description = "Create one or more variables. Single: 'name' + optional 'type' (u8/i8/u16/i16/u32/i32/f32, default u32). Batch: 'variables' as JSON array of {\"name\",\"type\"?} objects -> JSON array of {name, type, status: 'created'|'already_exists'}.",
+					  .description = "Create one or more variables, with the address taken from the symbol table when the file holds the name. Single: 'name' + optional 'type' (u8/i8/u16/i16/u32/i32/f32, default u32). Batch: 'variables' as JSON array of {\"name\",\"type\"?} objects -> JSON array of {name, type, status: 'created'|'already_exists', is_found} ('is_found' false means the symbol file has no such symbol, so there is no address to sample from).",
 					  .inputSchema = objectSchema(Json::object({{"name", stringProperty("Variable name (single mode)")},
 																{"type", enumProperty("Memory type: u8/i8/u16/i16/u32/i32/f32", {"u8", "i8", "u16", "i16", "u32", "i32", "f32"})},
 																{"variables", arrayProperty("JSON array of {name, type?} objects (batch mode)",

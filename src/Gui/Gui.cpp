@@ -1867,6 +1867,28 @@ void Gui::setupMcpServer()
 	mcpContext->syncRecorderSymbols = [this]()
 	{ return syncRecorderSymbols(); };
 
+	mcpContext->lookupSymbolAddresses = [this](const std::vector<std::string>& names)
+	{
+		std::map<std::string, uint32_t> addresses;
+
+		if (mcpElfParser == nullptr)
+			return addresses;
+
+		/* One copy of the table for the whole batch - it is rebuilt on a thread
+		   of its own, so it is taken once rather than once per name. */
+		const IElfParser::SymbolMap symbols = mcpElfParser->getParsedData();
+
+		for (const std::string& name : names)
+		{
+			const auto found = symbols.find(name);
+
+			if (found != symbols.end())
+				addresses.emplace(name, found->second.address);
+		}
+
+		return addresses;
+	};
+
 	/* Same reasoning for the programmer: a flash started over the API and one
 	   started from the toolbar are the same run, and the panel shows it either
 	   way. */
