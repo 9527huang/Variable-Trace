@@ -14,6 +14,7 @@
 - 通路 A（变量视图）**除一条外全部通过**，含最难的结构体成员偏移、数组步长、有符号/无符号宽度、李萨如倍频比、玫瑰花瓣数。
 - 通路 D **全部通过**。它先后暴露 **3 个应用缺陷 + 1 个目标侧采样率问题**，全部已修：跟踪一启动就 abort 的断言、目标侧 ITM 未使能、**SWO 采集从未被启动**，以及 CH1/CH2 因发送率太低而混叠。修后三条判据齐活（CH0 脉宽随 `vtraceDemoLoops` 9.72 倍变化；CH1/CH2 各 500.2 Hz、每周期 41 点、相位跨 3128 个周期只散 1 µs；采样率 20 508 Hz 零丢帧）。
 - 通路 C 因未接 USB-TTL 未跑。
+- **换 ST-Link V2 复测（PB3 未接）**：通路 A 全部通过；通路 B 卡在记录器探测（界面线程卡死）；通路 C/D 依然测不了。
 - 另有 **1 个目标侧固件缺陷（F1，未修）**、**3 个 MCP 缺陷**、**3 起与本轮无关的崩溃或挂死**。
 
 ## 通路 A：变量视图（通过项）
@@ -142,6 +143,7 @@ ITM 打开之后仍然是 `No trace registered for 2s!`。对照 **ST-Link 的�
 | --- | --- |
 | `src/Gui/GuiSwoPlots.cpp` | Setup 调用前移／手势判断后移；`BeginSubplots` 行数夹到 ≥1 |
 | `src/TraceReader/JlinkTraceProbe.cpp` | 声明并调用 `JLINKARM_WriteU32`；SWO 使能后打开 ITM（含时间戳位与 TPR）；补 `JLINKARM_SWO_Control(…_START, …)` |
+| `src/Gui/GuiPlotsTree.hpp` | 活动组跟点击走，不再每帧用「当前选中」覆盖（`set_active_group` 因此失效） |
 | `Lib/vtrace_port.c`（目标侧） | `vtrace_itm_send()` 移进 20 kHz 采样中断，带 FIFO 就绪位判断 |
 
 回归：`build_test/test/Variable-Trace_test.exe` —— **476 项全部通过**；通路 A 抽查（`vtraceSysclkHz` 72000、`vtraceStepUs` 8、`vtraceStepCycles` 595、结构体与数组的魔数、记录器/串口版本号）全部照旧。
@@ -150,10 +152,54 @@ ITM 打开之后仍然是 `No trace registered for 2s!`。对照 **ST-Link 的�
 
 | 通路 | 状态 | 说明 |
 | --- | --- | --- |
-| A 变量视图 | 通过（除一条） | 花瓣数随写入变化被 M2 挡住 |
-| D SWO 跟踪 | **全部通过** | 三处应用缺陷 + 目标侧发送率都已处理 |
+| A 变量视图 | 通过（除一条） | 花瓣数随写入变化被 M2 挡住；换 ST-Link 复测仍通过 |
+| B 记录器 | 未跑通 | 换 ST-Link 后卡在 `detect_recorder`（界面线程卡死） |
+| D SWO 跟踪 | **全部通过** | 三处应用缺陷 + 目标侧发送率都已处理；仅在 J-Link 下可测 |
 | C 串口探针 | 未跑 | 未接 USB-TTL，用户确认跳过 |
 
 ## 尚未处理的一项
 
 **F1（目标侧 `vtraceFastFreqHz` 恒为 0）** 还没改。`Lib/vtrace_port.c` 里 `(uint32_t)fastPhaseStep * 1000000000u` 在 32 位下溢出，改成先除后乘即可（推算见前文）。这一项要重编烧录，等你点头再做。
+
+---
+
+# 补测：换成 ST-Link V2（PB3 未接）
+
+探针由 J-Link 换成 **ST-Link V2**（克隆板，固件 `V2J38S7 API v2`，VID:PID `0483:3748`，目标电压 3.22 V，SWD 950 kHz）。PB3 的 SWO 线没接、也没有 USB-TTL，所以**通路 D 与通路 C 都测不了**，本次只补通路 A 与通路 B。
+
+## 通路 A：全部通过
+
+| 测什么 | 实测 | 结论 |
+| --- | --- | --- |
+| 自检数字 | `vtraceSysclkHz` 72000、`vtraceRecorderSize` 8324、记录器/串口版本 8 / 1、`vtraceStepUs` 8（< 50） | 通过 |
+| 结构体成员 | `vtraceStruct` 的 a/b/c/d/f/g/h/j = 12 / 155 / −85 / 105 / 55234 / −5234 / −2141248 / 37.21 | 通过 |
+| 数组元素 | `waveTable[0]` 0.125、`waveTable[7]` −1.75 | 通过 |
+| 类型宽度互校 | 同一时刻读 `u16Test` = 55899，由它反推 u8 = 218、i8 = −38、u32 = 3663452763、i32 = −631514533 —— 与实际单独读到的四个值**逐个相等** | 通过 |
+| 快变量确实在 20 kHz 采 | `fastRamp` 2.03 s 内增 40425，合 **19933 /s** | 通过 |
+
+## 通路 B：没跑通，卡在记录器探测
+
+记录器要求两个条件，都摸清了但没走完：
+
+1. **符号要真正导入，地址才会被解析。** 手工在工程文件里写一条变量（哪怕带 `shouldUpdateFromElf`），加载后地址仍是占位值 `0x20000000`（符号真实地址是 `0x200000D8`），`detect_recorder` 报到「0 variables、buffer 134227225 elements」这种自相矛盾的结果；改用 `add_variable` 导入后这条报错消失。**结论：工程文件里的地址是"存下来的"，手工写进去的不会自动重解析**——正常用法（`add_variable`）不受影响。
+2. **记录器组必须是活动组**。`set_active_group` 之前是空操作：`GuiPlotsTree.hpp` 把 `setActiveGroup()` 挂在「当前选中」判断里每帧执行，接口设过的活动组下一帧就被覆盖。**本次已修**（挪到点击分支），修后 `set_active_group` 能保持。
+3. 之后 `detect_recorder` **把界面线程卡死**：连续三次 MCP 调用全部超时，只能强杀。本次会话里界面卡死共出现三次（两次在采集启动之后、一次在记录器探测），**未定位**，需要单独排查后才能给通路 B 下结论。
+
+## 过程中排掉的一个假象
+
+第一次用 ST-Link 采集时读回的值全是垃圾（`vtraceRecorderSize` = 524296、`vtraceSerialDriverVersion` = 536870968），看上去像读错了地址。用 **OpenOCD 独立读同一批地址，结果与应用逐字节相同** —— 说明应用的读没有错，是**板上跑的固件不是这一份**：
+
+| | 初始 SP（`0x08000000`） | 复位向量（`0x08000004`） |
+| --- | --- | --- |
+| 我们这份 hex | `0x20002F00` | `0x08000189` |
+| 板上实际 | **`0x20000820`** | `0x08000189` |
+
+烧回我们的固件并校验后，`0x200000C0` 读出 72000、`0x200000D4` 读出 8324，全部归位。
+
+## 顺带确认的两件事
+
+- **ST-Link 也能烧写**：`openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c "program <hex> verify reset exit"` 写入并校验通过。
+
+### 撤回一条先前写错的结论
+
+上一版这里写着「`StlinkDebugProbe::readMemory` 有一处静默错误：`bool result = ...` 算完从不使用」。**这条不成立**——函数的最后一行是 `return result;`，读失败会正确地报给调用方（`ViewerDataHandler` 收到 false 会停下采集）。当时只看了中间那段移位逻辑就下了判断，没有读到函数末尾。读回垃圾值的原因已经查清，是板上固件不同，与这段代码无关。
