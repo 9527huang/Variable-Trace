@@ -149,6 +149,16 @@ namespace recorder
 		uint32_t bytes = 0;
 	};
 
+	/* True when the write pointer has run past the oldest sample the window
+	   keeps, which means samples were overwritten before the host could copy
+	   them out. It is the recorder's "overrun": the capture is still usable, but
+	   it no longer covers everything the target recorded.
+	 *
+	 * A triggered run is not an overrun: the target stops at the trigger, so the
+	 * window is the whole sweep by construction. Only an untriggered run that
+	 * has gone round at least once loses anything. */
+	bool overran(const RingState& ring, const RingWindow& window);
+
 	/* The ring is read as a window of bytes, which is one range unless the write
 	   pointer has wrapped, in which case it is two. Offsets are relative to the
 	   start of the buffer data, not to the recorder. */
@@ -166,6 +176,8 @@ namespace recorder
 		RingWindow window;
 		uint32_t samples = 0;
 		double samplePeriodSeconds = 0.0;
+		/* Whether samples were overwritten before this copy was taken. */
+		bool overran = false;
 		std::vector<double> timestamps;
 		/* Raw values, one vector per variable, in the order of the configuration.
 		   Raw and not scaled, because scaling belongs to the variable model. */
@@ -247,6 +259,13 @@ namespace recorder
 
 		/* Copies the buffer out of the target and rebuilds the samples. */
 		bool download(IDebugProbe& probe, const std::vector<Slot>& variables, Capture& out, std::string& error);
+
+		/* Where the trigger stands, read from the target on demand. It is a
+		   separate call because it is the one piece of state a window wants to
+		   show while the recorder runs, and reading it costs a round trip on the
+		   link the sampling loop is using - so the window asks for it when it
+		   draws, not on its own schedule. */
+		bool readTriggerState(IDebugProbe& probe, TriggerState& out, std::string& error);
 
 		/* Bytes the next download will move, for a progress report. */
 		uint32_t getLastDownloadSize() const { return lastDownloadSize; }

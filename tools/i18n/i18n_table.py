@@ -515,10 +515,21 @@ EXTRA = {
     "Recording. The target fills its buffer on its own, press Download when it has filled.": "正在记录。目标自行填充缓冲区，填满后按「下载」。",
     "The target is sampling.": "目标正在采样。",
     "The target is idle.": "目标空闲。",
+    # The four trigger states, shown where the target state is shown. The
+    # last one is the wording the upstream window uses while it waits.
+    "The trigger has fired.": "触发已发生。",
+    "Waiting for trigger...": "正在等待触发……",
     # The two halves of a sentence with the mode name in the middle. The name
     # comes from the combo above it, which is already translated by then.
     "Mode '": "模式「",
     "' waits for a trigger. Pick a source variable below first.": "」需要触发。请先在下方选择触发源变量。",
+    # The trigger source combo only lists plain variables. A worked out one has
+    # no bytes of its own on the target, so the target cannot compare it.
+    "No variable of this group can be a trigger source.": "本组中没有变量可以作为触发源。",
+    "A variable worked out from another one has no bytes of its own on the target, so the recorder cannot compare it. Add a plain variable to the group to trigger on it.": "由其他变量算出的变量在目标上没有自己的字节，记录器无法比较它。请在组里加入一个普通变量作为触发源。",
+    # Whether the copy lost samples. Drawn under the sample count.
+    "Older samples were overwritten before the copy.": "复制之前较早的样本已被覆盖。",
+    "No samples were lost.": "没有样本丢失。",
 
     # The plot export messages, and the short descriptions the persistence
     # layer returns for a project it could not open. Those four are the one

@@ -2,6 +2,7 @@
 #include <implot.h>
 
 #include <algorithm>
+#include <cmath>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -66,10 +67,21 @@ bool Gui::syncRecorderSymbols()
 namespace
 {
 	/* Names of the variables the active recorder group holds, in the order the
-	   target will pack them. A variable kept in two plots appears once. */
-	std::vector<std::string> recorderSourceNames(const PlotGroup& group)
+	   target will pack them. A variable kept in two plots appears once.
+
+	   A variable that is worked out from another one - a scaled value, a pair of
+	   error bits - is left out. The recorder compares the trigger in the target,
+	   against the raw bytes of a variable on the target, and a derived value has
+	   no bytes of its own to compare. Offering it would arm a comparison against
+	   whatever address happened to be attached to it, and the trigger would then
+	   look like one that never fires.
+
+	   The second return says whether anything was left out, so the window can
+	   explain an empty list instead of showing a bare one. */
+	std::vector<std::string> recorderSourceNames(const PlotGroup& group, bool& skippedDerived)
 	{
 		std::vector<std::string> names;
+		skippedDerived = false;
 
 		for (auto iterator = group.begin(); iterator != group.end(); ++iterator)
 		{
@@ -81,6 +93,12 @@ namespace
 				if (entry.second == nullptr || entry.second->var == nullptr)
 					continue;
 
+				if (entry.second->var->getFractional().baseVariable != nullptr)
+				{
+					skippedDerived = true;
+					continue;
+				}
+
 				const std::string name = entry.second->var->getName();
 
 				if (std::find(names.begin(), names.end(), name) == names.end())
@@ -91,9 +109,18 @@ namespace
 		return names;
 	}
 
+	/* Time one sample takes, in seconds. The drag line for the pre-trigger runs
+	   on the time axis, so the sample count and the seconds it stands for have to
+	   come out of one place - otherwise a change to the period would move the
+	   line and the number apart. */
+	double describePeriodSeconds(uint32_t timestepNs, uint32_t skippedSamples)
+	{
+		return static_cast<double>(timestepNs) * (static_cast<double>(skippedSamples) + 1.0) * 1e-9;
+	}
+
 	std::string describePeriod(uint32_t timestepNs, uint32_t skippedSamples)
 	{
-		const double period = static_cast<double>(timestepNs) * (skippedSamples + 1) * 1e-9;
+		const double period = describePeriodSeconds(timestepNs, skippedSamples);
 		char text[96] = {};
 		snprintf(text, sizeof(text), I18n::tr("%.4g s per sample (%.4g Hz)"), period, period > 0.0 ? 1.0 / period : 0.0);
 		return text;
@@ -118,6 +145,10 @@ void Gui::drawRecorderWindow()
 	static std::vector<std::vector<double>> captureValues;
 	static std::vector<std::string> captureNames;
 	static std::vector<double> captureTimes;
+	/* Whether the samples that were overwritten had to be given up to get this
+	   copy. Read with the capture because it describes that capture, not the
+	   target as it stands now. */
+	static bool captureOverran = false;
 
 	const auto fail = [&](const std::string& message)
 	{
@@ -355,7 +386,8 @@ void Gui::drawRecorderWindow()
 	GuiHelper::drawCenteredText(I18n::tr("Trigger"));
 	ImGui::Separator();
 
-	const std::vector<std::string> sourceNames = recorderSourceNames(*group);
+	bool skippedDerived = false;
+	const std::vector<std::string> sourceNames = recorderSourceNames(*group, skippedDerived);
 	int sourceIndex = -1;
 	std::string sourcePreview = config.trigger.source.empty() ? "none" : config.trigger.source;
 
@@ -386,7 +418,19 @@ void Gui::drawRecorderWindow()
 				ImGui::SetItemDefaultFocus();
 		}
 
+		if (sourceNames.empty())
+			ImGui::TextDisabled("%s", I18n::tr("No variable of this group can be a trigger source."));
+
 		ImGui::EndCombo();
+	}
+
+	/* An empty list is not the same as a group with nothing in it, so the reason
+	   is named rather than left for the user to work out. */
+	if (sourceNames.empty() && skippedDerived)
+	{
+		ImGui::SameLine();
+		ImGui::HelpMarker(I18n::tr("A variable worked out from another one has no bytes of its own on the target, "
+								  "so the recorder cannot compare it. Add a plain variable to the group to trigger on it."));
 	}
 
 	GuiHelper::drawTextAlignedToSize(I18n::tr("Edge:"), alignment);
@@ -435,6 +479,14 @@ void Gui::drawRecorderWindow()
 	/* ------------------------------------------------------------------- run */
 	ImGui::Separator();
 
+	/* The trigger state is asked of the target at most a few times a second: it
+	   costs a round trip on the link the sampling loop shares, and the answer only
+	   changes when the signal crosses the level, so asking every frame would spend
+	   the link on a number that is nearly always the same. */
+	static double lastTriggerPoll = 0.0;
+	static recorder::TriggerState lastTriggerState = recorder::TriggerState::Setup;
+
+	const bool triggeredMode = config.mode != recorder::Mode::Run;
 	const bool running = recorderHandler->isRunning();
 
 	if (running)
@@ -460,14 +512,45 @@ void Gui::drawRecorderWindow()
 			std::string error;
 
 			if (recorderHandler->detect(*probe, error) && recorderHandler->start(*probe, config, error))
+			{
+				/* A fresh run has not fired yet, whatever the last one did. */
+				lastTriggerState = recorder::TriggerState::Setup;
+				lastTriggerPoll = ImGui::GetTime();
 				report(I18n::tr("Recording. The target fills its buffer on its own, press Download when it has filled."));
+			}
 			else
 				fail(error);
 		}
 	}
 
 	ImGui::SameLine();
-	ImGui::TextUnformatted(I18n::tr(running ? "The target is sampling." : "The target is idle."));
+
+	/* The state of the target, said in terms the user is working in. A run in one
+	   of the triggered modes spends most of its time waiting, and "sampling" does
+	   not tell them apart from a run that has already caught something. */
+	if (running && triggeredMode && probe != nullptr)
+	{
+		const double now = ImGui::GetTime();
+
+		if (now - lastTriggerPoll >= 0.25)
+		{
+			lastTriggerPoll = now;
+
+			std::string pollError;
+
+			if (!recorderHandler->readTriggerState(*probe, lastTriggerState, pollError))
+				lastTriggerState = recorder::TriggerState::Setup;
+		}
+	}
+
+	if (!running)
+		ImGui::TextUnformatted(I18n::tr("The target is idle."));
+	else if (!triggeredMode)
+		ImGui::TextUnformatted(I18n::tr("The target is sampling."));
+	else if (lastTriggerState == recorder::TriggerState::Triggered || lastTriggerState == recorder::TriggerState::Posttrigger)
+		ImGui::TextUnformatted(I18n::tr("The trigger has fired."));
+	else
+		ImGui::TextUnformatted(I18n::tr("Waiting for trigger..."));
 
 	ImGui::EndDisabled();  // canRun
 	ImGui::EndDisabled();  // enabled
@@ -497,6 +580,7 @@ void Gui::drawRecorderWindow()
 				captureNames.push_back(slot.name);
 
 			captureTimes = downloaded.timestamps;
+			captureOverran = downloaded.overran;
 			captureValues.assign(downloaded.series.size(), {});
 
 			for (size_t index = 0; index < downloaded.series.size(); index++)
@@ -610,6 +694,47 @@ void Gui::drawRecorderWindow()
 		{
 			ImPlot::SetupAxes(I18n::tr("time [s]"), I18n::tr("value"));
 
+			/* The trigger is set from here as well as from the number field, the
+			   same way the trace view does it: the level is a line the user drags
+			   until it sits where the signal crosses it, and the number follows.
+
+			   Both lines only mean something in the two triggered modes, so they
+			   are drawn only there. In run mode nothing is compared, and a line
+			   that can be dragged but changes nothing is a control that lies. */
+			if (config.mode != recorder::Mode::Run)
+			{
+				auto triggerLevel = config.trigger.value;
+
+				if (ImPlot::DragLineY(0, &triggerLevel, GuiHelper::triggerLine(), 1.0f))
+				{
+					recorder::Config updated = config;
+					updated.trigger.value = triggerLevel;
+					pushConfig(updated, "trigger level");
+				}
+
+				/* The capture starts at the oldest sample and the trigger sits
+				   where the pre-trigger run ends, so the boundary is that many
+				   samples in. A one-sample minimum keeps the line visible when
+				   nothing was kept from before the trigger. */
+				const double period = describePeriodSeconds(settings.timestepNs, config.skippedSamples);
+				double boundary = static_cast<double>(config.trigger.preTriggerSamples) * period;
+
+				if (boundary <= 0.0)
+					boundary = period;
+
+				if (ImPlot::DragLineX(1, &boundary, GuiHelper::triggerLine(), 1.0f))
+				{
+					/* Converted back through the same period, rounded rather than
+					   truncated so that dragging to the left edge lands on zero
+					   instead of on a sample that is always one short. */
+					const long long samples = std::llround(boundary / period);
+
+					recorder::Config updated = config;
+					updated.trigger.preTriggerSamples = static_cast<uint32_t>(std::max<long long>(0, samples));
+					pushConfig(updated, "pre-trigger");
+				}
+			}
+
 			for (size_t index = 0; index < captureValues.size(); index++)
 			{
 				const std::string label = index < captureNames.size() ? captureNames[index] : ("variable " + std::to_string(index));
@@ -623,6 +748,20 @@ void Gui::drawRecorderWindow()
 
 		ImGui::Text(I18n::tr("%u samples, one every %s"), static_cast<uint32_t>(captureTimes.size()),
 					describePeriod(settings.timestepNs, config.skippedSamples).c_str());
+
+		/* An overrun is said out loud because the capture looks complete either
+		   way: the samples that are there are correct, the ones that were
+		   overwritten are simply absent, and its axis still starts at zero. */
+		ImGui::SameLine();
+
+		if (captureOverran)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::orangeLight());
+			ImGui::TextUnformatted(I18n::tr("Older samples were overwritten before the copy."));
+			ImGui::PopStyleColor();
+		}
+		else
+			ImGui::TextDisabled("%s", I18n::tr("No samples were lost."));
 	}
 
 	ImGui::End();

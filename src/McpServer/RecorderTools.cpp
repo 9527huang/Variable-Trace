@@ -240,22 +240,27 @@ namespace mcp
 				/* Checked against the group now rather than at the start of the
 				   run, because a name that matches nothing would otherwise leave
 				   the trigger unarmed and the capture looking like a free run. */
-				bool found = false;
+				const Variable* found = nullptr;
 
-				for (auto iterator = group->begin(); iterator != group->end() && !found; ++iterator)
+				for (auto iterator = group->begin(); iterator != group->end() && found == nullptr; ++iterator)
 				{
 					for (const auto& entry : iterator->second.plot->getSeriesMap())
 					{
 						if (entry.second && entry.second->var != nullptr && entry.second->var->getName() == source)
 						{
-							found = true;
+							found = entry.second->var;
 							break;
 						}
 					}
 				}
 
-				if (!found)
+				if (found == nullptr)
 					throw ToolError("The active recorder group has no variable named '" + source + "'. Add it to a plot of that group first.");
+
+				/* A value worked out from another one has no bytes of its own on
+				   the target, so there is nothing for the recorder to compare. */
+				if (found->getFractional().baseVariable != nullptr)
+					throw ToolError("The variable '" + source + "' is worked out from another one, so it has no bytes of its own on the target. Use a plain variable as the trigger source.");
 
 				config.trigger.source = source;
 				config.trigger.enabled = true;

@@ -232,6 +232,37 @@ namespace recorder
 		return window;
 	}
 
+	/* The report of an overrun is read off the same two numbers the window is
+	   built from, so it cannot disagree with what was actually copied.
+
+	   A wrap is what loses samples: the write pointer passed the oldest sample
+	   the window keeps, so whatever stood there is gone. The target flags the
+	   completed sweep itself with State::Full; the sample counter catches the
+	   same thing one step earlier, while the pointer is already running past the
+	   start of the buffer. Either one means the same to the reader.
+
+	   The window is passed in rather than worked out again so that the answer
+	   belongs to the copy that was actually taken: a second look at the target
+	   could see a pointer that has moved on since. */
+	bool overran(const RingState& ring, const RingWindow& window)
+	{
+		if (ring.packSize == 0 || ring.maxActualBufferSize == 0 || window.bytes == 0)
+			return false;
+
+		/* A trigger pins the oldest sample, so nothing before it is claimed. */
+		if (ring.start != 0)
+			return false;
+
+		if (ring.state == State::Full)
+			return true;
+
+		const uint64_t written = static_cast<uint64_t>(ring.samplesSinceStart) * ring.packSize;
+
+		/* Reaching the end exactly is the completed sweep, not a wrap: the last
+		   sample is still there. */
+		return written > ring.maxActualBufferSize;
+	}
+
 	bool decodeRing(const RingState& ring, const std::vector<Slot>& variables, const std::vector<uint8_t>& buffer,
 					uint32_t timestepNs, uint32_t samplesToSkip, Capture& out, std::string& error)
 	{
@@ -265,6 +296,7 @@ namespace recorder
 		out.ring = ring;
 		out.window = window;
 		out.samples = samples;
+		out.overran = overran(ring, window);
 		out.samplePeriodSeconds = (static_cast<double>(timestepNs) * (static_cast<double>(samplesToSkip) + 1.0)) / 1e9;
 		out.timestamps.assign(samples, 0.0);
 		out.series.assign(variables.size(), std::vector<uint32_t>(samples, 0));
@@ -727,6 +759,28 @@ namespace recorder
 
 		out.head = readU32(ring);
 		out.start = readU32(ring + 4);
+
+		return true;
+	}
+
+	bool RecorderHandler::readTriggerState(IDebugProbe& probe, TriggerState& out, std::string& error)
+	{
+		if (!detected)
+		{
+			error = "The recorder of this target has not been detected yet. Call detect_recorder first.";
+			return false;
+		}
+
+		/* One byte, at the head of the trigger block. The rest of the trigger is
+		   not needed to answer "has it fired", and reading less means the round
+		   trip is shorter. */
+		uint8_t state = 0;
+
+		if (!readAt(probe, recorderAddress + layout.triggerStateOffset, &state, 1, error))
+			return false;
+
+		out = static_cast<TriggerState>(state);
+		error.clear();
 
 		return true;
 	}

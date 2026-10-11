@@ -357,6 +357,96 @@ TEST(RecorderRingTest, OnlyWholeSamplesAreReported)
 	EXPECT_EQ(window.bytes, 600u);
 }
 
+TEST(RecorderRingTest, ABufferThatHasNotFilledYetLostNothing)
+{
+	recorder::RingState ring;
+	ring.maxActualBufferSize = 1024;
+	ring.packSize = 8;
+	ring.state = recorder::State::Running;
+	ring.head = 40;
+	ring.start = 0;
+	ring.samplesSinceStart = 5;
+
+	EXPECT_FALSE(recorder::overran(ring, recorder::ringWindowOf(ring)));
+}
+
+TEST(RecorderRingTest, ABufferThatWentRoundLosesTheOldSide)
+{
+	/* Two hundred samples of eight bytes is sixteen hundred bytes, and the
+	   target only keeps a thousand and twenty four. The write pointer has been
+	   through the start of the buffer, so the samples it wrote first are gone. */
+	recorder::RingState ring;
+	ring.maxActualBufferSize = 1024;
+	ring.packSize = 8;
+	ring.state = recorder::State::Running;
+	ring.head = 16;
+	ring.start = 0;
+	ring.samplesSinceStart = 200;
+
+	EXPECT_TRUE(recorder::overran(ring, recorder::ringWindowOf(ring)));
+}
+
+TEST(RecorderRingTest, AFullBufferHasLostTheOldSide)
+{
+	recorder::RingState ring;
+	ring.maxActualBufferSize = 1024;
+	ring.packSize = 8;
+	ring.state = recorder::State::Full;
+	ring.head = 0;
+	ring.start = 0;
+
+	EXPECT_TRUE(recorder::overran(ring, recorder::ringWindowOf(ring)));
+}
+
+TEST(RecorderRingTest, ATriggeredBufferKeepsEverythingItShows)
+{
+	/* Once the trigger has fired the target stops in place and holds the write
+	   pointer back, so going round is a normal part of the mode rather than a
+	   loss. The trigger pins the start, and the window is what survived. */
+	recorder::RingState ring;
+	ring.maxActualBufferSize = 1024;
+	ring.packSize = 8;
+	ring.state = recorder::State::Running;
+	ring.head = 600;
+	ring.start = 200;
+	ring.samplesSinceStart = 400;
+
+	EXPECT_FALSE(recorder::overran(ring, recorder::ringWindowOf(ring)));
+}
+
+TEST(RecorderRingTest, AnEmptyBufferHashLostNothingItCouldShow)
+{
+	recorder::RingState ring;
+	ring.maxActualBufferSize = 1024;
+	ring.packSize = 8;
+	ring.state = recorder::State::Running;
+	ring.head = 0;
+	ring.start = 0;
+	ring.samplesSinceStart = 0;
+
+	const recorder::RingWindow window = recorder::ringWindowOf(ring);
+	ASSERT_EQ(window.bytes, 0u);
+	EXPECT_FALSE(recorder::overran(ring, window));
+}
+
+TEST(RecorderRingTest, ABufferThatExactlyFilledDidNotYetWrap)
+{
+	/* A hundred and twenty eight samples of eight bytes is exactly the buffer.
+	   The write pointer is back at the start but it has not written over
+	   anything: every sample the target took is still in the window. */
+	recorder::RingState ring;
+	ring.maxActualBufferSize = 1024;
+	ring.packSize = 8;
+	ring.state = recorder::State::Running;
+	ring.head = 0;
+	ring.start = 0;
+	ring.samplesSinceStart = 128;
+
+	const recorder::RingWindow window = recorder::ringWindowOf(ring);
+	ASSERT_EQ(window.bytes, 1024u);
+	EXPECT_FALSE(recorder::overran(ring, window));
+}
+
 TEST(RecorderRingTest, TheWindowIsOneRangeUntilItWraps)
 {
 	const std::vector<std::pair<uint32_t, uint32_t>> flat = recorder::validRanges({100, 400}, 1024);
