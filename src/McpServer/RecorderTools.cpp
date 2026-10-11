@@ -186,7 +186,13 @@ namespace mcp
 										{"skipped_samples", config.skippedSamples},
 										{"running", handler.isRunning()}});
 
-			for (const auto& field : triggerToJson(config.trigger).items())
+			/* The trigger fields are stored in a local first. Walking .items() on
+			   the temporary that triggerToJson() returns leaves the loop holding
+			   iterators into an object that is already gone, which reads as valid
+			   data most of the time and as a crash the rest of the time. */
+			const Json trigger = triggerToJson(config.trigger);
+
+			for (const auto& field : trigger.items())
 				result[field.key()] = field.value();
 
 			return result;
