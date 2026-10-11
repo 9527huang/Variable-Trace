@@ -49,6 +49,12 @@ class GlobalConfig
 		uint16_t mcpPreferredPort = 7777;
 		bool apiWritesEnabled = false;
 
+		/* The command channel is a second way in, for callers that cannot speak
+		   HTTP. It runs the same tools as the API server, so it is off until it
+		   is switched on and it listens on the loopback interface only. */
+		bool commandChannelEnabled = false;
+		uint16_t commandChannelPreferredPort = 7808;
+
 		/* Flashing. The programmer and the arguments it needs belong to the
 		   machine rather than to the project being debugged, so the command
 		   template lives here and not in the project file. */

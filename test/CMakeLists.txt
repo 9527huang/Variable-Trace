@@ -104,6 +104,7 @@ set(SOURCES
     # The server itself is built here as well, so the tool table and the request
     # handling can be checked without opening a socket.
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpServer.cpp
+    ${CMAKE_SOURCE_DIR}/src/McpServer/CommandServer.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/ProjectTools.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/GroupTools.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/PlotTools.cpp
@@ -157,6 +158,7 @@ add_executable(${EXECUTABLE} main.cpp
     FlashingToolsTest.cpp
     ProjectToolsTest.cpp
     McpServerTest.cpp
+    CommandServerTest.cpp
     SerialProtocolTest.cpp
     GdbServerDebugProbeTest.cpp
     DebugProbeTypesTest.cpp

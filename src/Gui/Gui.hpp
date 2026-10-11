@@ -55,6 +55,10 @@ namespace recorder
 
 struct McpContext;
 
+/* Only a pointer to it is stored here, so the header stays free of the socket
+   headers the definition pulls in. */
+class CommandServer;
+
 class Gui
 {
    public:
@@ -246,6 +250,10 @@ class Gui
 	std::unique_ptr<mcp::Bridge> mcpBridge;
 	std::unique_ptr<McpContext> mcpContext;
 	std::unique_ptr<mcp::Server> mcpServer;
+
+	/* The command channel hands its work to the MCP server, so it holds a bare
+	   pointer to it and has to be declared after it, for the same reason. */
+	std::unique_ptr<CommandServer> commandServer;
 
 	/* The API refresh needs an ELF parser of its own, because the one behind the
 	   variable table belongs to that window. It follows the same setting, so the

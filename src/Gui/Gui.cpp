@@ -25,6 +25,7 @@
 #include "../commons.hpp"
 
 #include "I18n.hpp"
+#include "CommandServer.hpp"
 #include "McpBridge.hpp"
 #include "McpContext.hpp"
 #include "McpServer.hpp"
@@ -87,9 +88,13 @@ Gui::Gui(PlotHandler* plotHandler, VariableHandler* variableHandler, ConfigHandl
 
 Gui::~Gui()
 {
-	/* The server goes first: its connection threads hand work to the GUI thread
-	   through the bridge, so shutting the bridge down while calls can still arrive
-	   would leave those threads waiting for their full timeout. */
+	/* Both listeners go first: their threads hand work to the GUI thread
+	   through the bridge, so shutting the bridge down while calls can still
+	   arrive would leave those threads waiting for their full timeout. The
+	   command channel is stopped before the server it calls into. */
+	if (commandServer != nullptr)
+		commandServer->stop();
+
 	if (mcpServer != nullptr)
 		mcpServer->stop();
 
@@ -1248,6 +1253,9 @@ void Gui::drawPreferencesWindow()
 
 		const bool mcpWasEnabled = settings.mcpEnabled;
 		const uint16_t mcpWasPort = settings.mcpPreferredPort;
+		const bool writesWereEnabled = settings.apiWritesEnabled;
+		const bool commandChannelWasEnabled = settings.commandChannelEnabled;
+		const uint16_t commandChannelWasPort = settings.commandChannelPreferredPort;
 
 		ImGui::Checkbox(I18n::tr("Enable MCP server##mcp"), &settings.mcpEnabled);
 		ImGui::SameLine();
@@ -1269,6 +1277,37 @@ void Gui::drawPreferencesWindow()
 		ImGui::SameLine();
 		ImGui::HelpMarker(I18n::tr("Without this, set_variable_value is refused. Each variable can carry its own min/max range on top."));
 
+		ImGui::Separator();
+		ImGui::TextUnformatted(I18n::tr("Command channel"));
+
+		ImGui::Checkbox(I18n::tr("Enable command channel##command"), &settings.commandChannelEnabled);
+		ImGui::SameLine();
+		ImGui::HelpMarker(I18n::tr("A plain TCP line protocol for callers that cannot speak HTTP, such as a PLC or a console script. "
+								   "Each line is one JSON request naming a tool; each reply is one JSON line. It runs the same tools "
+								   "as the API server."));
+
+		ImGui::BeginDisabled(!settings.commandChannelEnabled);
+
+		int commandPort = static_cast<int>(settings.commandChannelPreferredPort);
+		ImGui::SetNextItemWidth(200 * GuiHelper::contentScale);
+
+		if (ImGui::DragInt(I18n::tr("port##command"), &commandPort, 1.0f, 1024, 65535, "%d", ImGuiSliderFlags_AlwaysClamp))
+			settings.commandChannelPreferredPort = static_cast<uint16_t>(commandPort);
+
+		ImGui::EndDisabled();
+		ImGui::TextDisabled(I18n::tr("If the port is taken, the next free one is used."));
+
+		if (commandServer == nullptr)
+			ImGui::TextDisabled(I18n::tr("Not available"));
+		else if (commandServer->isRunning())
+			ImGui::Text(I18n::tr("Listening on %s"), commandServer->getEndpoint().c_str());
+		else if (settings.commandChannelEnabled && !settings.mcpEnabled)
+			ImGui::TextColored(GuiHelper::redLight(), I18n::tr("Needs the API server to be enabled."));
+		else if (settings.commandChannelEnabled)
+			ImGui::TextColored(GuiHelper::redLight(), I18n::tr("Not listening: %s"), commandServer->getLastError().c_str());
+		else
+			ImGui::TextDisabled(I18n::tr("Disabled"));
+
 		if (mcpServer == nullptr)
 			ImGui::TextDisabled(I18n::tr("Not available"));
 		else if (mcpServer->isRunning())
@@ -1280,7 +1319,9 @@ void Gui::drawPreferencesWindow()
 
 		/* The port is bound at start, so a change is applied right away instead of
 		   waiting for the next launch. */
-		if (settings.mcpEnabled != mcpWasEnabled || settings.mcpPreferredPort != mcpWasPort)
+		if (settings.mcpEnabled != mcpWasEnabled || settings.mcpPreferredPort != mcpWasPort ||
+			settings.commandChannelEnabled != commandChannelWasEnabled || settings.commandChannelPreferredPort != commandChannelWasPort ||
+			settings.apiWritesEnabled != writesWereEnabled)
 			applyMcpSettings();
 
 		ImGui::Separator();
@@ -1965,6 +2006,8 @@ void Gui::setupMcpServer()
 
 	mcpServer = std::make_unique<mcp::Server>(mcpContext.get(), mcpBridge.get(), logger);
 
+	commandServer = std::make_unique<CommandServer>(mcpServer.get(), logger);
+
 	applyMcpSettings();
 }
 
@@ -1987,6 +2030,21 @@ void Gui::applyMcpSettings()
 		logger->info("API server available at {} with {} tools", mcpServer->getEndpoint(), mcpServer->getToolCount());
 	else
 		popup.show(I18n::tr("API server"), (std::string(I18n::tr("The server could not be started: ")) + mcpServer->getLastError()).c_str(), 5.0f);
+
+	/* The command channel calls into the server, so it is only started once the
+	   server itself is up. Asking for the channel while the API is off would
+	   give a listener that can do nothing. */
+	if (commandServer != nullptr)
+	{
+		const bool wanted = settings.commandChannelEnabled && mcpServer->isRunning();
+
+		commandServer->restart(wanted, settings.commandChannelPreferredPort);
+
+		if (commandServer->isRunning())
+			logger->info("Command channel available at {}", commandServer->getEndpoint());
+		else if (settings.commandChannelEnabled)
+			logger->warn("Command channel could not be started: {}", commandServer->getLastError());
+	}
 }
 
 bool Gui::setElfPathFromApi(const std::string& path, bool relative)

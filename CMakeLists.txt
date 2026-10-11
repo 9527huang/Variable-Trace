@@ -207,6 +207,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/McpToolRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/McpBridge.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/McpServer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/CommandServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/McpToolHelpers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/ProjectTools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/GroupTools.cpp

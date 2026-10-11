@@ -96,6 +96,13 @@ bool GlobalConfig::load()
 		settings.mcpEnabled = api.value("enabled", settings.mcpEnabled);
 		settings.mcpPreferredPort = api.value("preferredPort", settings.mcpPreferredPort);
 		settings.apiWritesEnabled = api.value("writesEnabled", settings.apiWritesEnabled);
+
+		if (api.contains("commandChannel"))
+		{
+			const auto& commandChannel = api.at("commandChannel");
+			settings.commandChannelEnabled = commandChannel.value("enabled", settings.commandChannelEnabled);
+			settings.commandChannelPreferredPort = commandChannel.value("preferredPort", settings.commandChannelPreferredPort);
+		}
 	}
 
 	if (root.contains("plotExport"))
@@ -155,7 +162,9 @@ bool GlobalConfig::save()
 	root["interface"] = {{"fontScale", settings.fontScale}, {"theme", settings.theme}, {"language", settings.language}};
 	root["api"] = {{"enabled", settings.mcpEnabled},
 				   {"preferredPort", settings.mcpPreferredPort},
-				   {"writesEnabled", settings.apiWritesEnabled}};
+				   {"writesEnabled", settings.apiWritesEnabled},
+				   {"commandChannel",
+					{{"enabled", settings.commandChannelEnabled}, {"preferredPort", settings.commandChannelPreferredPort}}}};
 	root["flashing"] = {{"command", settings.flash.command},
 						{"file", settings.flash.file},
 						{"useElfFile", settings.flash.useElfFile},

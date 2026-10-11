@@ -578,6 +578,14 @@ EXTRA = {
     "Port:": "端口:",
     "Port the GDB server serves on. OpenOCD's default is 3333.": "GDB 服务器提供服务的端口。OpenOCD 默认是 3333。",
     "No GDB server address, the acquisition cannot connect without one.": "没有填 GDB 服务器地址,采集无法连接。",
+    # The command channel. Its help text is long enough that the extraction pass
+    # reads it as prose rather than as one literal, so it is named here instead.
+    "Command channel": "命令通道",
+    "Enable command channel##command": "启用命令通道##command",
+    "port##command": "端口##command",
+    "A plain TCP line protocol for callers that cannot speak HTTP, such as a PLC or a console script. Each line is one JSON request naming a tool; each reply is one JSON line. It runs the same tools as the API server.": "面向无法使用 HTTP 的调用方的纯 TCP 行协议,例如 PLC 或控制台脚本。每行是一次 JSON 请求,指明要调用的工具;每次回复是一行 JSON。它运行的工具与 API 服务相同。",
+    "Listening on %s": "正在监听 %s",
+    "Needs the API server to be enabled.": "需要先启用 API 服务。",
 }
 
 
