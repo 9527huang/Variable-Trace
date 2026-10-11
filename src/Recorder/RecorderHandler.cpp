@@ -200,12 +200,22 @@ namespace recorder
 		if (modulo == 0 || ring.packSize == 0)
 			return window;
 
+		/* The window is read as whole samples, so its lowest byte has to be the
+		   first byte of a sample. The target computes the start of a triggered
+		   run by subtracting whole samples from the write pointer, which leaves
+		   it on a boundary on paper - but the subtraction runs through unsigned
+		   arithmetic, so a pre-trigger that reaches past the beginning of the
+		   buffer can leave it off by a byte. Moving it down to the boundary
+		   costs at most one sample and keeps every other one readable, which
+		   beats reading every value one slot early. */
+		const uint32_t alignedStart = ring.start - (ring.start % ring.packSize);
+
 		if (ring.state == State::Full)
 		{
 			/* The sweep ended exactly where it started, so every byte of the
 			   buffer holds samples. The oldest one is where the trigger recorded
 			   it, or the beginning of the buffer when there was no trigger. */
-			window.oldest = ring.start % modulo;
+			window.oldest = alignedStart % modulo;
 			window.bytes = modulo - (modulo % ring.packSize);
 			return window;
 		}
@@ -213,17 +223,23 @@ namespace recorder
 		if (ring.start != 0)
 		{
 			/* A trigger pinned the oldest sample and the write pointer runs after
-			   it, so the distance between the two is what holds samples. */
-			window.oldest = ring.start % modulo;
+			   it, so the distance between the two is what holds samples. Both
+			   ends sit on a boundary once the start is moved down, so the count
+			   is a whole number of samples. */
+			window.oldest = alignedStart % modulo;
 			window.bytes = (ring.head + modulo - window.oldest) % modulo;
-			window.bytes -= window.bytes % ring.packSize;
 			return window;
 		}
 
 		/* Without a trigger the buffer fills from the beginning and then wraps.
 		   The write pointer alone cannot separate "the buffer is full" from "the
 		   sampling has not started", because both leave it at the same value.
-		   The sample counter is what tells them apart. */
+		   The sample counter is what tells them apart.
+
+		   Nothing is moved down here. The write pointer only ever advances by a
+		   whole sample, so it already sits on a boundary and the subtraction
+		   keeps it there. The triggered path above is the only one the target
+		   works out arithmetically, so it is the only one that can land off it. */
 		const uint64_t written = static_cast<uint64_t>(ring.samplesSinceStart) * ring.packSize;
 		window.bytes = static_cast<uint32_t>(std::min<uint64_t>(written, modulo));
 		window.bytes -= window.bytes % ring.packSize;
@@ -759,6 +775,22 @@ namespace recorder
 
 		out.head = readU32(ring);
 		out.start = readU32(ring + 4);
+
+		/* Every number the window is built from, in one line. The start field is
+		   the one that has to sit on a sample boundary; when it does not, the
+		   unpacking reads every value one slot early and the whole row comes out
+		   shifted. Printing it here is what tells the two apart. */
+		if (logger)
+		{
+			logger->info("Ring state: state {} head {} start {} maxActualBufferSize {} packSize {} samplesSinceStart {}",
+						 static_cast<uint32_t>(out.state), out.head, out.start, out.maxActualBufferSize, out.packSize,
+						 out.samplesSinceStart);
+
+			if (out.packSize != 0 && (out.start % out.packSize) != 0)
+				logger->warn("The recorder start field is {} and a sample is {} bytes, so the start does not sit on a sample "
+							 "boundary. The window will be moved to the nearest boundary below it.",
+							 out.start, out.packSize);
+		}
 
 		return true;
 	}

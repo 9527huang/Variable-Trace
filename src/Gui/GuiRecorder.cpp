@@ -149,6 +149,7 @@ void Gui::drawRecorderWindow()
 	   copy. Read with the capture because it describes that capture, not the
 	   target as it stands now. */
 	static bool captureOverran = false;
+	static bool captureStartMoved = false;
 
 	const auto fail = [&](const std::string& message)
 	{
@@ -581,6 +582,13 @@ void Gui::drawRecorderWindow()
 
 			captureTimes = downloaded.timestamps;
 			captureOverran = downloaded.overran;
+
+			/* The start the target handed over did not sit on a sample boundary,
+			   so the window was moved down by less than one sample before the
+			   bytes were split. Said out loud because the values are still good:
+			   this is a note about where the capture begins, not a fault. */
+			captureStartMoved =
+				downloaded.ring.packSize != 0 && (downloaded.ring.start % downloaded.ring.packSize) != 0;
 			captureValues.assign(downloaded.series.size(), {});
 
 			for (size_t index = 0; index < downloaded.series.size(); index++)
@@ -762,6 +770,18 @@ void Gui::drawRecorderWindow()
 		}
 		else
 			ImGui::TextDisabled("%s", I18n::tr("No samples were lost."));
+
+		/* The start the target reported was not where a sample begins, so the
+		   copy was taken from the boundary just below it. The values read back
+		   are correct; what changes is that the capture may begin up to one
+		   sample later than the target meant it to. */
+		if (captureStartMoved)
+		{
+			ImGui::SameLine();
+			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::orangeLight());
+			ImGui::TextUnformatted(I18n::tr("The capture start did not sit on a sample boundary, so it was moved down to the nearest one."));
+			ImGui::PopStyleColor();
+		}
 	}
 
 	ImGui::End();

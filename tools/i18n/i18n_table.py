@@ -530,6 +530,10 @@ EXTRA = {
     # Whether the copy lost samples. Drawn under the sample count.
     "Older samples were overwritten before the copy.": "复制之前较早的样本已被覆盖。",
     "No samples were lost.": "没有样本丢失。",
+    # The target reported a start that was not where a sample begins, so the
+    # window was moved down to the boundary below it before the bytes were
+    # split. The values are still good; only the first sample may be later.
+    "The capture start did not sit on a sample boundary, so it was moved down to the nearest one.": "捕获起点未落在样本边界上，已向下移动到最近的边界。",
 
     # The plot export messages, and the short descriptions the persistence
     # layer returns for a project it could not open. Those four are the one

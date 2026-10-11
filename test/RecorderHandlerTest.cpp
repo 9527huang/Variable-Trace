@@ -464,6 +464,87 @@ TEST(RecorderRingTest, TheWindowIsOneRangeUntilItWraps)
 	EXPECT_EQ(wrapped[1].second, 276u);
 }
 
+TEST(RecorderRingTest, AStartOffTheSampleBoundaryIsMovedDownToOne)
+{
+	/* The target works the start of a triggered run out by passing the write
+	   pointer through unsigned arithmetic, so a pre-trigger that reaches past
+	   the beginning of the buffer leaves it one byte short of a boundary. Read
+	   as it stands, every value would come out one slot early. */
+	recorder::RingState ring;
+	ring.maxActualBufferSize = 1024;
+	ring.packSize = 8;
+	ring.state = recorder::State::Running;
+	ring.head = 600;
+	ring.start = 203;
+
+	const recorder::RingWindow window = recorder::ringWindowOf(ring);
+
+	EXPECT_EQ(window.oldest, 200u);
+	EXPECT_EQ(window.oldest % ring.packSize, 0u);
+	/* The write pointer runs from the start of the window, whole samples only. */
+	EXPECT_EQ(window.bytes, 400u);
+}
+
+TEST(RecorderRingTest, AStartOnTheBoundaryIsLeftAlone)
+{
+	recorder::RingState ring;
+	ring.maxActualBufferSize = 1024;
+	ring.packSize = 8;
+	ring.state = recorder::State::Running;
+	ring.head = 600;
+	ring.start = 200;
+
+	const recorder::RingWindow window = recorder::ringWindowOf(ring);
+
+	EXPECT_EQ(window.oldest, 200u);
+	EXPECT_EQ(window.bytes, 400u);
+}
+
+TEST(RecorderRingTest, AFinishedSweepMovesAnOffBoundaryStartDownToo)
+{
+	recorder::RingState ring;
+	ring.maxActualBufferSize = 1024;
+	ring.packSize = 6;
+	ring.state = recorder::State::Full;
+	ring.head = 0;
+	ring.start = 302;
+
+	const recorder::RingWindow window = recorder::ringWindowOf(ring);
+
+	EXPECT_EQ(window.oldest, 300u);
+	EXPECT_EQ(window.oldest % ring.packSize, 0u);
+	/* The whole buffer holds samples whatever the start was, and the sweep is
+	   trimmed to whole samples. */
+	EXPECT_EQ(window.bytes, 1020u);
+}
+
+TEST(RecorderRingTest, AWindowOverTheWrapStaysOnWholeSamplesWhenTheStartIsOff)
+{
+	/* The write pointer only moves by whole samples, so it sits on a boundary
+	   even when the start does not. Both ranges the copy is taken in then land
+	   on boundaries as well, which is what keeps the unpacking aligned. */
+	recorder::RingState ring;
+	ring.maxActualBufferSize = 1024;
+	ring.packSize = 8;
+	ring.state = recorder::State::Running;
+	ring.head = 96;
+	ring.start = 403;
+
+	const recorder::RingWindow window = recorder::ringWindowOf(ring);
+
+	EXPECT_EQ(window.oldest, 400u);
+
+	const std::vector<std::pair<uint32_t, uint32_t>> ranges = recorder::validRanges(window, ring.maxActualBufferSize);
+
+	ASSERT_EQ(ranges.size(), 2u);
+
+	for (const auto& [start, length] : ranges)
+	{
+		EXPECT_EQ(start % ring.packSize, 0u);
+		EXPECT_EQ(length % ring.packSize, 0u);
+	}
+}
+
 TEST(RecorderDecodeTest, TurnsThePackedBytesBackIntoVariables)
 {
 	recorder::RingState ring;
