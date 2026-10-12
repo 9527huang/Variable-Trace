@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Variable-Trace 上手指南</title>
+<style>
+  :root{
+    --bg:#ffffff; --bg-soft:#f7f8f9; --bg-code:#f2f4f6;
+    --fg:#1f2328; --fg-soft:#5a6169; --fg-faint:#8b939c;
+    --line:#e3e6ea; --line-strong:#d0d5da;
+    --accent:#2f6fb5; --accent-soft:#eaf1f9;
+    --warn:#a8620a; --warn-soft:#fdf4e6;
+    --danger:#b3352f; --danger-soft:#fdeeed;
+    --ok:#2f7a4f; --ok-soft:#ecf6f0;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .layout{display:flex; align-items:flex-start; max-width:1180px; margin:0 auto; padding:0 24px}
+  nav{
+    position:sticky; top:0; flex:0 0 208px; align-self:stretch;
+    max-height:100vh; overflow-y:auto; padding:32px 20px 32px 0;
+    border-right:1px solid var(--line); font-size:13.5px;
+  }
+  nav h2{font-size:12px; letter-spacing:.08em; color:var(--fg-faint); margin:0 0 12px; font-weight:600}
+  nav a{display:block; padding:5px 0; color:var(--fg-soft); text-decoration:none; border-left:2px solid transparent; padding-left:10px; margin-left:-11px}
+  nav a:hover{color:var(--accent); background:var(--accent-soft)}
+  main{flex:1 1 auto; min-width:0; padding:32px 0 96px 40px}
+  h1{font-size:26px; margin:0 0 6px; font-weight:600}
+  .sub{color:var(--fg-faint); font-size:13.5px; margin:0 0 36px}
+  h2{font-size:19px; margin:44px 0 14px; font-weight:600; padding-bottom:8px; border-bottom:1px solid var(--line)}
+  h3{font-size:15.5px; margin:26px 0 10px; font-weight:600}
+  p{margin:12px 0}
+  ul,ol{margin:12px 0; padding-left:22px}
+  li{margin:6px 0}
+  code{background:var(--bg-code); padding:1.5px 5px; border-radius:3px; font-size:13px;
+       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  pre{background:var(--bg-code); border:1px solid var(--line); border-radius:6px;
+      padding:14px 16px; overflow-x:auto; font-size:12.5px; line-height:1.65}
+  pre code{background:none; padding:0}
+  table{border-collapse:collapse; width:100%; margin:16px 0; font-size:13.5px}
+  th,td{border:1px solid var(--line); padding:8px 11px; text-align:left; vertical-align:top}
+  th{background:var(--bg-soft); font-weight:600; white-space:nowrap}
+  tbody tr:nth-child(even){background:#fcfdfd}
+  .note,.warn,.tip{border-radius:6px; padding:12px 16px; margin:16px 0; font-size:13.5px; border-left:3px solid}
+  .note{background:var(--accent-soft); border-color:var(--accent)}
+  .warn{background:var(--warn-soft); border-color:var(--warn)}
+  .tip{background:var(--ok-soft); border-color:var(--ok)}
+  .note strong,.warn strong,.tip strong{display:block; margin-bottom:3px}
+  .steps{counter-reset:s; list-style:none; padding:0}
+  .steps>li{counter-increment:s; position:relative; padding-left:38px; margin:14px 0}
+  .steps>li::before{
+    content:counter(s); position:absolute; left:0; top:1px;
+    width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff;
+    font-size:12.5px; font-weight:600; display:flex; align-items:center; justify-content:center;
+  }
+  .lede{font-size:15.5px; color:var(--fg-soft)}
+  footer{margin-top:56px; padding-top:20px; border-top:1px solid var(--line); color:var(--fg-faint); font-size:13px}
+  @media(max-width:860px){
+    .layout{display:block; padding:0 18px}
+    nav{position:static; max-height:none; border-right:none; border-bottom:1px solid var(--line); padding:24px 0}
+    main{padding:24px 0 72px}
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav>
+  <h2>目录</h2>
+  <a href="#what">这是什么</a>
+  <a href="#quickstart">五分钟跑通</a>
+  <a href="#paths">三条数据通路</a>
+  <a href="#ui">界面导览</a>
+  <a href="#features">功能清单</a>
+  <a href="#shortcuts">快捷键</a>
+  <a href="#automation">自动化接口</a>
+  <a href="#limits">限制与已知问题</a>
+  <a href="#faq">常见问题</a>
+</nav>
+
+<main>
+
+<h1>Variable-Trace 上手指南</h1>
+<p class="sub">版本 1.1.0 · 基于 MCUViewer 1.1.0 的开源分支</p>
+
+<section id="what">
+<h2>这是什么</h2>
+
+<p class="lede">一个跑在 PC 上的单片机实时调试工具。它通过调试探针（J-Link 或 ST-Link）的 SWD 接口直接读写目标芯片的 RAM，把变量画成实时波形；也能接住芯片通过 SWO 送出的跟踪数据。</p>
+
+<p>它解决的核心问题：调试嵌入式程序时，往往想看着某个变量随时间怎么变，而不是在某一个断点上停下来看它的瞬时值。</p>
+
+<p>使用门槛很低——程序里不需要加任何打印语句，只要变量还在，就能看。代价是这东西只能看<strong>全局变量或静态变量</strong>，因为它们的地址在程序整个生命周期里固定不变。</p>
+
+<h3>需要什么</h3>
+<table>
+  <thead><tr><th>项目</th><th>要求</th></tr></thead>
+  <tbody>
+    <tr><td>调试探针</td><td>J-Link 或 ST-Link，一根即可</td></tr>
+    <tr><td>接线</td><td>变量视图与记录器只需 SWDIO / SWCLK / GND；跟踪视图另加 SWO</td></tr>
+    <tr><td>固件</td><td>以 debug 模式编译，保留符号表</td></tr>
+    <tr><td>符号文件</td><td><code>*.elf</code> 或 <code>*.axf</code>（两者是同一种容器）</td></tr>
+    <tr><td>变量要求</td><td>定义在文件作用域、带 <code>volatile</code> 修饰</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="quickstart">
+<h2>五分钟跑通</h2>
+
+<p>以下是变量视图最短的启动路径。</p>
+
+<ol class="steps">
+  <li>
+    <strong>打开采集设置</strong><br>
+    顶部菜单 <code>Options → Acquisition settings...</code>。这个窗口的内容跟着当前页签走，变量视图和跟踪视图各有各的一份。
+  </li>
+  <li>
+    <strong>选择符号文件</strong><br>
+    选中你编译产物里的 <code>*.elf</code> 或 <code>*.axf</code>。变量地址就是从这里读出来的。
+  </li>
+  <li>
+    <strong>导入变量</strong><br>
+    点 <code>Import variables from *.elf</code>，勾选需要的变量后确认。<br>
+    如果某个变量没被认出来，用 <code>Add variable</code> 手动填名字也可以，之后再点 <code>Update variable addresses</code> 补上地址。
+  </li>
+  <li>
+    <strong>选探针并填参数</strong><br>
+    探针类型选 J-Link 或 ST-Link。<br>
+    <span class="warn" style="margin:10px 0"><strong>J-Link 用户注意</strong>「Target name」必须手填，而且要用器件的基础名，不要带封装或温度后缀——例如 <code>STM32F103C8</code>。名字为空、末尾有空格、或者带了后缀，J-Link 都会拒绝连接。</span>
+  </li>
+  <li>
+    <strong>解析地址</strong><br>
+    点 <code>Update variable addresses</code>。变量列表里的类型和地址应当从 <code>NOT FOUND!</code> 变成有效值。这一列还有 <code>NOT FOUND!</code> 就说明符号文件不对，或者这个变量被编译器优化掉了。
+  </li>
+  <li>
+    <strong>把变量拖进绘图区</strong><br>
+    从左侧列表拖到右边的绘图区。一个绘图区可以叠多条曲线；需要 X-Y 图就在新建绘图区时把类型选成 <code>XY</code>，再指定横轴变量。
+  </li>
+  <li>
+    <strong>开始采集</strong><br>
+    确认探针接好、目标已供电，点那个写着 <code>STOPPED</code> 的按钮。它会变成 <code>RUNNING</code>，曲线开始动。<br>
+    右上角会显示探针名称、连接状态和一串 <code>sampling: X Hz</code>——那才是实际达到的采样率。
+  </li>
+</ol>
+
+<div class="tip">
+  <strong>J-Link 首次连接较慢</strong>
+  从点击开始到第一条曲线出现可能要几十秒，这属于正常现象。如果一直没动静，先看日志窗口里的错误信息。
+</div>
+</section>
+
+<section id="paths">
+<h2>三条数据通路</h2>
+
+<p class="lede">理解这个软件的关键，是分清数据从哪儿来。三条通路的原理不同，适用场景也不同。</p>
+
+<table>
+  <thead>
+    <tr><th>通路</th><th>数据怎么来</th><th>实测速率</th><th>特点</th><th>适合看什么</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>变量视图</strong></td>
+      <td>主机逐个变量向探针索取</td>
+      <td>约 4.2 kHz（单变量）</td>
+      <td>实时；每加一个变量，所有变量一起变慢</td>
+      <td>普通控制逻辑、状态机、慢速物理量</td>
+    </tr>
+    <tr>
+      <td><strong>跟踪视图</strong></td>
+      <td>芯片通过 SWO 主动送出</td>
+      <td>由 SWO 带宽决定，可达 MHz 级</td>
+      <td>需要在代码里写 ITM 语句；对程序运行影响很小</td>
+      <td>函数耗时、中断频率、高频信号</td>
+    </tr>
+    <tr>
+      <td><strong>记录器</strong></td>
+      <td>目标的定时中断自己写进目标内存的环形缓冲</td>
+      <td>由目标侧时基决定（示例固件为 20 kHz）</td>
+      <td>录制期间不占用调试链路；支持触发与预触发；事后整块取回</td>
+      <td>比调试链路更快、且需要与事件对齐的信号</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>该用哪一条</h3>
+<ul>
+  <li>信号变化在几百赫兹以内，想边调边看 → <strong>变量视图</strong>，最省事</li>
+  <li>要看某段代码执行了多久、中断是不是按预期频率进 → <strong>跟踪视图</strong></li>
+  <li>信号快到变量视图抓不住，或者想在某个条件出现时抓一段 → <strong>记录器</strong></li>
+</ul>
+
+<div class="note">
+  <strong>变量视图的速率是怎么被限制的</strong>
+  每采一个样本，主机要发起一次「探针读内存」的完整往返，实测约 220 µs。一次采样要读完列表里的全部地址，所以变量越多，每个变量越慢。同一个变量被多张图引用不会重复计算，地址是去重后的。
+</div>
+</section>
+
+<section id="ui">
+<h2>界面导览</h2>
+
+<table>
+  <thead><tr><th>区域</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td>顶部菜单</td><td><code>File</code>（工程的新建/打开/保存）、<code>Plots</code>（绘图区操作）、<code>Options</code>（各类设置窗口）</td></tr>
+    <tr><td>两个页签</td><td><code>Var Viewer</code> 与 <code>Trace Viewer</code>，各自独立配置探针与绘图区</td></tr>
+    <tr><td>左侧树</td><td>组 → 绘图区 → 变量，三层结构。右键有属性、复制、删除等操作</td></tr>
+    <tr><td>中间绘图区</td><td>波形显示区。曲线可拖动、缩放，支持光标测量</td></tr>
+    <tr><td>右上角指示器</td><td>探针名称、连接状态、实时采样率。点一下可以直接打开采集设置</td></tr>
+  </tbody>
+</table>
+
+<h3>组与绘图区</h3>
+
+<p>组是最高一层容器，分两种类型：</p>
+<ul>
+  <li><strong>Sampling group</strong>（采样组）——变量视图使用，由探针读取</li>
+  <li><strong>Recorder group</strong>（记录器组）——记录器使用，由目标自己采样</li>
+</ul>
+
+<p>只有<strong>活动组</strong>里的变量会被采集。切换活动组就等于切换看哪一批数据。</p>
+
+<div class="warn">
+  <strong>别把记录器组设为活动组</strong>
+  当前实现里，把记录器组切换成活动组会让采集循环去读它的变量，出现意料之外的行为。
+</div>
+</section>
+
+<section id="features">
+<h2>功能清单</h2>
+
+<h3>变量与符号</h3>
+<table>
+  <thead><tr><th>功能</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>从符号文件导入</td><td>一次勾选多个变量，自动填类型与地址</td></tr>
+    <tr><td>手动添加</td><td>只知道名字时使用，之后仍需解析地址</td></tr>
+    <tr><td>更新地址</td><td>重新解析符号文件并刷新所有变量的地址</td></tr>
+    <tr><td>结构体成员与数组元素</td><td>支持按名字取，例如 <code>myStruct.field</code>、<code>waveTable[3]</code></td></tr>
+    <tr><td>符号文件解析器</td><td>可选 <code>gdb</code>（默认、稳定）、<code>libdwarf</code>（实验性）、<code>c2000</code>（TI C2000 系列，需要 ofd2000）</td></tr>
+  </tbody>
+</table>
+
+<h3>变量属性</h3>
+<table>
+  <thead><tr><th>属性</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td>内存类型</td><td><code>u8 / i8 / u16 / i16 / u32 / i32 / f32</code></td></tr>
+    <tr><td>移位与掩码</td><td>先右移再按位与，用来从打包数据里取出某几个位段</td></tr>
+    <tr><td>定点数解释</td><td>按小数位数还原成实际数值</td></tr>
+    <tr><td>枚举标签</td><td>给状态值起名，波形上直接显示含义</td></tr>
+    <tr><td>写值限制</td><td>给写回操作设置上下限，越界拒绝</td></tr>
+  </tbody>
+</table>
+
+<h3>绘图区</h3>
+<table>
+  <thead><tr><th>功能</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>四种类型</td><td><code>curve</code>（曲线）、<code>bar</code>（柱状）、<code>table</code>（表格）、<code>xy</code>（X-Y 图）</td></tr>
+    <tr><td>复制</td><td>单个绘图区可以复制，也可以整个组一起复制</td></tr>
+    <tr><td>跨组复制</td><td>把绘图区从采样组复制到记录器组，或反向</td></tr>
+    <tr><td>光标</td><td>在波形上做测量与读数</td></tr>
+    <tr><td>视图跟随</td><td>是否自动跟随最新数据滚动</td></tr>
+    <tr><td>导出 PNG</td><td>把当前绘图区存成图片，用在没时间整理数据的场合</td></tr>
+    <tr><td>导出 CSV</td><td>把绘图区数据存成表格文件</td></tr>
+  </tbody>
+</table>
+
+<h3>采集与探针</h3>
+<table>
+  <thead><tr><th>项目</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>探针类型</td><td>ST-Link、J-Link、串口、GDB Server</td></tr>
+    <tr><td>采样频率</td><td>设定目标值，界面显示的实测值可能低于它</td></tr>
+    <tr><td>缓冲长度</td><td>每个系列保留多少个样本，受可用内存约束</td></tr>
+    <tr><td>可见时间窗</td><td>波形上显示多长一段，以毫秒计</td></tr>
+    <tr><td>CSV 日志</td><td>采集的同时把数据写成文本文件，每次开始采集新建一个文件</td></tr>
+    <tr><td>探针专属设置</td><td>J-Link 的器件名、速度、可选脚本、网络连接；串口的波特率；GDB Server 的地址与端口</td></tr>
+  </tbody>
+</table>
+
+<h3>记录器</h3>
+<p>记录器有自己独立的窗口，从菜单 <code>Options → Recorder</code> 打开。它不在采集设置窗口里，第一次用容易找错地方。</p>
+<table>
+  <thead><tr><th>项目</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>检测</td><td>读出目标侧记录器的版本、时基、缓冲大小、变量数上限</td></tr>
+    <tr><td>三种模式</td><td><code>run</code>（连续录，保留最新）、<code>normal</code>（等触发，可反复）、<code>single</code>（等触发，只一次）</td></tr>
+    <tr><td>触发</td><td>选一个变量作触发源，设定上下沿与阈值，并指定触发前保留多少样本</td></tr>
+    <tr><td>跳采样</td><td>每跳若干个样本取一个，用来延长可录制的时间跨度</td></tr>
+    <tr><td>下载</td><td>把目标内存里的整块缓冲取回来并还原成波形</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>记录器需要目标侧配合</strong>
+  目标固件里要有配套的参考实现。工程自带 <code>example/recorder_port/</code>，里面是完整的目标侧代码与移植说明。
+</div>
+
+<h3>跟踪视图</h3>
+<table>
+  <thead><tr><th>项目</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>通道类型</td><td>每个通道可设为数字标记，或模拟量（<code>u8/u16/u32/f32</code>）</td></tr>
+    <tr><td>系统时钟</td><td>必须填对，它决定横轴的时间比例</td></tr>
+    <tr><td>预分频</td><td>把 SWO 速率降到探针能承受的范围以内</td></tr>
+  </tbody>
+</table>
+
+<h3>烧录</h3>
+<p>在 <code>Options → Flashing</code> 里配置一条外部烧录命令，把 <code>{file}</code> 放在需要文件名出现的位置。执行输出显示在 Flash Output 窗口里。</p>
+
+<h3>写值</h3>
+<table>
+  <thead><tr><th>方式</th><th>位置</th><th>要求</th></tr></thead>
+  <tbody>
+    <tr><td>表格图写值</td><td><code>table</code> 类型绘图区的 <code>Write value</code> 列</td><td>采集正在运行，填好后按回车下发</td></tr>
+    <tr><td>写值计划器</td><td>Write Planner 窗口</td><td>用于编排一组待写入的值；当前版本只支持编辑与保存，执行部分尚未接通</td></tr>
+    <tr><td>API 写值</td><td>MCP 工具的 <code>set_variable_value</code></td><td>需要在全局配置里打开 API 写权限</td></tr>
+  </tbody>
+</table>
+
+<h3>工程与界面</h3>
+<table>
+  <thead><tr><th>项目</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>工程文件</td><td>保存变量、组、绘图区布局与全部设置，重新打开即可恢复现场</td></tr>
+    <tr><td>最近工程</td><td>File 菜单与启动时可直接打开</td></tr>
+    <tr><td>自动保存</td><td>按时间间隔自动保存当前工程</td></tr>
+    <tr><td>界面语言</td><td>英语、中文</td></tr>
+    <tr><td>界面主题</td><td>深色、浅色</td></tr>
+    <tr><td>字体缩放</td><td>适配高分屏</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="shortcuts">
+<h2>快捷键</h2>
+<table>
+  <thead><tr><th>按键</th><th>作用</th></tr></thead>
+  <tbody>
+    <tr><td><code>空格</code></td><td>开始 / 停止采集</td></tr>
+    <tr><td><code>Ctrl</code> + <code>N</code></td><td>新建工程（采集运行中不可用）</td></tr>
+    <tr><td><code>Ctrl</code> + <code>O</code></td><td>打开工程（采集运行中不可用）</td></tr>
+    <tr><td><code>Ctrl</code> + <code>S</code></td><td>保存工程（采集运行中不可用）</td></tr>
+    <tr><td><code>Ctrl</code> + <code>P</code></td><td>把绘图区保存成 PNG（采集运行中同样可用）</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="automation">
+<h2>自动化接口</h2>
+
+<p class="lede">这个分支在上游基础上增加了两套程序接口，方便脚本与外部系统驱动它。功能开关都在全局配置文件的 <code>api</code> 段里，位置是 <code>%APPDATA%/Variable-Trace/global.json</code>。</p>
+
+<h3>HTTP 接口（MCP）</h3>
+<ul>
+  <li>默认地址 <code>http://127.0.0.1:7807/mcp</code>，只监听本机</li>
+  <li>裸 JSON-RPC，不需要令牌，也不需要先握手</li>
+  <li>提供 46 个工具，覆盖变量、绘图区、组、数据读取、采集、记录器、烧录、工程八大类</li>
+  <li>脚本调用时注意绕开系统代理，否则会拿到代理返回的错误</li>
+</ul>
+
+<h3>命令通道</h3>
+<ul>
+  <li>裸 TCP 行协议，默认端口 <code>7808</code>，默认关闭</li>
+  <li>面向 PLC 与控制台脚本——那些不方便讲 HTTP 的环境</li>
+  <li>每行发一次请求，每行回一次应答，格式是单行 JSON</li>
+  <li>与 HTTP 接口共用同一批工具和同一套参数校验</li>
+</ul>
+
+<div class="note">
+  <strong>多实例并存</strong>
+  同时开多个程序实例时，端口会自动向后寻找空闲值。
+</div>
+</section>
+
+<section id="limits">
+<h2>限制与已知问题</h2>
+
+<h3>能力边界</h3>
+<table>
+  <thead><tr><th>限制</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>只支持 32 位变量</td><td><code>uint64_t</code>、<code>double</code> 暂不支持</td></tr>
+    <tr><td>变量必须是全局或静态</td><td>地址要在程序运行期间固定不变</td></tr>
+    <tr><td>采样率有上限</td><td>变量视图单变量约 4.2 kHz；增加变量会按比例下降</td></tr>
+    <tr><td>SWD 速度并非越快越好</td><td>从 1 MHz 提到 4 MHz 提升明显，4 MHz 往上收益递减</td></tr>
+    <tr><td>记录器需要目标侧代码</td><td>固件里必须集成配套的参考实现</td></tr>
+  </tbody>
+</table>
+
+<h3>已知缺陷</h3>
+<table>
+  <thead><tr><th>现象</th><th>规避方式</th></tr></thead>
+  <tbody>
+    <tr><td>把记录器组设为活动组会导致采集异常</td><td>不要这样操作</td></tr>
+    <tr><td>J-Link 的低端型号记录器带宽被限制在 1 kHz</td><td>使用变量视图；或换用支持高速采样的型号</td></tr>
+    <tr><td>写值计划器只能编辑，不能执行</td><td>用表格图的写值列，或走 API</td></tr>
+    <tr><td>采集刚启动的极短时间里，记录器触发可能不响应</td><td>等采集稳定后再触发</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="faq">
+<h2>常见问题</h2>
+
+<h3>变量地址一直是 NOT FOUND!</h3>
+<ul>
+  <li>符号文件是不是当前编译产物？拷错或者版本旧了都读不到新变量</li>
+  <li>固件是不是以 debug 模式编译的？优化器可能把变量整个消掉</li>
+  <li>变量有没有加 <code>volatile</code>？没有修饰的变量可能被优化进寄存器，内存里根本没有它的位置</li>
+  <li>变量是不是定义在文件作用域？局部变量不在符号表里</li>
+</ul>
+
+<h3>J-Link 连不上</h3>
+<ul>
+  <li>Target name 是否填的是器件基础名，例如 <code>STM32F103C8</code>；带后缀或末尾有空格都会失败</li>
+  <li>目标板是否已供电</li>
+  <li>上一次调试遗留的坏会话可能还占着探针。用 J-Link 自带的命令行工具执行一次连接再断开，通常能清掉</li>
+</ul>
+
+<h3>采样率比设定的低很多</h3>
+<p>界面右上角显示的是实测值，不是设定值。实际速率由每次读内存的往返时间决定，单变量时约 4.2 kHz，之后随变量数线性下降。填再高的目标值也不会超过这个天花板。</p>
+
+<h3>跟踪视图没有数据</h3>
+<ul>
+  <li>System Core Clock 有没有填对</li>
+  <li>预分频是否降到了探针支持的范围以内</li>
+  <li>目标固件里有没有发送 ITM 数据</li>
+  <li>SWO 引脚有没有接上（变量调试用的三根线不够）</li>
+</ul>
+
+<h3>记录器读回来的值不对</h3>
+<ul>
+  <li>先确认 <code>Detect</code> 报出的时基与固件里配的一致</li>
+  <li>采样期间改过组里的变量，会导致目标侧的打包方式与主机预期不符。重新开始一次录制</li>
+  <li>出现 Overrun 提示说明缓冲被覆盖过，减小变量数或者缩短录制时间</li>
+</ul>
+
+<h3>关闭时提示保存工程，程序卡住不动</h3>
+<p>有未保存的改动时会弹出确认框。用脚本自动化时要注意这一点，无人应答会一直等下去。</p>
+</section>
+
+<footer>
+  Variable-Trace 1.1.0 · 基于 Piotr Wasilewski (klonyyy) 的 MCUViewer 1.1.0，GPLv3 许可
+</footer>
+
+</main>
+</div>
+</body>
+</html>

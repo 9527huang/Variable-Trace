@@ -485,6 +485,13 @@ class Gui
 	void drawPlotsTreeSwo();
 
 	bool openWebsite(const char* url);
+
+	/* Opens the user guide. It is a file placed beside the executable when the
+	   project is built, and its path is worked out from the executable rather
+	   than from the working directory, because the program can be started from
+	   anywhere - a shortcut or another directory both leave the working
+	   directory pointing somewhere else. */
+	void openUserGuide();
 };
 
 #endif

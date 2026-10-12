@@ -367,8 +367,18 @@ add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui.ini
     ${CMAKE_BINARY_DIR}/imgui.ini)
 
+# The user guide is opened from the Help menu, so it has to sit beside the
+# executable. The name is kept in ASCII on purpose: the path reaches the shell
+# through an ANSI call, and a name outside that code page comes out mangled.
+add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${CMAKE_CURRENT_SOURCE_DIR}/docs/Variable-Trace-User-Guide.html
+    ${CMAKE_BINARY_DIR}/Variable-Trace-User-Guide.html)
+
 install(TARGETS ${EXECUTABLE} RUNTIME DESTINATION ${INSTALL_PATH} COMPONENT applications)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/imgui.ini DESTINATION ${INSTALL_PATH})
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/imgui.ini
+              ${CMAKE_CURRENT_SOURCE_DIR}/docs/Variable-Trace-User-Guide.html
+        DESTINATION ${INSTALL_PATH})
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stlink/chips DESTINATION ${INSTALL_PATH})
 
 if(WIN32)

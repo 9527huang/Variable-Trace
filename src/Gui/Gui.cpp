@@ -416,6 +416,9 @@ void Gui::drawMenu()
 	}
 	if (ImGui::BeginMenu(I18n::tr("Help")))
 	{
+		if (ImGui::MenuItem(I18n::tr("User Guide")))
+			openUserGuide();
+
 		ImGui::MenuItem(I18n::tr("About"), NULL, &showAboutWindow, active);
 		ImGui::EndMenu();
 	}
