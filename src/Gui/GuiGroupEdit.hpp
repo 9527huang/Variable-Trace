@@ -7,13 +7,14 @@
 #include "I18n.hpp"
 #include "Plot.hpp"
 #include "PlotGroupHandler.hpp"
+#include "VariableHandler.hpp"
 #include "Popup.hpp"
 #include "imgui.h"
 
 class GroupEditWindow
 {
    public:
-	GroupEditWindow(PlotGroupHandler* plotGroupHandler) : plotGroupHandler(plotGroupHandler)
+	GroupEditWindow(PlotGroupHandler* plotGroupHandler, VariableHandler* variableHandler) : plotGroupHandler(plotGroupHandler), variableHandler(variableHandler)
 	{
 	}
 
@@ -81,6 +82,7 @@ class GroupEditWindow
 			if (!plotGroupHandler->checkIfGroupExists(name))
 			{
 				std::string oldName = editedGroup->getName();
+				auto modelLock = variableHandler->lockModel();
 				plotGroupHandler->renameGroup(oldName, name);
 			}
 
@@ -120,7 +122,10 @@ class GroupEditWindow
 				const bool isCurrent = static_cast<int32_t>(index) == currentParent;
 
 				if (ImGui::Selectable(candidates[index].c_str(), isCurrent))
+				{
+					auto modelLock = variableHandler->lockModel();
 					plotGroupHandler->moveGroup(editedGroup->getName(), index == 0 ? "" : candidates[index]);
+				}
 
 				if (isCurrent)
 					ImGui::SetItemDefaultFocus();
@@ -140,6 +145,10 @@ class GroupEditWindow
 	bool showGroupEditWindow = false;
 
 	PlotGroupHandler* plotGroupHandler;
+	/* Renaming or moving a group changes a map the acquisition thread walks
+	   while it works out what to read from the target, so those two changes
+	   go through the lock that models that pairing. */
+	VariableHandler* variableHandler;
 	std::shared_ptr<PlotGroup> editedGroup = nullptr;
 
 	Popup popup;

@@ -46,7 +46,13 @@ namespace mcp
 			if (!parent.empty() && !context.plotGroupHandler->checkIfGroupExists(parent))
 				throw ToolError("Group '" + parent + "' does not exist. Use list_groups to see the available groups.");
 
-			context.plotGroupHandler->addGroup(name, groupType, parent);
+			/* The group map is walked by the acquisition thread while it works
+			   out what to read from the target, so a group cannot be added
+			   underneath that walk. */
+			{
+				auto modelLock = context.variableHandler->lockModel();
+				context.plotGroupHandler->addGroup(name, groupType, parent);
+			}
 
 			return Json::object({{"name", name}, {"type", type}, {"parent", parent}});
 		}
@@ -60,7 +66,11 @@ namespace mcp
 			if (context.plotGroupHandler->checkIfGroupExists(newName))
 				throw ToolError("Group '" + newName + "' already exists.");
 
-			context.plotGroupHandler->renameGroup(resolved, newName);
+			/* A rename moves a node inside a map the acquisition thread walks. */
+			{
+				auto modelLock = context.variableHandler->lockModel();
+				context.plotGroupHandler->renameGroup(resolved, newName);
+			}
 
 			return Json::object({{"name", resolved}, {"new_name", newName}});
 		}
@@ -69,13 +79,22 @@ namespace mcp
 		{
 			const std::string name = requireString(arguments, "name");
 			const std::string resolved = resolveGroupName(context, name);
-			const uint32_t before = static_cast<uint32_t>(context.plotGroupHandler->getGroupCount());
+			/* The removal and the count taken around it belong to the same
+			   change, and the map being changed is one the acquisition thread
+			   walks on every sample. */
+			uint32_t removed = 0;
 
-			context.plotGroupHandler->removeGroup(resolved);
+			{
+				auto modelLock = context.variableHandler->lockModel();
 
-			/* Removing a group takes its nested groups with it, so the count that
-			   disappeared is reported rather than assumed to be one. */
-			const uint32_t removed = before - static_cast<uint32_t>(context.plotGroupHandler->getGroupCount());
+				const uint32_t before = static_cast<uint32_t>(context.plotGroupHandler->getGroupCount());
+
+				context.plotGroupHandler->removeGroup(resolved);
+
+				/* Removing a group takes its nested groups with it, so the count
+				   that disappeared is reported rather than assumed to be one. */
+				removed = before - static_cast<uint32_t>(context.plotGroupHandler->getGroupCount());
+			}
 
 			return Json::object({{"removed", resolved}, {"removed_count", removed}, {"active", context.plotGroupHandler->getActiveGroupName()}});
 		}
@@ -91,18 +110,28 @@ namespace mcp
 			const std::string sourceName = resolveGroupName(context, requireString(arguments, "target"));
 			const std::shared_ptr<PlotGroup> source = context.plotGroupHandler->getGroup(sourceName);
 
-			const uint32_t groupsBefore = static_cast<uint32_t>(context.plotGroupHandler->getGroupCount());
-			const uint32_t plotsBefore = context.plotHandler->getPlotsCount();
+			/* A copy adds to both maps, and the acquisition thread walks both. */
+			uint32_t groups = 0;
+			uint32_t plots = 0;
+			std::string newName;
 
-			const std::string newName = context.plotGroupHandler->copyGroup(sourceName, source->getType(), *context.plotHandler);
+			{
+				auto modelLock = context.variableHandler->lockModel();
+
+				const uint32_t groupsBefore = static_cast<uint32_t>(context.plotGroupHandler->getGroupCount());
+				const uint32_t plotsBefore = context.plotHandler->getPlotsCount();
+
+				newName = context.plotGroupHandler->copyGroup(sourceName, source->getType(), *context.plotHandler);
+
+				/* A copy carries the groups nested in the source along with it,
+				   so the counts are the difference rather than a single group or
+				   plot. */
+				groups = static_cast<uint32_t>(context.plotGroupHandler->getGroupCount()) - groupsBefore;
+				plots = context.plotHandler->getPlotsCount() - plotsBefore;
+			}
 
 			if (newName.empty())
 				throw ToolError("Group '" + sourceName + "' does not exist. Use list_groups to see the available groups.");
-
-			/* A copy carries the groups nested in the source along with it, so
-			   the counts are the difference rather than a single group or plot. */
-			const uint32_t groups = static_cast<uint32_t>(context.plotGroupHandler->getGroupCount()) - groupsBefore;
-			const uint32_t plots = context.plotHandler->getPlotsCount() - plotsBefore;
 
 			return Json::object({{"source", sourceName}, {"group", newName}, {"type", source->getTypeName()}, {"plots", plots}, {"groups", groups}});
 		}

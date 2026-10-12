@@ -83,6 +83,10 @@ class PlotEditWindow
 			if (!plotHandler->checkIfPlotExists(name))
 			{
 				std::string oldName = editedPlot->getName();
+
+				/* A rename moves a node inside both maps, and the acquisition
+				   thread walks both of them. */
+				auto modelLock = variableHandler->lockModel();
 				plotHandler->renamePlot(oldName, name);
 				plotGroupHandler->renamePlotInAllGroups(oldName, name);
 			}

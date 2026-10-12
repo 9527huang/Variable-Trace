@@ -18,6 +18,13 @@ namespace mcp
 			/* PlotHandler::addPlot replaces a plot that already carries the name,
 			   which would throw away its series and the data it collected, so an
 			   existing plot is reused instead. */
+			/* The acquisition thread walks this map on every sample, and the group
+			   the plot lands in is walked beside it, so the insert and that walk
+			   have to be kept apart. This is the lock that models the pairing of
+			   variables with the plots that name them - the same one
+			   add_variable_to_plot takes for the series it adds. */
+			auto modelLock = context.variableHandler->lockModel();
+
 			const bool existed = context.plotHandler->checkIfPlotExists(name);
 			auto plot = existed ? context.plotHandler->getPlot(name) : context.plotHandler->addPlot(name);
 
@@ -45,8 +52,13 @@ namespace mcp
 			if (context.plotHandler->checkIfPlotExists(newName))
 				throw ToolError("Plot '" + newName + "' already exists.");
 
-			context.plotHandler->renamePlot(name, newName);
-			context.plotGroupHandler->renamePlotInAllGroups(name, newName);
+			/* A rename moves a node inside both maps, and the acquisition thread
+			   walks both of them. */
+			{
+				auto modelLock = context.variableHandler->lockModel();
+				context.plotHandler->renamePlot(name, newName);
+				context.plotGroupHandler->renamePlotInAllGroups(name, newName);
+			}
 
 			return Json::object({{"name", name}, {"new_name", newName}});
 		}
@@ -60,6 +72,13 @@ namespace mcp
 			const std::string groupName = resolveGroupName(context, optionalString(arguments, "group").value_or(""));
 
 			requirePlot(context, name);
+
+			/* Taking the plot out of a group, and out of the handler when no
+			   other group refers to it, changes what the acquisition thread
+			   walks on every sample, so the two are kept apart here as well.
+			   The restart below is asked for through a flag rather than through
+			   this lock, so holding it across that call is not a problem. */
+			auto modelLock = context.variableHandler->lockModel();
 
 			context.plotGroupHandler->getGroup(groupName)->removePlot(name);
 

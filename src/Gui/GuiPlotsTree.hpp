@@ -21,7 +21,7 @@ class PlotsTree
    public:
 	PlotsTree(ViewerDataHandler* viewerDataHandler, PlotHandler* plotHandler, PlotGroupHandler* plotGroupHandler, VariableHandler* variableHandler, std::shared_ptr<PlotEditWindow> plotEditWindow, IFileHandler* fileHandler, recorder::RecorderHandler* recorderHandler, spdlog::logger* logger) : viewerDataHandler(viewerDataHandler), plotHandler(plotHandler), plotGroupHandler(plotGroupHandler), variableHandler(variableHandler), plotEditWindow(plotEditWindow), fileHandler(fileHandler), recorderHandler(recorderHandler), logger(logger)
 	{
-		groupEditWindow = std::make_unique<GroupEditWindow>(plotGroupHandler);
+		groupEditWindow = std::make_unique<GroupEditWindow>(plotGroupHandler, variableHandler);
 	}
 	void draw()
 	{
@@ -412,6 +412,17 @@ class PlotsTree
 		const PendingKind action = pending;
 
 		pending = PendingKind::None;
+
+		if (action == PendingKind::None)
+			return;
+
+		/* Every branch below adds or removes a plot or a group, and the
+		   acquisition thread walks both of those maps on every sample while it
+		   rebuilds what it reads from the target. The lock that models the
+		   pairing of variables with the plots that name them is what keeps the
+		   two apart. Nothing reached from here asks for it again, so holding it
+		   across the switch is safe. */
+		auto modelLock = variableHandler->lockModel();
 
 		switch (action)
 		{
