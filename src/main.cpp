@@ -88,6 +88,20 @@ void prepareLogger()
 	spdlog::sinks_init_list sinkList = {std::make_shared<spdlog::sinks::stdout_color_sink_mt>(),
 										std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logDirectory, 5 * 1024 * 1024, 10)};
 	logger = std::make_shared<spdlog::logger>("logger", sinkList.begin(), sinkList.end());
+
+	/* The file sink writes into the buffer of its FILE handle, and this copy
+	   of spdlog leaves the flush level at off, so a line would sit there until
+	   the logger happens to be flushed - which this program only does on the
+	   way out. A run that ends badly, a crash or a process killed from
+	   outside, never reaches that flush, and the log of it would be empty.
+	   The console sink hides this, because it flushes itself on every write.
+
+	   Flushing on every level is what makes the log a record of the runs that
+	   ended badly and not only of the ones that ended well. The volume is
+	   small - the acquisition loop logs nothing per sample - so the cost is
+	   one write syscall per line. */
+	logger->flush_on(spdlog::level::trace);
+
 	spdlog::register_logger(logger);
 }
 
