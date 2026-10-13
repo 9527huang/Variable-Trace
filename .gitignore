@@ -17,6 +17,16 @@ imgui.ini
 analysis/
 
 **/[Dd]ebug/
+
+# 任务视图验证固件的构建产物（源码在 example/rtos_trace_port/）
+example/rtos_trace_port/firmware/build_f*/
+example/rtos_trace_port/firmware/keil/Objects/
+example/rtos_trace_port/firmware/keil/RTE/
+example/rtos_trace_port/firmware/keil/DebugConfig/
+example/rtos_trace_port/firmware/keil/*.lst
+example/rtos_trace_port/firmware/keil/*.uvoptx
+example/rtos_trace_port/firmware/keil/*.uvguix.*
+example/rtos_trace_port/firmware/keil/uv4build.log
 **/[Rr]elease/
 
 test/MCUViewer_test/.settings/
