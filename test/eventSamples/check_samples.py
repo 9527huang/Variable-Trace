@@ -168,15 +168,23 @@ class Rec:
             require(event_type <= MAX_EVENT_TYPE,
                     f"未知事件类型 {event_type}，可能是半写记录")
             if task != 0:
-                require(self.name_of(TASK, task, seq) is not None,
+                require(self.name_of(self.epoch, TASK, task, seq) is not None,
                         f"事件 {seq} 缺少任务字典：{task}")
             object_kind = OBJECT_KIND_BY_EVENT.get(event_type)
             if object_kind is not None and obj != 0:
-                require(self.name_of(object_kind, obj, seq) is not None,
+                require(self.name_of(self.epoch, object_kind, obj, seq) is not None,
                         f"事件 {seq} 缺少对象字典：{obj}")
 
-    def name_of(self, kind, oid, seq):
-        """按编号加序号区间解析名字。"""
+    def name_of(self, epoch, kind, oid, seq):
+        """按 epoch 加编号加序号区间解析名字。
+
+        **epoch 是身份的一部分。** 一份字典只对它自己那个 epoch 的事件有效：
+        新会话允许重置序号并复用编号，所以同一个 (种类, 编号) 在不同 epoch
+        指向不同对象。拿别的 epoch 来查必须解析不出名字，否则两个会话就被
+        串成了一条连续时间线。
+        """
+        if epoch != self.epoch:
+            return None
         for k, st, i, gen, sf, st_, nm in self.dict:
             if k == kind and i == oid and sf <= seq <= st_:
                 return nm
@@ -257,7 +265,7 @@ def main():
             check("序号无缺口", not gap_analysis(rec), "无")
             ts = [e[1] for e in rec.events]
             check("时间戳单调不回绕", all(a < b for a, b in zip(ts, ts[1:])), "逐条")
-            names = {rec.name_of(TASK, e[3], e[0]) for e in rec.events}
+            names = {rec.name_of(rec.epoch, TASK, e[3], e[0]) for e in rec.events}
             check("全部事件能解析出任务名", None not in names,
                   f"{sorted(n for n in names if n)}")
 
@@ -295,8 +303,9 @@ def main():
                 check("有效期内有事件引用它（历史仍显示得出名字）", len(inside) > 0,
                       f"{len(inside)} 条")
                 check("有效期外没有事件引用它", len(outside) == 0, f"{len(outside)} 条")
-                check("按区间能解析出墓碑的名字", rec.name_of(TASK, oid, sf) == nm,
-                      f"得 {rec.name_of(TASK, oid, sf)}")
+                check("按区间能解析出墓碑的名字",
+                      rec.name_of(rec.epoch, TASK, oid, sf) == nm,
+                      f"得 {rec.name_of(rec.epoch, TASK, oid, sf)}")
 
         elif f.startswith("05"):
             same = sorted([d for d in rec.dict if d[0] == QUEUE and d[2] == 1],
@@ -308,12 +317,12 @@ def main():
                 check("名字不同", a[6] != b[6], f"{a[6]} -> {b[6]}")
                 check("序号区间首尾相接无重叠", a[5] + 1 == b[4],
                       f"{a[4]}..{a[5]} 与 {b[4]}..{b[5]}")
-                na = rec.name_of(QUEUE, 1, (a[4] + a[5]) // 2)
-                nb = rec.name_of(QUEUE, 1, b[4] + 1)
+                na = rec.name_of(rec.epoch, QUEUE, 1, (a[4] + a[5]) // 2)
+                nb = rec.name_of(rec.epoch, QUEUE, 1, b[4] + 1)
                 check("同一编号在不同区间解析出不同名字", na != nb,
                       f"{na} vs {nb}")
                 check("老区间里的事件指向老名字",
-                      all(rec.name_of(QUEUE, 1, e[0]) == a[6]
+                      all(rec.name_of(rec.epoch, QUEUE, 1, e[0]) == a[6]
                           for e in rec.events if e[0] <= a[5]),
                       "全对")
 
@@ -416,10 +425,29 @@ def main():
               f"{old.events[-1][0]} -> {new.events[0][0]}")
         check("时间戳在新 epoch 重置", old.events[-1][1] > new.events[0][1],
               f"{old.events[-1][1]} -> {new.events[0][1]}")
-        old_name = old.name_of(TASK, 1, old.events[0][0])
-        new_name = new.name_of(TASK, 1, new.events[0][0])
-        check("相同编号在不同 epoch 解析为不同身份", old_name != new_name,
+        # 前提：两个会话占用了同一个 (种类, 编号)。少了这个前提，下面两条跨
+        # epoch 断言会变成空转 —— 编号都不一样，当然解析不出对方的名字。
+        old_name = old.name_of(old.epoch, TASK, 1, old.events[0][0])
+        new_name = new.name_of(new.epoch, TASK, 1, new.events[0][0])
+        check("两个会话都占用了同一个编号（这是跨 epoch 断言不空转的前提）",
+              old_name is not None and new_name is not None,
               f"{old_name} vs {new_name}")
+        check("同一编号在两个会话指向不同身份", old_name != new_name,
+              f"{old_name} vs {new_name}")
+
+        # 真正的规则：epoch 是身份的边界。把 epoch 从解析里去掉，下面两条会失败。
+        crossed = new.name_of(old.epoch, TASK, 1, new.events[0][0])
+        check("拿旧会话的 epoch 解析新会话的事件必须解析不出", crossed is None,
+              f"用 epoch {old.epoch} 查新会话得 {crossed!r}")
+        crossed = old.name_of(new.epoch, TASK, 1, old.events[0][0])
+        check("拿新会话的 epoch 解析旧会话的事件必须解析不出", crossed is None,
+              f"用 epoch {new.epoch} 查旧会话得 {crossed!r}")
+
+        # 为什么必须靠 epoch：两段序号在模 2^32 下只差一点点，不知道换了会话
+        # 就会把「重开一段」读成「丢了几条事件」。
+        span = (new.events[0][0] - old.events[-1][0]) % (2 ** 32)
+        check("没有 epoch 时这段序号差会被误读成缺口", span < 64,
+              f"旧末 {old.events[-1][0]:#x} 到新首 {new.events[0][0]} 在模 2^32 下只差 {span}")
         print()
 
     # ---- 负例：每个损坏输入都必须因对应契约而被拒绝 ----
