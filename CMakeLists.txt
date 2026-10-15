@@ -288,18 +288,19 @@ set_property(TARGET ${EXECUTABLE} APPEND PROPERTY LINK_DEPENDS
     ${STLINK_CHIP_DATABASE})
 
 set(GIT_VERSION_HPP ${CMAKE_CURRENT_SOURCE_DIR}/src/gitversion.hpp)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-# Add a custom command to generate gitversion.hpp
-add_custom_command(
-    OUTPUT ${GIT_VERSION_HPP}
-    COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR} python3 ${CMAKE_CURRENT_SOURCE_DIR}/launch/addGitVersion.py
+# Run on every build because .git/HEAD does not change when a commit advances
+# the branch it names. The generator only rewrites the header when its content
+# changes, so ordinary incremental builds still avoid recompilation.
+add_custom_target(addGitVersion ALL
+    COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR} ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/launch/addGitVersion.py
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/.git/HEAD
+    BYPRODUCTS ${GIT_VERSION_HPP}
     COMMENT "Generating ${GIT_VERSION_HPP}..."
     VERBATIM
 )
 
-add_custom_target(addGitVersion ALL DEPENDS ${GIT_VERSION_HPP})
 add_dependencies(${EXECUTABLE} addGitVersion)
 
 string(REGEX MATCH "([0-9]+)\\.([0-9]+)\\.([0-9]+)" _ "${VARIABLE_TRACE_VERSION}")

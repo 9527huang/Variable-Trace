@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 # Run git log command to get the hash and format it into a Python file
 git_hash = subprocess.check_output(
@@ -11,7 +12,9 @@ git_hash = subprocess.check_output(
     ]
 ).decode()
 
-# Write the output to a Python file, creating it if it doesn't exist
-file_path = "./src/gitversion.hpp"
-with open(file_path, "w+") as file:
-    file.write(git_hash)
+# Preserve the timestamp when the commit did not change so incremental builds
+# do not recompile the two translation units that include this generated file.
+file_path = Path("./src/gitversion.hpp")
+content = git_hash + "\n"
+if not file_path.exists() or file_path.read_text(encoding="utf-8") != content:
+    file_path.write_text(content, encoding="utf-8", newline="\n")
