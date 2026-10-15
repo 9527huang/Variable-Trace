@@ -24,6 +24,7 @@ add_library(GTest::GTest INTERFACE IMPORTED)
 
 include_directories(${EXECUTABLE}
     ${CMAKE_SOURCE_DIR}/src/
+	${CMAKE_SOURCE_DIR}/src/Gui
     ${CMAKE_SOURCE_DIR}/src/Plot
     ${CMAKE_SOURCE_DIR}/src/PlotHandler
     ${CMAKE_SOURCE_DIR}/src/PlotGroupHandler
@@ -143,6 +144,9 @@ add_executable(${EXECUTABLE} main.cpp
     VariableTest.cpp
     VariableHandlerTest.cpp
     ViewerDataHandlerTest.cpp
+    ViewerDataHandlerPerformanceTest.cpp
+	GuiPerformanceTest.cpp
+	PerformanceDiagnosisTest.cpp
     CSVStreamerTest.cpp
     PlotTest.cpp
     PlotCopyTest.cpp
@@ -163,6 +167,7 @@ add_executable(${EXECUTABLE} main.cpp
     GdbServerDebugProbeTest.cpp
     DebugProbeTypesTest.cpp
     RecorderHandlerTest.cpp
+    RecorderToolsTest.cpp
     ${SOURCES})
 
 add_compile_options(-Wall -Wextra -Wpedantic)

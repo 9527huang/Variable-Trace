@@ -71,8 +71,8 @@ namespace mcp
 
 			/* Both buffers are appended in the same step, so their offsets match and
 			   only the smaller count matters. */
-			const uint32_t count = std::min(bestSeries->buffer->getSize(), timeAxis->getSize());
-			const uint32_t offset = bestSeries->buffer->getOffset();
+			const uint32_t count = std::min(bestSeries->buffer->getCopySize(), timeAxis->getCopySize());
+			const uint32_t offset = bestSeries->buffer->getCopyOffset();
 			const double* values = bestSeries->buffer->getFirstElementCopy();
 			const double* times = timeAxis->getFirstElementCopy();
 

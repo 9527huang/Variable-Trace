@@ -90,7 +90,8 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 				other->setViewFollowsLatestData(false);
 		}
 
-		Plot::Series* ser = plot->getSeriesMap().begin()->second.get();
+		const std::shared_ptr<Plot::Series> serPtr = plot->getSeriesMap().begin()->second;
+		Plot::Series* ser = serPtr.get();
 
 		if (plot->trigger.getState())
 		{
@@ -119,20 +120,33 @@ void Gui::drawPlotCurveSwo(Plot* plot, ScrollingBuffer<double>& time, std::map<s
 		time.copyData();
 		if (ser->visible)
 			ser->buffer->copyData();
-		uint32_t offset = time.getOffset();
-		uint32_t size = time.getSize();
+		uint32_t offset = time.getCopyOffset();
+		uint32_t size = time.getCopySize();
 		mtx->unlock();
+		const uint32_t seriesSize = std::min(size, ser->buffer->getCopySize());
+		const ImPlotRect displayLimits = ImPlot::GetPlotLimits();
+		const uint32_t pixelColumns = std::max(1u, static_cast<uint32_t>(ImPlot::GetPlotSize().x));
 
 		ImPlot::SetNextLineStyle(GuiHelper::traceColor(ser->var->getColor().r, ser->var->getColor().g, ser->var->getColor().b));
 		ImPlot::SetNextFillStyle(GuiHelper::traceColor(ser->var->getColor().r, ser->var->getColor().g, ser->var->getColor().b), 0.25f);
-		ImPlot::PlotStairs(plot->getAlias().c_str(), time.getFirstElementCopy(), ser->buffer->getFirstElementCopy(), size, ImPlotStairsFlags_Shaded, offset, sizeof(double));
+		if (shouldDecimateDisplaySeries(seriesSize, pixelColumns))
+		{
+			const DisplayPoints& display = getDisplayPoints(serPtr, time, seriesSize, offset,
+												 displayLimits.X.Min, displayLimits.X.Max, pixelColumns);
+			if (!display.x.empty())
+				ImPlot::PlotStairs(plot->getAlias().c_str(), display.x.data(), display.y.data(), static_cast<int>(display.x.size()), ImPlotStairsFlags_Shaded);
+			else
+				ImPlot::PlotStairs(plot->getAlias().c_str(), time.getFirstElementCopy(), ser->buffer->getFirstElementCopy(), seriesSize, ImPlotStairsFlags_Shaded, offset, sizeof(double));
+		}
+		else
+			ImPlot::PlotStairs(plot->getAlias().c_str(), time.getFirstElementCopy(), ser->buffer->getFirstElementCopy(), seriesSize, ImPlotStairsFlags_Shaded, offset, sizeof(double));
 
 		/* The dot marks where the first X cursor cut the trace, so it only
 		   exists while that cursor does. */
 		if (plot->drawsXCursors())
 		{
 			const double timepoint = plot->markerX0.getValue();
-			const double value = *(ser->buffer->getFirstElementCopy() + time.getIndexFromvalue(timepoint));
+			const double value = *(ser->buffer->getFirstElementCopy() + time.getCopyIndexFromValue(timepoint));
 
 			ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 3.0f, ImVec4(1, 1, 1, 1), 0.5f);
 			ImPlot::PlotScatter("###point", &timepoint, &value, 1, false);

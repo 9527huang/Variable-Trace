@@ -32,21 +32,33 @@ void Gui::drawAboutWindow()
 			ImGui::LogFinish();
 		}
 
-		ImGui::Dummy(ImVec2(-1, 20 * GuiHelper::contentScale));
-		GuiHelper::drawCenteredText(I18n::tr("by Piotr Wasilewski (klonyyy)"));
-		GuiHelper::drawCenteredText(I18n::tr("based on MCUViewer 1.1.0 (GPLv3)"));
-		GuiHelper::drawCenteredText(I18n::tr("maintained by 2583246961@qq.com"));
-		ImGui::Dummy(ImVec2(-1, 20 * GuiHelper::contentScale));
+		ImGui::Dummy(ImVec2(-1, 18 * GuiHelper::contentScale));
+		GuiHelper::drawCenteredText("LEI HUANG");
+		GuiHelper::drawCenteredText("2583246961@qq.com");
+		ImGui::Dummy(ImVec2(-1, 14 * GuiHelper::contentScale));
+
+		/* This line is not a credit but a statement of what the build is: a
+		   modified version of another work, carried under the licence that work
+		   was released with. The licence asks a modified version to say so, so
+		   the line stays even though the original author's name has been taken
+		   out of the box. */
+		GuiHelper::drawCenteredText(I18n::tr("a modified version of MCUViewer 1.1.0, under the GPLv3"));
+		ImGui::Dummy(ImVec2(-1, 16 * GuiHelper::contentScale));
 
 		const float buttonHeight = 25.0f * GuiHelper::contentScale;
+		const float buttonWidth = 100.0f * GuiHelper::contentScale;
+		const float buttonsWidth = buttonWidth * 3.0f + ImGui::GetStyle().ItemSpacing.x * 2.0f;
 
-		ImGui::SetCursorPosX((ImGui::GetWindowSize().x - 210 * GuiHelper::contentScale) / 2.0f);
+		ImGui::SetCursorPosX((ImGui::GetWindowSize().x - buttonsWidth) / 2.0f);
 
-		if (ImGui::Button(I18n::tr("Releases"), ImVec2(100 * GuiHelper::contentScale, buttonHeight)))
-			openWebsite("https://github.com/klonyyy/MCUViewer/releases");
+		if (ImGui::Button(I18n::tr("Releases"), ImVec2(buttonWidth, buttonHeight)))
+			openWebsite("https://github.com/9527huang/Variable-Trace/releases");
 		ImGui::SameLine();
-		if (ImGui::Button(I18n::tr("Support <3"), ImVec2(100 * GuiHelper::contentScale, buttonHeight)))
-			openWebsite("https://github.com/sponsors/klonyyy");
+		if (ImGui::Button(I18n::tr("Source"), ImVec2(buttonWidth, buttonHeight)))
+			openWebsite("https://github.com/9527huang/Variable-Trace");
+		ImGui::SameLine();
+		if (ImGui::Button(I18n::tr("License"), ImVec2(buttonWidth, buttonHeight)))
+			openWebsite("https://www.gnu.org/licenses/gpl-3.0.html");
 
 		ImGui::SetCursorPos(ImVec2(0, ImGui::GetWindowSize().y - buttonHeight / 2.0f - ImGui::GetFrameHeightWithSpacing()));
 		if (ImGui::Button(I18n::tr("Done"), ImVec2(-1, buttonHeight)) || ImGui::IsKeyPressed(ImGuiKey_Escape))

@@ -151,6 +151,11 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 			linkOpen = false;
 			return isRunning;
 		}
+
+		/* Connecting can leave the core halted before firmware initialization.
+		   Acquisition observes a running target, so resume it before either the
+		   Normal reader or HSS starts consuming memory. */
+		JLINKARM_Go();
 	}
 
 	if (probeSettings.mode == IDebugProbe::Mode::NORMAL)
@@ -299,13 +304,27 @@ std::optional<IDebugProbe::varEntryType> JlinkDebugProbe::readSingleEntry()
 bool JlinkDebugProbe::readMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
 	std::lock_guard<std::mutex> lock(mtx);
-	return (isRunning && JLINKARM_ReadMemEx(address, size, buf, 0) >= 0);
+	if (!isRunning)
+		return false;
+
+	if (JLINKARM_ReadMemEx(address, size, buf, 0) >= 0)
+		return true;
+
+	invalidateLink("reading target memory");
+	return false;
 }
 
 bool JlinkDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
 	std::lock_guard<std::mutex> lock(mtx);
-	return (isRunning && JLINKARM_WriteMemEx(address, size, buf, 0) >= 0);
+	if (!isRunning)
+		return false;
+
+	if (JLINKARM_WriteMemEx(address, size, buf, 0) >= 0)
+		return true;
+
+	invalidateLink("writing target memory");
+	return false;
 }
 
 bool JlinkDebugProbe::readBlock(uint32_t address, uint8_t* buf, uint32_t size)
@@ -314,7 +333,29 @@ bool JlinkDebugProbe::readBlock(uint32_t address, uint8_t* buf, uint32_t size)
 	/* The J-Link moves the whole range in one call, which is what makes the
 	   recorder buffer download bearable: a word at a time would be some eight
 	   thousand round trips for a full buffer. */
-	return (isRunning && size > 0 && JLINKARM_ReadMemEx(address, size, buf, 0) >= 0);
+	if (!isRunning || size == 0)
+		return false;
+
+	if (JLINKARM_ReadMemEx(address, size, buf, 0) >= 0)
+		return true;
+
+	invalidateLink("reading a target memory block");
+	return false;
+}
+
+void JlinkDebugProbe::invalidateLink(const char* operation)
+{
+	lastErrorMsg = std::string("J-Link connection lost while ") + operation + ". Reconnect the probe and start acquisition again.";
+	logger->error(lastErrorMsg);
+
+	/* A USB disconnect invalidates the DLL's session even when keep-connection
+	   was requested. Closing that session here makes linkOpen describe reality,
+	   so the next Start opens the re-enumerated probe instead of reusing a dead
+	   handle. */
+	JLINKARM_Close();
+	isRunning = false;
+	linkOpen = false;
+	openedLink.clear();
 }
 
 std::string JlinkDebugProbe::getLastErrorMsg() const

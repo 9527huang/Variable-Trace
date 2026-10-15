@@ -704,7 +704,7 @@ namespace
 			 {"add_variable", "remove_variable", "configure_variable", "refresh_variable_addresses", "set_elf_path", "set_sampling",
 			  "set_elf_parser", "set_logging"}},
 			{"recorder", {"set_recorder_enabled", "detect_recorder", "get_recorder_settings", "set_recorder_mode", "set_recorder_trigger",
-						  "set_recorder_downsampling"}},
+						  "set_recorder_downsampling", "start_recorder", "download_recorder", "stop_recorder"}},
 			{"acquisition", {"set_debug_probe", "configure_probe", "start_acquisition", "stop_acquisition", "get_acquisition_state"}},
 			{"data", {"get_variable_value", "get_variable_stats", "set_variable_value", "get_curve_data"}},
 			{"flashing", {"flash", "get_flash_status", "abort_flash", "get_flash_settings", "set_flash_settings"}},
@@ -726,7 +726,7 @@ namespace
 		}
 
 		EXPECT_EQ(registered.size(), expected.size());
-		EXPECT_EQ(registered.size(), 46u);
+		EXPECT_EQ(registered.size(), 49u);
 	}
 
 	TEST_F(ServerTest, EveryToolDescribesItsArguments)
@@ -874,7 +874,7 @@ namespace
 
 		const Json listing = server->handleMessage(Json::object({{"jsonrpc", "2.0"}, {"id", 2}, {"method", "tools/list"}}));
 		ASSERT_TRUE(listing.contains("result"));
-		EXPECT_EQ(listing.at("result").at("tools").size(), 46u);
+		EXPECT_EQ(listing.at("result").at("tools").size(), 49u);
 
 		const Json ping = server->handleMessage(Json::object({{"jsonrpc", "2.0"}, {"id", 3}, {"method", "ping"}}));
 		EXPECT_EQ(ping.at("result"), Json::object({}));

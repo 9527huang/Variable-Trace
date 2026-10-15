@@ -38,28 +38,45 @@ bool Gui::syncRecorderSymbols()
 	   detect rather than remembered, because an import that happens later would
 	   otherwise leave the previous addresses in place.
 
-	   Absence is the normal state before an *.elf with the recorder sources has
-	   been imported, and getVariable throws on a name it does not hold, so the
-	   table is asked first. */
+	   The structures are deliberately not ordinary Variables: their aggregate
+	   type cannot be plotted, but their base addresses are still part of the
+	   parser's symbol table. Older parsers exposed them as Variables, so that
+	   path remains as a compatibility fallback. */
 	static constexpr const char* settingsName = "____recorderSettings";
 	static constexpr const char* recorderName = "____recorder";
 	static constexpr const char* driverName = "____serialDriverSettings";
 
-	if (!variableHandler->contains(settingsName) || !variableHandler->contains(recorderName))
+	auto addressOf = [this](const std::string& name) -> uint32_t
+	{
+		if (variableHandler->contains(name))
+			return variableHandler->getVariable(name)->getAddress();
+
+		if (mcpElfParser != nullptr)
+		{
+			const IElfParser::SymbolMap symbols = mcpElfParser->getParsedData();
+			const auto found = symbols.find(name);
+			if (found != symbols.end())
+				return found->second.address;
+		}
+
+		return 0;
+	};
+
+	const uint32_t settingsAddress = addressOf(settingsName);
+	const uint32_t recorderAddress = addressOf(recorderName);
+
+	if (settingsAddress == 0 || recorderAddress == 0)
 	{
 		recorderHandler->clearSymbols();
 		return false;
 	}
 
-	recorderHandler->setSymbols(variableHandler->getVariable(settingsName)->getAddress(),
-								variableHandler->getVariable(recorderName)->getAddress());
+	recorderHandler->setSymbols(settingsAddress, recorderAddress);
 
 	/* The serial driver is a separate structure and its absence is not a
 	   failure: a firmware built for a hardware probe has no serial driver, and
 	   the recorder still works over that probe. */
-	recorderHandler->setDriverSymbol(variableHandler->contains(driverName)
-										 ? variableHandler->getVariable(driverName)->getAddress()
-										 : 0);
+	recorderHandler->setDriverSymbol(addressOf(driverName));
 
 	return true;
 }

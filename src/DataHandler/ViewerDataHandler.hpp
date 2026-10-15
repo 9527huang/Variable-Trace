@@ -1,20 +1,71 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "DataHandlerBase.hpp"
 #include "IDebugProbe.hpp"
 #include "MovingAverage.hpp"
+#include "PerformanceDiagnosis.hpp"
 #include "VariableHandler.hpp"
 
 class ViewerDataHandler : public DataHandlerBase
 {
    public:
+		/* A lock-free snapshot of the work done by the current acquisition run.
+		   Durations are cumulative nanoseconds so callers can calculate their own
+		   windows without putting formatting or logging on the sampling thread. */
+		struct PerformanceMetrics
+		{
+			uint64_t runId = 0;
+			uint64_t requestedSamples = 0;
+			uint64_t completedSamples = 0;
+			uint64_t failedSamples = 0;
+			uint64_t deadlineMisses = 0;
+			uint64_t skippedSamplePeriods = 0;
+			uint64_t maxDeadlineLatenessNs = 0;
+			uint64_t schedulerSleepNs = 0;
+			uint64_t probeCalls = 0;
+			uint64_t successfulProbeCalls = 0;
+			uint64_t bytesRead = 0;
+			uint64_t probeLockWaitNs = 0;
+			uint64_t probeReadNs = 0;
+			uint64_t modelLockWaitNs = 0;
+			uint64_t sharedBufferLockWaitNs = 0;
+			uint64_t modelUpdateNs = 0;
+			uint64_t csvSubmitNs = 0;
+			uint64_t csvFormatNs = 0;
+			uint64_t csvWriteNs = 0;
+			uint64_t csvMaxWriterLagNs = 0;
+			uint64_t csvEnqueuedSamples = 0;
+			uint64_t csvWrittenSamples = 0;
+			uint64_t csvRejectedSamples = 0;
+			uint64_t csvFailedSamples = 0;
+			uint64_t csvIoErrors = 0;
+			uint64_t csvQueueDepth = 0;
+			uint64_t csvQueueHighWaterMark = 0;
+			uint64_t csvQueueCapacity = 0;
+			uint64_t csvFailureAtUnixMs = 0;
+			std::string csvFailureReason;
+			std::string csvErrorMessage;
+			std::string csvFilePath;
+			uint64_t elapsedNs = 0;
+			uint32_t sampledVariables = 0;
+			uint32_t plannedProbeCallsPerSample = 0;
+			uint32_t mergedReadSpans = 0;
+			bool mergedReadsEnabled = true;
+			bool csvActive = false;
+			bool csvOverloaded = false;
+			bool csvAsynchronous = true;
+		};
+
 	static constexpr uint32_t minSamplinFrequencyHz = 1;
 	static constexpr uint32_t maxSamplinFrequencyHz = 1000000;
 
@@ -49,6 +100,9 @@ class ViewerDataHandler : public DataHandlerBase
 		   interface answers to. */
 		std::string elfParser = "gdb";
 		std::string ofd2000Command = "ofd2000";
+		/* P1 safety switch. Disabled uses the original one-read-per-variable
+		   path, which also provides an A/B baseline and an emergency fallback. */
+		bool mergeContiguousReads = true;
 	} Settings;
 
 	ViewerDataHandler(PlotGroupHandler* plotGroupHandler, VariableHandler* variableHandler, PlotHandler* plotHandler, PlotHandler* tracePlotHandler, std::atomic<bool>& done, std::mutex* mtx, spdlog::logger* logger);
@@ -114,12 +168,49 @@ class ViewerDataHandler : public DataHandlerBase
 		return 0.0;
 	}
 
+		PerformanceMetrics getPerformanceMetrics() const;
+		PerformanceDiagnosis getPerformanceDiagnosis(const PerformanceGuiMetrics& gui = {}) const;
+		uint64_t getPerformanceRunId() const { return metricsRunId.load(std::memory_order_relaxed); }
+
    private:
 	using SampleListType = std::vector<std::pair<uint32_t, uint8_t>>;
+	struct ReadSpan
+	{
+		uint32_t address = 0;
+		uint32_t size = 0;
+		bool merged = false;
+		SampleListType samples;
+		std::vector<uint8_t> buffer;
+	};
+	using ReadPlanType = std::vector<ReadSpan>;
+	struct SampledVariable
+	{
+		std::shared_ptr<Variable> variable;
+		size_t sampleIndex = 0;
+	};
+	using SampledVariableList = std::vector<SampledVariable>;
+	struct ActivePlot
+	{
+		std::shared_ptr<Plot> plot;
+		std::vector<std::shared_ptr<Plot::Series>> visibleSeries;
+		bool updateXAxis = false;
+	};
+	using ActivePlotList = std::vector<ActivePlot>;
+	struct CsvColumn
+	{
+		std::string name;
+		std::shared_ptr<Variable> variable;
+	};
 
 	void updateVariables(double timestamp, const std::unordered_map<uint32_t, double>& values);
+	void updateVariables(double timestamp, const std::vector<double>& values, const std::vector<uint8_t>& valid);
 	void dataHandler();
 	void prepareCSVFile();
+	void resetPerformanceMetrics();
+	void buildReadPlan();
+	bool readNormalSample(std::vector<double>& rawValues, std::vector<uint8_t>& valid);
+	bool readExactSamples(std::vector<double>& rawValues, std::vector<uint8_t>& valid);
+	bool readProbe(uint32_t address, uint8_t* buffer, uint32_t size, bool block);
 
 	/* Builds the list of addresses read from the target out of the plots of the
 	   active group, and reports whether it came out different from the one in
@@ -136,11 +227,41 @@ class ViewerDataHandler : public DataHandlerBase
 	MovingAverage samplingPeriodFilter{1000};
 	double averageSamplingPeriod = 0.0;
 	Settings settings{};
-	std::unordered_map<std::string, double> csvEntry;
 	std::string lastWriteError;
 
 	/* See lockProbe(). Guards the probe and everything reached through it. */
 	std::mutex probeMutex;
 
 	SampleListType sampleList;
+	std::unordered_map<uint32_t, size_t> sampleIndexByAddress;
+	ReadPlanType readPlan;
+	std::vector<double> normalRawValues;
+	std::vector<uint8_t> normalRawValid;
+	SampledVariableList sampledVariables;
+	ActivePlotList activePlots;
+	std::vector<CsvColumn> csvColumns;
+	std::vector<double> csvValues;
+	std::atomic<bool> mergeContiguousReadsEnabled{true};
+
+		std::atomic<uint64_t> metricsRunId{0};
+		std::atomic<uint64_t> metricsRequestedSamples{0};
+		std::atomic<uint64_t> metricsCompletedSamples{0};
+		std::atomic<uint64_t> metricsFailedSamples{0};
+		std::atomic<uint64_t> metricsDeadlineMisses{0};
+		std::atomic<uint64_t> metricsSkippedSamplePeriods{0};
+		std::atomic<uint64_t> metricsMaxDeadlineLatenessNs{0};
+		std::atomic<uint64_t> metricsSchedulerSleepNs{0};
+		std::atomic<uint64_t> metricsProbeCalls{0};
+		std::atomic<uint64_t> metricsSuccessfulProbeCalls{0};
+		std::atomic<uint64_t> metricsBytesRead{0};
+		std::atomic<uint64_t> metricsProbeLockWaitNs{0};
+		std::atomic<uint64_t> metricsProbeReadNs{0};
+		std::atomic<uint64_t> metricsModelLockWaitNs{0};
+		std::atomic<uint64_t> metricsSharedBufferLockWaitNs{0};
+		std::atomic<uint64_t> metricsModelUpdateNs{0};
+		std::atomic<uint64_t> metricsCsvSubmitNs{0};
+		std::atomic<uint64_t> metricsElapsedNs{0};
+		std::atomic<uint32_t> metricsSampledVariables{0};
+		std::atomic<uint32_t> metricsPlannedProbeCallsPerSample{0};
+		std::atomic<uint32_t> metricsMergedReadSpans{0};
 };

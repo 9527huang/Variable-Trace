@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -198,4 +200,162 @@ TEST_F(CSVStreamerTest, EveryRunGetsAFileOfItsOwn)
 
 	EXPECT_EQ(contents[0], "time,adc\n1.000000,1.500000\n");
 	EXPECT_EQ(contents[1], "time,adc\n2.000000,2.500000\n");
+}
+
+TEST_F(CSVStreamerTest, AsyncWriterDrainsEveryAcceptedBinarySampleOnStop)
+{
+	CSVStreamer streamer(logger.get());
+	ASSERT_TRUE(streamer.prepareFile(directory.string()));
+	streamer.createHeader({"adc", "dac"});
+
+	for (uint32_t index = 0; index < 500; ++index)
+		ASSERT_TRUE(streamer.writeLine(static_cast<double>(index), {static_cast<double>(index), -static_cast<double>(index)}));
+
+	streamer.finishLogging();
+	const CSVStreamer::Metrics metrics = streamer.getMetrics();
+	EXPECT_EQ(metrics.enqueuedSamples, 500u);
+	EXPECT_EQ(metrics.writtenSamples, 500u);
+	EXPECT_EQ(metrics.rejectedSamples, 0u);
+	EXPECT_EQ(metrics.queueDepth, 0u);
+	EXPECT_GT(metrics.formatNs, 0u);
+	EXPECT_GT(metrics.writeNs, 0u);
+	EXPECT_FALSE(metrics.active);
+
+	const std::string content = readFile(logFileIn(directory));
+	EXPECT_EQ(static_cast<size_t>(std::count(content.begin(), content.end(), '\n')), 501u);
+	EXPECT_TRUE(content.starts_with("time,adc,dac\n0.000000,0.000000,-0.000000\n"));
+}
+
+TEST_F(CSVStreamerTest, SlowWriterOverloadStopsLoggingWithoutDiscardingAcceptedRows)
+{
+	CSVStreamer::Options options;
+	options.queueCapacity = 2;
+	options.simulatedWriteDelay = std::chrono::milliseconds(50);
+	CSVStreamer streamer(logger.get(), "slow", options);
+
+	ASSERT_TRUE(streamer.prepareFile(directory.string()));
+	streamer.createHeader({"adc"});
+	std::this_thread::sleep_for(std::chrono::milliseconds(75));
+
+	bool rejected = false;
+	for (uint32_t index = 0; index < 1000; ++index)
+		rejected = !streamer.writeLine(static_cast<double>(index), {static_cast<double>(index)}) || rejected;
+	EXPECT_TRUE(rejected);
+
+	streamer.finishLogging();
+	const CSVStreamer::Metrics metrics = streamer.getMetrics();
+	EXPECT_TRUE(metrics.overloaded);
+	EXPECT_EQ(metrics.failureReason, CSVStreamer::FailureReason::QueueOverload);
+	EXPECT_GT(metrics.failureAtUnixMs, 0u);
+	EXPECT_FALSE(metrics.errorMessage.empty());
+	EXPECT_EQ(metrics.queueCapacity, options.queueCapacity);
+	EXPECT_GT(metrics.rejectedSamples, 0u);
+	EXPECT_LE(metrics.queueHighWaterMark, options.queueCapacity);
+	EXPECT_EQ(metrics.writtenSamples, metrics.enqueuedSamples);
+	EXPECT_EQ(metrics.queueDepth, 0u);
+
+	const std::string content = readFile(logFileIn(directory));
+	EXPECT_EQ(static_cast<uint64_t>(std::count(content.begin(), content.end(), '\n')), metrics.writtenSamples + 1);
+}
+
+TEST_F(CSVStreamerTest, OpenFailureIsExposedWithoutAcceptingSamples)
+{
+	CSVStreamer::Options options;
+	options.simulateOpenFailure = true;
+	CSVStreamer streamer(logger.get(), "open-failure", options);
+
+	EXPECT_FALSE(streamer.prepareFile(directory.string()));
+	EXPECT_FALSE(streamer.writeLine(1.0, std::vector<double>{1.5}));
+
+	const CSVStreamer::Metrics metrics = streamer.getMetrics();
+	EXPECT_EQ(metrics.failureReason, CSVStreamer::FailureReason::OpenFailed);
+	EXPECT_EQ(metrics.ioErrors, 1u);
+	EXPECT_EQ(metrics.rejectedSamples, 1u);
+	EXPECT_GT(metrics.failureAtUnixMs, 0u);
+	EXPECT_FALSE(metrics.errorMessage.empty());
+	EXPECT_FALSE(metrics.filePath.empty());
+	EXPECT_FALSE(metrics.active);
+}
+
+TEST_F(CSVStreamerTest, WriteFailureDrainsAcceptedSamplesAndReturnsFromStop)
+{
+	CSVStreamer::Options options;
+	options.queueCapacity = 256;
+	options.simulatedWriteDelay = std::chrono::milliseconds(20);
+	options.failWriteAfterBatches = 0;
+	CSVStreamer streamer(logger.get(), "write-failure", options);
+
+	ASSERT_TRUE(streamer.prepareFile(directory.string()));
+	for (uint32_t index = 0; index < 100; ++index)
+		ASSERT_TRUE(streamer.writeLine(static_cast<double>(index), {static_cast<double>(index)}));
+	streamer.finishLogging();
+
+	const CSVStreamer::Metrics metrics = streamer.getMetrics();
+	EXPECT_EQ(metrics.failureReason, CSVStreamer::FailureReason::WriteFailed);
+	EXPECT_EQ(metrics.ioErrors, 1u);
+	EXPECT_GT(metrics.failedSamples, 0u);
+	EXPECT_EQ(metrics.writtenSamples + metrics.failedSamples, metrics.enqueuedSamples);
+	EXPECT_EQ(metrics.queueDepth, 0u);
+	EXPECT_FALSE(metrics.active);
+}
+
+TEST_F(CSVStreamerTest, LoggingCanRestartAfterAnOverload)
+{
+	CSVStreamer::Options options;
+	options.queueCapacity = 1;
+	options.simulatedWriteDelay = std::chrono::milliseconds(20);
+	CSVStreamer streamer(logger.get(), "restart", options);
+
+	ASSERT_TRUE(streamer.prepareFile(directory.string()));
+	for (uint32_t index = 0; index < 100 && streamer.writeLine(index, {static_cast<double>(index)}); ++index)
+	{
+	}
+	streamer.finishLogging();
+	ASSERT_EQ(streamer.getMetrics().failureReason, CSVStreamer::FailureReason::QueueOverload);
+
+	ASSERT_TRUE(streamer.prepareFile(directory.string()));
+	ASSERT_TRUE(streamer.writeLine(1.0, std::vector<double>{1.5}));
+	streamer.finishLogging();
+
+	const CSVStreamer::Metrics metrics = streamer.getMetrics();
+	EXPECT_EQ(metrics.failureReason, CSVStreamer::FailureReason::None);
+	EXPECT_EQ(metrics.enqueuedSamples, 1u);
+	EXPECT_EQ(metrics.writtenSamples, 1u);
+	EXPECT_EQ(metrics.rejectedSamples, 0u);
+}
+
+TEST_F(CSVStreamerTest, SlowDiskDoesNotBlockTheProducerHotPath)
+{
+	CSVStreamer::Options options;
+	options.queueCapacity = 256;
+	options.simulatedWriteDelay = std::chrono::milliseconds(50);
+	CSVStreamer streamer(logger.get(), "slow-producer", options);
+
+	ASSERT_TRUE(streamer.prepareFile(directory.string()));
+	const auto began = std::chrono::steady_clock::now();
+	for (uint32_t index = 0; index < 128; ++index)
+		ASSERT_TRUE(streamer.writeLine(index, {static_cast<double>(index)}));
+	const auto submitTime = std::chrono::steady_clock::now() - began;
+	streamer.finishLogging();
+
+	EXPECT_LT(submitTime, std::chrono::milliseconds(100));
+	EXPECT_EQ(streamer.getMetrics().writtenSamples, 128u);
+}
+
+TEST_F(CSVStreamerTest, SynchronousFallbackKeepsTheSameFileFormat)
+{
+	CSVStreamer::Options options;
+	options.mode = CSVStreamer::WriteMode::Synchronous;
+	CSVStreamer streamer(logger.get(), "sync", options);
+
+	ASSERT_TRUE(streamer.prepareFile(directory.string()));
+	streamer.createHeader({"adc"});
+	ASSERT_TRUE(streamer.writeLine(1.0, std::vector<double>{1.5}));
+	streamer.finishLogging();
+
+	const CSVStreamer::Metrics metrics = streamer.getMetrics();
+	EXPECT_EQ(metrics.mode, CSVStreamer::WriteMode::Synchronous);
+	EXPECT_EQ(metrics.enqueuedSamples, 1u);
+	EXPECT_EQ(metrics.writtenSamples, 1u);
+	EXPECT_EQ(readFile(logFileIn(directory)), "time,adc\n1.000000,1.500000\n");
 }

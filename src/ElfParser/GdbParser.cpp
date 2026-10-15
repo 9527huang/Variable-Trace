@@ -128,6 +128,20 @@ bool GdbParser::updateVariableMap(const std::string& elfPath)
 		found.emplace_back(var, maybeAddress.value(), checkType(trackedName, nullptr));
 	}
 
+	/* A project refresh asks only about Variables already in the project. The
+	   Recorder structures are intentionally not Variables, but their addresses
+	   still have to follow a newly linked image. Query them while this GDB
+	   session is open and keep them in the parser's internal symbol table. */
+	for (const char* name : {"____recorderSettings", "____recorder", "____serialDriverSettings"})
+	{
+		const std::optional<uint32_t> address = checkAddress(name);
+		std::lock_guard<std::mutex> lock(mtx);
+		if (address.has_value())
+			parsedData[name] = Symbol{*address, Variable::Type::UNKNOWN};
+		else
+			parsedData.erase(name);
+	}
+
 	/* Written back together, and under the lock, for the reason above.
 
 	   A variable the reader deleted while this was running is written into as
@@ -250,6 +264,17 @@ void GdbParser::checkVariableType(const std::string& name)
 
 	if (!maybeAddress.has_value())
 		return;
+
+	/* These are opaque protocol structures rather than values the Variable
+	   Viewer can display, but Recorder needs their base addresses. Preserve
+	   them as internal UNKNOWN symbols instead of dropping them with the other
+	   unsupported aggregate types. */
+	if (name == "____recorderSettings" || name == "____recorder" || name == "____serialDriverSettings")
+	{
+		std::lock_guard<std::mutex> lock(mtx);
+		parsedData[name] = Symbol{maybeAddress.value(), Variable::Type::UNKNOWN};
+		return;
+	}
 
 	std::string out;
 	const Variable::Type type = checkType(name, &out);

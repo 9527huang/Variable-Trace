@@ -78,6 +78,9 @@ namespace
 
 		bool readMemory(uint32_t, uint8_t* buf, uint32_t size) override
 		{
+			if (failReads.load())
+				return false;
+
 			/* The caller hands over the address of a four byte value, so a
 			   wider read than that is one it could not hold. */
 			for (uint32_t index = 0; index < size && index < sizeof(uint32_t); index++)
@@ -105,6 +108,7 @@ namespace
 		std::chrono::milliseconds startDelay{};
 		std::atomic<uint32_t> attachments{0};
 		std::atomic<uint32_t> detachments{0};
+		std::atomic<bool> failReads{false};
 	};
 
 	class ViewerDataHandlerTest : public ::testing::Test
@@ -343,6 +347,64 @@ TEST_F(ViewerDataHandlerTest, WhatIsReadChangesWithoutTheProbeBeingPutDown)
 	EXPECT_TRUE(variableHandler.getVariable("second")->getIsCurrentlySampled());
 	EXPECT_EQ(stub->attachments.load(), 1u);
 	EXPECT_EQ(stub->detachments.load(), 0u);
+}
+
+TEST_F(ViewerDataHandlerTest, ATargetRawValueIsConvertedWhenCsvIsOff)
+{
+	startSampling(200);
+	ASSERT_TRUE(waitForSamples(5));
+
+	{
+		auto modelLock = variableHandler.lockModel();
+		variableHandler.getVariable("adc")->setType(Variable::Type::U32);
+	}
+
+	viewerDataHandler->requestRestart();
+	const uint32_t before = sampleCount();
+	ASSERT_TRUE(waitForSamples(before + 5));
+
+	/* StubDebugProbe returns 00 01 02 03. The displayed value must be updated
+	   even though logging is disabled; CSV must not be the conversion trigger. */
+	EXPECT_EQ(variableHandler.getVariable("adc")->getValue(), 0x03020100u);
+}
+
+TEST_F(ViewerDataHandlerTest, AFailedTargetReadStopsWithoutAppendingAnInvalidSample)
+{
+	startSampling(200);
+	ASSERT_TRUE(waitForSamples(5));
+
+	stub->failReads.store(true);
+	ASSERT_TRUE(waitUntil([this] { return viewerDataHandler->getStateImmediate() == DataHandlerBase::State::STOP; }));
+
+	const ViewerDataHandler::PerformanceMetrics metrics = viewerDataHandler->getPerformanceMetrics();
+	EXPECT_EQ(metrics.failedSamples, 1u);
+	EXPECT_EQ(sampleCount(), metrics.completedSamples);
+}
+
+TEST_F(ViewerDataHandlerTest, RepeatedBindingRebuildsKeepSamplingWhileSeriesAreRemoved)
+{
+	startSampling(1000);
+	ASSERT_TRUE(waitForSamples(20));
+	const uint32_t before = sampleCount();
+
+	for (uint32_t index = 0; index < 50; ++index)
+	{
+		const std::string name = "temporary" + std::to_string(index);
+		attachAnotherVariable(name, 0x20002000 + index * sizeof(uint32_t));
+		viewerDataHandler->requestRestart();
+
+		{
+			auto modelLock = variableHandler.lockModel();
+			plot->removeSeries(name);
+		}
+		variableHandler.erase(name);
+		viewerDataHandler->requestRestart();
+	}
+
+	ASSERT_TRUE(waitForSamples(before + 50));
+	const auto metrics = viewerDataHandler->getPerformanceMetrics();
+	EXPECT_EQ(metrics.failedSamples, 0u);
+	EXPECT_EQ(stub->attachments.load(), 1u);
 }
 
 /* The serial driver sweeps a list this process sends it, so a change to that

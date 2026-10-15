@@ -10,12 +10,14 @@
 #include <string>
 #include <thread>
 #include <unordered_set>
+#include <unordered_map>
 
 #include "ConfigHandler.hpp"
 #include "CursorRenderer.hpp"
 #include "ElfTarget.hpp"
 #include "FlashingService.hpp"
 #include "GlobalConfig.hpp"
+#include "GuiPerformance.hpp"
 #include "GuiPlotEdit.hpp"
 #include "GuiPlotsTree.hpp"
 #include "GuiVarTable.hpp"
@@ -29,6 +31,7 @@
 #include "JlinkDebugProbe.hpp"
 #include "JlinkTraceProbe.hpp"
 #include "Plot.hpp"
+#include "DisplayDecimator.hpp"
 #include "PlotExport.hpp"
 #include "PlotGroupHandler.hpp"
 #include "Popup.hpp"
@@ -297,7 +300,7 @@ class Gui
 	void acqusitionSettingsViewer();
 
 	template <typename Settings>
-	void drawLoggingSettings(PlotHandler* handler, Settings& settings);
+	void drawLoggingSettings(DataHandlerBase* dataHandler, Settings& settings);
 	void drawElfSettings(ViewerDataHandler::Settings& settings);
 
 	void drawAboutWindow();
@@ -333,6 +336,20 @@ class Gui
 	void drawPlotBar(std::shared_ptr<Plot> plot);
 	void drawPlotTable(std::shared_ptr<Plot> plot);
 	void drawPlotXY(std::shared_ptr<Plot> plot);
+	struct DisplaySnapshot
+	{
+		std::weak_ptr<Plot::Series> owner;
+		uint64_t xGeneration = 0;
+		uint64_t yGeneration = 0;
+		double xMin = 0.0;
+		double xMax = 0.0;
+		uint32_t pixelColumns = 0;
+		DisplayPoints points;
+	};
+	const DisplayPoints& getDisplayPoints(const std::shared_ptr<Plot::Series>& series, const ScrollingBuffer<double>& time,
+										  uint32_t count, uint32_t offset, double xMin, double xMax, uint32_t pixelColumns);
+	std::unordered_map<const Plot::Series*, DisplaySnapshot> displaySnapshots;
+	GuiPerformanceTracker guiPerformance;
 	void handleDragRect(uint32_t id, Plot::DragRect& dragRect, ImPlotRect plotLimits);
 	void dragAndDropPlot(std::shared_ptr<Plot> plot);
 

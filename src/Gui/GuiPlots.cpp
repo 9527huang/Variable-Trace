@@ -5,6 +5,32 @@
 #include <string>
 #include <unordered_map>
 
+const DisplayPoints& Gui::getDisplayPoints(const std::shared_ptr<Plot::Series>& series, const ScrollingBuffer<double>& time,
+											 uint32_t count, uint32_t offset, double xMin, double xMax, uint32_t pixelColumns)
+{
+	DisplaySnapshot& snapshot = displaySnapshots[series.get()];
+	const uint64_t xGeneration = time.getCopyGeneration();
+	const uint64_t yGeneration = series->buffer->getCopyGeneration();
+	const bool sameOwner = snapshot.owner.lock().get() == series.get();
+
+	if (!sameOwner || snapshot.xGeneration != xGeneration || snapshot.yGeneration != yGeneration ||
+		snapshot.xMin != xMin || snapshot.xMax != xMax || snapshot.pixelColumns != pixelColumns)
+	{
+		const auto decimationStarted = std::chrono::steady_clock::now();
+		snapshot.owner = series;
+		snapshot.xGeneration = xGeneration;
+		snapshot.yGeneration = yGeneration;
+		snapshot.xMin = xMin;
+		snapshot.xMax = xMax;
+		snapshot.pixelColumns = pixelColumns;
+		decimateDisplaySeries(time.getFirstElementCopy(), series->buffer->getFirstElementCopy(),
+								count, offset, xMin, xMax, pixelColumns, snapshot.points);
+		guiPerformance.recordDecimation(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - decimationStarted).count()));
+	}
+
+	return snapshot.points;
+}
+
 void Gui::dragAndDropPlot(std::shared_ptr<Plot> plot)
 {
 	if (ImPlot::BeginDragDropTargetPlot())
@@ -250,17 +276,18 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 
 		/* make thread safe copies of buffers - TODO refactor */
 		mtx->lock();
-		time.copyData();
+		if (time.copyData())
+			guiPerformance.recordSnapshotCopy(static_cast<uint64_t>(time.getCopySize()) * sizeof(double));
 		for (auto& [key, serPtr] : seriesMap)
 		{
 			if (!serPtr->visible)
 				continue;
-			serPtr->buffer->copyData();
+			if (serPtr->buffer->copyData())
+				guiPerformance.recordSnapshotCopy(static_cast<uint64_t>(serPtr->buffer->getCopySize()) * sizeof(double));
 		}
-		uint32_t offset = time.getOffset();
-		uint32_t size = time.getSize();
+		uint32_t offset = time.getCopyOffset();
+		uint32_t size = time.getCopySize();
 		mtx->unlock();
-
 		for (auto& [key, serPtr] : seriesMap)
 		{
 			if (!serPtr->visible)
@@ -268,7 +295,9 @@ void Gui::drawPlotXY(std::shared_ptr<Plot> plot)
 
 			ImPlot::SetNextLineStyle(GuiHelper::traceColor(serPtr->var->getColor().r, serPtr->var->getColor().g, serPtr->var->getColor().b));
 			ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 2.0f);
-			ImPlot::PlotLine(key.c_str(), time.getFirstElementCopy(), serPtr->buffer->getFirstElementCopy(), size, 0, offset, sizeof(double));
+			const uint32_t seriesSize = std::min(size, serPtr->buffer->getCopySize());
+			ImPlot::PlotLine(key.c_str(), time.getFirstElementCopy(), serPtr->buffer->getFirstElementCopy(), seriesSize, 0, offset, sizeof(double));
+			guiPerformance.recordSeries(seriesSize, seriesSize, false);
 		}
 
 		if (running && drawBackToLiveButton(*plot))
@@ -356,16 +385,20 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 
 		/* make thread safe copies of buffers - TODO refactor */
 		mtx->lock();
-		time.copyData();
+		if (time.copyData())
+			guiPerformance.recordSnapshotCopy(static_cast<uint64_t>(time.getCopySize()) * sizeof(double));
 		for (auto& [key, serPtr] : seriesMap)
 		{
 			if (!serPtr->visible)
 				continue;
-			serPtr->buffer->copyData();
+			if (serPtr->buffer->copyData())
+				guiPerformance.recordSnapshotCopy(static_cast<uint64_t>(serPtr->buffer->getCopySize()) * sizeof(double));
 		}
-		uint32_t offset = time.getOffset();
-		uint32_t size = time.getSize();
+		uint32_t offset = time.getCopyOffset();
+		uint32_t size = time.getCopySize();
 		mtx->unlock();
+		const ImPlotRect displayLimits = ImPlot::GetPlotLimits();
+		const uint32_t pixelColumns = std::max(1u, static_cast<uint32_t>(ImPlot::GetPlotSize().x));
 
 		for (auto& [key, serPtr] : seriesMap)
 		{
@@ -381,13 +414,31 @@ void Gui::drawPlotCurve(std::shared_ptr<Plot> plot)
 			if (plot->drawsXCursors())
 			{
 				const double timepoint = plot->markerX0.getValue();
-				const double value = *(serPtr->buffer->getFirstElementCopy() + time.getIndexFromvalue(timepoint));
+				const double value = *(serPtr->buffer->getFirstElementCopy() + time.getCopyIndexFromValue(timepoint));
 				name = key + " = " + Plot::formatCursorValue(value);
 			}
 
 			ImPlot::SetNextLineStyle(GuiHelper::traceColor(serPtr->var->getColor().r, serPtr->var->getColor().g, serPtr->var->getColor().b));
 			ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 2.0f);
-			ImPlot::PlotLine(name.c_str(), time.getFirstElementCopy(), serPtr->buffer->getFirstElementCopy(), size, ImPlotLineFlags_None, offset, sizeof(double));
+			const uint32_t seriesSize = std::min(size, serPtr->buffer->getCopySize());
+			uint32_t displaySize = seriesSize;
+			bool decimated = false;
+			if (shouldDecimateDisplaySeries(seriesSize, pixelColumns))
+			{
+				const DisplayPoints& display = getDisplayPoints(serPtr, time, seriesSize, offset,
+													 displayLimits.X.Min, displayLimits.X.Max, pixelColumns);
+				if (!display.x.empty())
+				{
+					ImPlot::PlotLine(name.c_str(), display.x.data(), display.y.data(), static_cast<int>(display.x.size()));
+					displaySize = static_cast<uint32_t>(display.x.size());
+					decimated = true;
+				}
+				else
+					ImPlot::PlotLine(name.c_str(), time.getFirstElementCopy(), serPtr->buffer->getFirstElementCopy(), seriesSize, ImPlotLineFlags_None, offset, sizeof(double));
+			}
+			else
+				ImPlot::PlotLine(name.c_str(), time.getFirstElementCopy(), serPtr->buffer->getFirstElementCopy(), seriesSize, ImPlotLineFlags_None, offset, sizeof(double));
+			guiPerformance.recordSeries(seriesSize, displaySize, decimated);
 		}
 
 		if (running && drawBackToLiveButton(*plot))

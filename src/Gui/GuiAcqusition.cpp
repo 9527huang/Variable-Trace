@@ -1,12 +1,44 @@
 #include "Gui.hpp"
 
 #include "I18n.hpp"
+#include <ctime>
 #include "LibDwarfParser.hpp"
 #include "TiOfdParser.hpp"
 
 /* Wide enough for the longest label in this window, which is the one about
    refreshing on a change of the symbol file. */
 static constexpr size_t alignment = 36;
+
+static const char* csvFailureText(CSVStreamer::FailureReason reason)
+{
+	switch (reason)
+	{
+		case CSVStreamer::FailureReason::QueueOverload:
+			return I18n::tr("Queue overload");
+		case CSVStreamer::FailureReason::OpenFailed:
+			return I18n::tr("File open failed");
+		case CSVStreamer::FailureReason::WriteFailed:
+			return I18n::tr("File write failed");
+		default:
+			return "-";
+	}
+}
+
+static std::string csvFailureTime(uint64_t unixMs)
+{
+	if (unixMs == 0)
+		return "-";
+	const std::time_t value = static_cast<std::time_t>(unixMs / 1000);
+	std::tm local{};
+#ifdef _WIN32
+	localtime_s(&local, &value);
+#else
+	localtime_r(&value, &local);
+#endif
+	char text[32]{};
+	std::strftime(text, sizeof(text), "%Y-%m-%d %H:%M:%S", &local);
+	return text;
+}
 
 /* Device names the J-Link takes for a core rather than for a part. They matter
    where a named device makes the probe halt the target on every start: the
@@ -135,7 +167,7 @@ void Gui::acqusitionSettingsViewer()
 	settings.viewportWidthMs = std::clamp(settings.viewportWidthMs, ViewerDataHandler::minViewportWidthMs, ViewerDataHandler::maxViewportWidthMs);
 
 	drawDebugProbes();
-	drawLoggingSettings(plotHandler, settings);
+	drawLoggingSettings(viewerDataHandler, settings);
 	drawElfSettings(settings);
 	viewerDataHandler->setSettings(settings);
 }
@@ -375,7 +407,7 @@ void Gui::drawDebugProbes()
 }
 
 template <typename Settings>
-void Gui::drawLoggingSettings(PlotHandler* handler, Settings& settings)
+void Gui::drawLoggingSettings(DataHandlerBase* dataHandler, Settings& settings)
 {
 	ImGui::PushID("logging");
 	ImGui::Dummy(ImVec2(-1, 5));
@@ -399,6 +431,44 @@ void Gui::drawLoggingSettings(PlotHandler* handler, Settings& settings)
 		openLogDirectory(settings.logFilePath);
 
 	ImGui::EndDisabled();
+
+	const CSVStreamer::Metrics metrics = dataHandler->getCsvMetrics();
+	const bool failed = metrics.failureReason != CSVStreamer::FailureReason::None;
+	const char* status = failed ? I18n::tr("CSV stopped") : (metrics.active ? I18n::tr("CSV active") : I18n::tr("CSV idle"));
+	const ImVec4 statusColor = failed ? (metrics.failureReason == CSVStreamer::FailureReason::QueueOverload ? GuiHelper::orange() : GuiHelper::red()) : (metrics.active ? GuiHelper::green() : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Status:"), alignment);
+	ImGui::SameLine();
+	ImGui::TextColored(statusColor, "%s", status);
+
+	if (metrics.active || failed)
+	{
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Queue:"), alignment);
+		ImGui::SameLine();
+		ImGui::Text("%zu / %zu (%s: %zu)", metrics.queueDepth, metrics.queueCapacity, I18n::tr("Peak"), metrics.queueHighWaterMark);
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Samples:"), alignment);
+		ImGui::SameLine();
+		ImGui::Text("%s: %llu  %s: %llu  %s: %llu", I18n::tr("Written"), static_cast<unsigned long long>(metrics.writtenSamples), I18n::tr("Failed"), static_cast<unsigned long long>(metrics.failedSamples), I18n::tr("Rejected"), static_cast<unsigned long long>(metrics.rejectedSamples));
+	}
+
+	if (failed)
+	{
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Reason:"), alignment);
+		ImGui::SameLine();
+		ImGui::TextColored(statusColor, "%s", csvFailureText(metrics.failureReason));
+		if (!metrics.errorMessage.empty())
+		{
+			GuiHelper::drawTextAlignedToSize(I18n::tr("Error:"), alignment);
+			ImGui::SameLine();
+			ImGui::TextWrapped("%s", metrics.errorMessage.c_str());
+		}
+		GuiHelper::drawTextAlignedToSize(I18n::tr("Failure time:"), alignment);
+		ImGui::SameLine();
+		ImGui::TextUnformatted(csvFailureTime(metrics.failureAtUnixMs).c_str());
+		GuiHelper::drawTextAlignedToSize(I18n::tr("File:"), alignment);
+		ImGui::SameLine();
+		ImGui::TextWrapped("%s", metrics.filePath.empty() ? "-" : metrics.filePath.c_str());
+	}
 	ImGui::PopID();
 }
 
@@ -536,7 +606,7 @@ void Gui::acqusitionSettingsTrace()
 	settings.timeout = std::clamp(settings.timeout, static_cast<uint32_t>(1), static_cast<uint32_t>(999999));
 
 	drawTraceProbes();
-	drawLoggingSettings(tracePlotHandler, settings);
+	drawLoggingSettings(traceDataHandler, settings);
 	traceDataHandler->setSettings(settings);
 }
 

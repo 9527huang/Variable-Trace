@@ -120,7 +120,7 @@ If you're a Linux user be sure to install:
 2. libglfw3-dev
 3. libgtk-3-dev
 
-After a successful build, copy the `./third_party/stlink/chips` directory to where the binary is located. Otherwise the STlink will not detect your STM32 target.
+The build automatically copies the ST-Link chip database beside the executable.
 
 ### Windows:
 1. Install [MSYS2](https://www.msys2.org)
@@ -135,7 +135,7 @@ After a successful build, copy the `./third_party/stlink/chips` directory to whe
 
 The native Windows build hardcodes `-fuse-ld=lld` and expects `llvm-ar.exe` inside the MSYS2 folder. If you do not have those, pass `-DPLATFORM=winnative` to CMake and the default linker and archiver are used instead. Do not pass `-DPLATFORM=WIN`, that selects the Linux cross-compilation branch.
 
-After a successful build, copy the `./third_party/stlink/chips` directory to where the binary is located. Otherwise the STlink will not detect your STM32 target.
+The build automatically copies the ST-Link chip database beside the executable.
 
 ## Why this tool exists
 

@@ -1,6 +1,7 @@
 build/*
 build_test/*
 build_dbg/*
+build_rel/*
 .cache/*
 src/gitversion.hpp
 
@@ -11,6 +12,8 @@ imgui.ini
 # local tooling caches
 .codegraph/
 .workbuddy/
+__pycache__/
+*.pyc
 
 # reverse-engineering workspace for the closed-source 1.2.9 build.
 # holds extracted strings/symbols of a proprietary binary: keep it local.

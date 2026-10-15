@@ -238,11 +238,54 @@ set_source_files_properties(
     COMPILE_FLAGS "-w"
 )
 
+# A headless CPU benchmark for the exact ImGui/ImPlot plotting path. It is
+# excluded from ordinary builds and can be requested explicitly when recording
+# the P3 baseline; no OpenGL backend or probe is involved.
+add_executable(P3-Gui-Benchmark EXCLUDE_FROM_ALL
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/performance/p3_gui_benchmark.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/imgui.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/imgui_draw.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/imgui_tables.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/imgui_widgets.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot/implot.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot/implot_items.cpp)
+target_include_directories(P3-Gui-Benchmark PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Plot
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/implot)
+
+# Measures only CSV producer and writer CPU/file paths; it has no probe or GUI
+# dependency and is excluded from ordinary builds.
+add_executable(P4-Csv-Benchmark EXCLUDE_FROM_ALL
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/performance/p4_csv_benchmark.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer/CSVStreamer.cpp)
+target_include_directories(P4-Csv-Benchmark PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog/inc)
+
+# Exercises deterministic slow-disk and file-failure behavior without a probe.
+add_executable(P42-Csv-Fault-Benchmark EXCLUDE_FROM_ALL
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/performance/p42_csv_fault_benchmark.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer/CSVStreamer.cpp)
+target_include_directories(P42-Csv-Fault-Benchmark PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog/inc)
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/nfd/)
 
 set(EXECUTABLE ${CMAKE_PROJECT_NAME})
 
 add_executable(${EXECUTABLE} ${PROJECT_SOURCES} ${IMGUI_SOURCES} ${IMPLOT_SOURCES} ${ICON_RC})
+
+# Runtime assets are copied by POST_BUILD commands below. Make their changes
+# invalidate the link step as well; otherwise an incremental build can leave an
+# old user guide, layout, or ST-Link target database beside a current binary.
+file(GLOB STLINK_CHIP_DATABASE CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stlink/chips/*.chip)
+set_property(TARGET ${EXECUTABLE} APPEND PROPERTY LINK_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/imgui.ini
+    ${CMAKE_CURRENT_SOURCE_DIR}/docs/Variable-Trace-User-Guide.html
+    ${STLINK_CHIP_DATABASE})
 
 set(GIT_VERSION_HPP ${CMAKE_CURRENT_SOURCE_DIR}/src/gitversion.hpp)
 
@@ -374,6 +417,14 @@ add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
     ${CMAKE_CURRENT_SOURCE_DIR}/docs/Variable-Trace-User-Guide.html
     ${CMAKE_BINARY_DIR}/Variable-Trace-User-Guide.html)
+
+# libstlink resolves the target chip database relative to the process working
+# directory. Keep it beside the executable in developer and packaged builds,
+# otherwise USB enumeration succeeds but target identification fails.
+add_custom_command(TARGET ${EXECUTABLE} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stlink/chips
+    ${CMAKE_BINARY_DIR}/chips)
 
 install(TARGETS ${EXECUTABLE} RUNTIME DESTINATION ${INSTALL_PATH} COMPONENT applications)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/imgui.ini

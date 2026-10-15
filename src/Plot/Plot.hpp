@@ -186,6 +186,7 @@ class Plot
 	std::vector<Variable::Type> getVariableTypes() const;
 	bool addPoint(const std::string& varName, double value);
 	void updateSeries();
+	void updateSeries(const std::vector<std::shared_ptr<Series>>& visibleSeries, bool updateXAxis);
 	bool addTimePoint(double t);
 	void erase();
 	void setVisibility(bool state);

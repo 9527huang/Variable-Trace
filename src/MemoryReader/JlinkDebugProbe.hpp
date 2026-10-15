@@ -29,6 +29,8 @@ class JlinkDebugProbe : public IDebugProbe
 	std::vector<std::string> getConnectedDevices() override;
 
    private:
+	void invalidateLink(const char* operation);
+
 	static constexpr size_t maxDevices = 10;
 	static constexpr size_t maxVariables = 100;
 	static constexpr size_t fifoSize = 2000;

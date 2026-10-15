@@ -213,6 +213,7 @@ extern "C"
 	void JLINKARM_Close(void);
 	char JLINKARM_IsOpen(void);
 	int32_t JLINKARM_Connect(void);
+	void JLINKARM_Go(void);
 	int32_t JLINKARM_ReadMemEx(uint32_t Addr, uint32_t NumBytes, void* pData, uint32_t Flags);
 	int32_t JLINKARM_WriteMemEx(uint32_t Addr, uint32_t NumBytes, const void* p, uint32_t Flags);
 	int32_t JLINKARM_EMU_GetList(int32_t HostIFs, JLINKARM_EMU_CONNECT_INFO* paConnectInfo, int32_t MaxInfos);

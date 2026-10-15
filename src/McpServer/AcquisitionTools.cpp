@@ -335,6 +335,83 @@ namespace mcp
 
 			const bool running = context.viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN;
 			Json result = Json::object({{"state", running ? "RUN" : "STOP"}});
+			const ViewerDataHandler::PerformanceMetrics metrics = context.viewerDataHandler->getPerformanceMetrics();
+			const double elapsedSeconds = static_cast<double>(metrics.elapsedNs) / 1000000000.0;
+			const double completed = static_cast<double>(metrics.completedSamples);
+			const double probeCalls = static_cast<double>(metrics.probeCalls);
+
+			result["metrics"] = Json::object({
+				{"run_id", metrics.runId},
+				{"merged_reads_enabled", metrics.mergedReadsEnabled},
+				{"sampled_variables", metrics.sampledVariables},
+				{"planned_probe_calls_per_sample", metrics.plannedProbeCallsPerSample},
+				{"merged_read_spans", metrics.mergedReadSpans},
+				{"requested_samples", metrics.requestedSamples},
+				{"completed_samples", metrics.completedSamples},
+				{"failed_samples", metrics.failedSamples},
+				{"actual_sampling_hz", elapsedSeconds > 0.0 ? completed / elapsedSeconds : 0.0},
+				{"elapsed_ms", static_cast<double>(metrics.elapsedNs) / 1000000.0},
+				{"deadline_misses", metrics.deadlineMisses},
+				{"skipped_sample_periods", metrics.skippedSamplePeriods},
+				{"max_deadline_lateness_us", static_cast<double>(metrics.maxDeadlineLatenessNs) / 1000.0},
+				{"scheduler_sleep_ns", metrics.schedulerSleepNs},
+				{"scheduler_sleep_ms", static_cast<double>(metrics.schedulerSleepNs) / 1000000.0},
+				{"probe_calls", metrics.probeCalls},
+				{"successful_probe_calls", metrics.successfulProbeCalls},
+				{"bytes_read", metrics.bytesRead},
+				{"probe_lock_wait_ns", metrics.probeLockWaitNs},
+				{"probe_read_ns", metrics.probeReadNs},
+				{"model_lock_wait_ns", metrics.modelLockWaitNs},
+				{"shared_buffer_lock_wait_ns", metrics.sharedBufferLockWaitNs},
+				{"model_update_ns", metrics.modelUpdateNs},
+				{"csv_submit_ns", metrics.csvSubmitNs},
+				{"csv_format_ns", metrics.csvFormatNs},
+				{"csv_write_ns", metrics.csvWriteNs},
+				{"csv_max_writer_lag_ns", metrics.csvMaxWriterLagNs},
+				{"csv_enqueued_samples", metrics.csvEnqueuedSamples},
+				{"csv_written_samples", metrics.csvWrittenSamples},
+				{"csv_rejected_samples", metrics.csvRejectedSamples},
+				{"csv_failed_samples", metrics.csvFailedSamples},
+				{"csv_io_errors", metrics.csvIoErrors},
+				{"csv_queue_depth", metrics.csvQueueDepth},
+				{"csv_queue_high_water_mark", metrics.csvQueueHighWaterMark},
+				{"csv_queue_capacity", metrics.csvQueueCapacity},
+				{"csv_failure_reason", metrics.csvFailureReason},
+				{"csv_failure_at_unix_ms", metrics.csvFailureAtUnixMs},
+				{"csv_error", metrics.csvErrorMessage},
+				{"csv_file_path", metrics.csvFilePath},
+				{"csv_active", metrics.csvActive},
+				{"csv_overloaded", metrics.csvOverloaded},
+				{"csv_asynchronous", metrics.csvAsynchronous},
+				{"average_probe_call_us", probeCalls > 0.0 ? static_cast<double>(metrics.probeReadNs) / probeCalls / 1000.0 : 0.0},
+				{"average_model_update_us", completed > 0.0 ? static_cast<double>(metrics.modelUpdateNs) / completed / 1000.0 : 0.0},
+				{"probe_lock_wait_ms", static_cast<double>(metrics.probeLockWaitNs) / 1000000.0},
+				{"model_lock_wait_ms", static_cast<double>(metrics.modelLockWaitNs) / 1000000.0},
+				{"shared_buffer_lock_wait_ms", static_cast<double>(metrics.sharedBufferLockWaitNs) / 1000000.0},
+				{"csv_submit_ms", static_cast<double>(metrics.csvSubmitNs) / 1000000.0},
+				{"csv_format_ms", static_cast<double>(metrics.csvFormatNs) / 1000000.0},
+				{"csv_write_ms", static_cast<double>(metrics.csvWriteNs) / 1000000.0}});
+
+			PerformanceGuiMetrics guiDiagnosisMetrics;
+			if (context.getGuiPerformanceMetrics)
+			{
+				const Json guiMetrics = context.getGuiPerformanceMetrics();
+				result["metrics"]["gui"] = guiMetrics;
+				guiDiagnosisMetrics.measuredFrames = guiMetrics.value("measured_frames", uint64_t{0});
+				guiDiagnosisMetrics.frameBuildP95Us = guiMetrics.value("frame_build_p95_us", 0.0);
+			}
+
+			const PerformanceDiagnosis diagnosis = context.viewerDataHandler->getPerformanceDiagnosis(guiDiagnosisMetrics);
+			result["metrics"]["diagnosis"] = Json::object({
+				{"code", performanceBottleneckCode(diagnosis.bottleneck)},
+				{"active", diagnosis.active()},
+				{"requested_sampling_hz", diagnosis.requestedSamplingHz},
+				{"actual_sampling_hz", diagnosis.actualSamplingHz},
+				{"request_attainment_ratio", diagnosis.requestAttainmentRatio},
+				{"deadline_miss_ratio", diagnosis.deadlineMissRatio},
+				{"probe_read_ratio", diagnosis.probeReadRatio},
+				{"shared_buffer_wait_ratio", diagnosis.sharedBufferWaitRatio},
+				{"csv_queue_fill_ratio", diagnosis.csvQueueFillRatio}});
 
 			/* The probe keeps the reason a start failed, and it is the only place
 			   that reason survives, so it is reported while stopped. */
@@ -393,7 +470,7 @@ namespace mcp
 					  .handler = stopAcquisition});
 
 		registry.add({.name = "get_acquisition_state",
-					  .description = "Query the current MCUViewer acquisition state. Returns {state}, where state is 'RUN' or 'STOP'.",
+					  .description = "Query acquisition state and the current run's performance metrics. Returns state plus cumulative sample, probe, deadline, lock, formatting and GUI rendering measurements.",
 					  .inputSchema = objectSchema(Json::object({})),
 					  .handler = getAcquisitionState});
 	}

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <thread>
 
@@ -35,6 +36,11 @@ class DataHandlerBase
 	   which of the two it is looking at instead of guessing from the run. */
 	virtual bool isProbeHeld() const { return false; }
 
+	CSVStreamer::Metrics getCsvMetrics() const
+	{
+		return csvStreamer->getMetrics();
+	}
+
 	void setState(State state)
 	{
 		if (state == viewerState)
@@ -43,6 +49,7 @@ class DataHandlerBase
 		viewerState = state;
 		stateChangeOrdered = true;
 		transitionStarted = std::chrono::steady_clock::now();
+		stateChangeCondition.notify_all();
 	}
 	/* The state, as the interface asks for it: what was asked for, available at
 	   once.
@@ -87,6 +94,8 @@ class DataHandlerBase
 	std::mutex* mtx;
 	std::thread dataHandle;
 	std::atomic<bool> stateChangeOrdered = false;
+	std::condition_variable stateChangeCondition;
+	std::mutex stateChangeMutex;
 
 	/* How long a change stays reported as in progress even after it has been
 	   carried out, so that it is on screen long enough to be read. */

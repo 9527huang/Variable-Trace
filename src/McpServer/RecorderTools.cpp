@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -65,6 +66,42 @@ namespace mcp
 			return group;
 		}
 
+		void requireRecorderEnabled(const recorder::RecorderHandler& handler)
+		{
+			if (!handler.isEnabled())
+				throw ToolError("The recorder subsystem is disabled. Call set_recorder_enabled with enabled=true first.");
+		}
+
+		uint64_t elapsedMicroseconds(const std::chrono::steady_clock::time_point& start)
+		{
+			return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::steady_clock::now() - start).count());
+		}
+
+		void syncRecorderSymbols(McpContext& context, recorder::RecorderHandler& handler)
+		{
+			if (handler.hasSymbols())
+				return;
+
+			if (context.syncRecorderSymbols)
+				context.syncRecorderSymbols();
+
+			/* A saved project restores ordinary Variables without importing every
+			   symbol from the ELF. Recorder's two aggregate structures are internal
+			   symbols, so the first Recorder operation refreshes the current ELF when
+			   they are not in the parser cache yet. */
+			if (!handler.hasSymbols() && context.refreshVariableAddresses && context.getElfPath)
+			{
+				const std::string elfPath = context.getElfPath();
+				if (!elfPath.empty() && context.refreshVariableAddresses(elfPath))
+				{
+					requestAcquisitionRestart(context);
+					if (context.syncRecorderSymbols)
+						context.syncRecorderSymbols();
+				}
+			}
+		}
+
 		/* Pushes the stored configuration to the target again. Only called while
 		   a run is in progress, where a change would otherwise sit in the host
 		   until the next run and look like it had been ignored. */
@@ -126,8 +163,7 @@ namespace mcp
 
 			/* The addresses sit in the symbol file, so they are looked up again
 			   here rather than assumed to be in step with the last import. */
-			if (!handler.hasSymbols() && context.syncRecorderSymbols)
-				context.syncRecorderSymbols();
+			syncRecorderSymbols(context, handler);
 
 			const auto zeroes = [](const std::string& detail)
 			{
@@ -345,6 +381,156 @@ namespace mcp
 
 			return result;
 		}
+
+		Json startRecorder(McpContext& context, const Json&)
+		{
+			recorder::RecorderHandler& handler = requireRecorder(context, "start_recorder");
+			requireRecorderEnabled(handler);
+			requireApiWritesEnabled(context);
+			requireProbeOpen(context, "start_recorder");
+			std::shared_ptr<PlotGroup> group = requireRecorderGroup(context);
+
+			syncRecorderSymbols(context, handler);
+
+			if (!handler.hasSymbols())
+				throw ToolError("The symbol file has no ____recorderSettings or ____recorder symbol. Import an *.elf/*.axf built with the recorder sources.");
+
+			recorder::Config config = handler.getPendingConfig();
+			std::string error;
+
+			if (!recorder::configFromGroup(*group, config, error))
+				throw ToolError(error);
+
+			IDebugProbe& probe = *context.viewerDataHandler->getDebugProbe();
+			const auto startedAt = std::chrono::steady_clock::now();
+			const auto lockStartedAt = std::chrono::steady_clock::now();
+			std::unique_lock<std::mutex> probeLock = lockProbe(context);
+			const uint64_t probeLockWaitUs = elapsedMicroseconds(lockStartedAt);
+			const auto ioStartedAt = std::chrono::steady_clock::now();
+
+			/* Match the GUI Start button: detection is refreshed immediately before
+			   writing the configuration, so a newly flashed target cannot reuse a
+			   layout learned from the previous image. */
+			if (!handler.detect(probe, error))
+				throw ToolError("The recorder could not be detected: " + error);
+
+			if (!handler.start(probe, config, error))
+				throw ToolError("The recorder could not be started: " + error);
+
+			const uint64_t targetIoUs = elapsedMicroseconds(ioStartedAt);
+			probeLock.unlock();
+			handler.setPendingConfig(config);
+			const recorder::Settings& settings = handler.getDetectedSettings();
+			const uint32_t bytesPerSample = recorder::packSizeOf(config.variables);
+			const uint64_t samplePeriodNs = static_cast<uint64_t>(settings.timestepNs) * (config.skippedSamples + 1);
+
+			return Json::object({{"group", group->getName()},
+							 {"running", handler.isRunning()},
+							 {"mode", recorder::modeToString(config.mode)},
+							 {"variable_count", config.variables.size()},
+							 {"bytes_per_sample", bytesPerSample},
+							 {"max_samples", bytesPerSample == 0 ? 0 : settings.maxBufferSize / bytesPerSample},
+							 {"sample_period_ns", samplePeriodNs},
+							 {"probe_lock_wait_us", probeLockWaitUs},
+							 {"target_io_us", targetIoUs},
+							 {"elapsed_us", elapsedMicroseconds(startedAt)}});
+		}
+
+		Json downloadRecorder(McpContext& context, const Json&)
+		{
+			recorder::RecorderHandler& handler = requireRecorder(context, "download_recorder");
+			requireRecorderEnabled(handler);
+			requireProbeOpen(context, "download_recorder");
+
+			const recorder::Config& config = handler.getPendingConfig();
+
+			if (config.variables.empty())
+				throw ToolError("The recorder has no started variable set. Call start_recorder first.");
+
+			IDebugProbe& probe = *context.viewerDataHandler->getDebugProbe();
+			recorder::Capture capture;
+			std::string error;
+			const auto startedAt = std::chrono::steady_clock::now();
+			const auto lockStartedAt = std::chrono::steady_clock::now();
+			std::unique_lock<std::mutex> probeLock = lockProbe(context);
+			const uint64_t probeLockWaitUs = elapsedMicroseconds(lockStartedAt);
+			const auto ioStartedAt = std::chrono::steady_clock::now();
+
+			if (!handler.download(probe, config.variables, capture, error))
+				throw ToolError("The recorder capture could not be downloaded: " + error);
+
+			const uint64_t targetIoUs = elapsedMicroseconds(ioStartedAt);
+			probeLock.unlock();
+			Json timestamps = Json::array();
+
+			for (double timestamp : capture.timestamps)
+				timestamps.push_back(timestamp);
+
+			Json series = Json::array();
+
+			for (size_t index = 0; index < config.variables.size(); ++index)
+			{
+				const recorder::Slot& slot = config.variables[index];
+				std::shared_ptr<Variable> variable;
+
+				if (context.variableHandler != nullptr && context.variableHandler->contains(slot.name))
+					variable = context.variableHandler->getVariable(slot.name);
+
+				Json values = Json::array();
+				if (index < capture.series.size())
+				{
+					for (uint32_t raw : capture.series[index])
+						values.push_back(variable != nullptr ? variable->transformToDouble(raw) : static_cast<double>(raw));
+				}
+
+				series.push_back(Json::object({{"name", slot.name},
+										  {"type", variable != nullptr ? variable->getTypeStr() : recorder::triggerTypeToString(static_cast<recorder::TriggerType>(slot.type))},
+										  {"values", std::move(values)}}));
+			}
+
+			return Json::object({{"running", handler.isRunning()},
+							 {"samples", capture.samples},
+							 {"bytes_downloaded", handler.getLastDownloadSize()},
+							 {"sample_period_s", capture.samplePeriodSeconds},
+							 {"overran", capture.overran},
+							 {"target_state", static_cast<uint32_t>(capture.ring.state)},
+							 {"samples_since_start", capture.ring.samplesSinceStart},
+							 {"timestamps_s", std::move(timestamps)},
+							 {"series", std::move(series)},
+							 {"probe_lock_wait_us", probeLockWaitUs},
+							 {"target_io_us", targetIoUs},
+							 {"elapsed_us", elapsedMicroseconds(startedAt)}});
+		}
+
+		Json stopRecorder(McpContext& context, const Json&)
+		{
+			recorder::RecorderHandler& handler = requireRecorder(context, "stop_recorder");
+			requireRecorderEnabled(handler);
+			requireApiWritesEnabled(context);
+			requireProbeOpen(context, "stop_recorder");
+
+			if (!handler.isRunning())
+				return Json::object({{"running", false}, {"already_stopped", true}, {"probe_lock_wait_us", 0}, {"target_io_us", 0}, {"elapsed_us", 0}});
+
+			IDebugProbe& probe = *context.viewerDataHandler->getDebugProbe();
+			std::string error;
+			const auto startedAt = std::chrono::steady_clock::now();
+			const auto lockStartedAt = std::chrono::steady_clock::now();
+			std::unique_lock<std::mutex> probeLock = lockProbe(context);
+			const uint64_t probeLockWaitUs = elapsedMicroseconds(lockStartedAt);
+			const auto ioStartedAt = std::chrono::steady_clock::now();
+
+			if (!handler.stop(probe, error))
+				throw ToolError("The recorder could not be stopped: " + error);
+
+			const uint64_t targetIoUs = elapsedMicroseconds(ioStartedAt);
+			probeLock.unlock();
+			return Json::object({{"running", handler.isRunning()},
+							 {"already_stopped", false},
+							 {"probe_lock_wait_us", probeLockWaitUs},
+							 {"target_io_us", targetIoUs},
+							 {"elapsed_us", elapsedMicroseconds(startedAt)}});
+		}
 	}  // namespace
 
 	void RecorderTools::registerAll(ToolRegistry& registry)
@@ -383,5 +569,20 @@ namespace mcp
 					  .description = "Set samples to skip between recorded samples (0 = no downsampling). Acquisition is restarted if running.",
 					  .inputSchema = objectSchema(Json::object({{"skipped_samples", integerProperty("Samples to skip (0 = none)")}}), {"skipped_samples"}),
 					  .handler = setRecorderDownsampling});
+
+		registry.add({.name = "start_recorder",
+					  .description = "Detect and start the target recorder with the variables in the active recorder group. Acquisition must already be running because the recorder shares its probe connection.",
+					  .inputSchema = objectSchema(Json::object({})),
+					  .handler = startRecorder});
+
+		registry.add({.name = "download_recorder",
+					  .description = "Download the current target recorder ring without stopping it. Returns timestamps and type-converted values for the exact variable set used by start_recorder.",
+					  .inputSchema = objectSchema(Json::object({})),
+					  .handler = downloadRecorder});
+
+		registry.add({.name = "stop_recorder",
+					  .description = "Stop target-side recording without stopping Variable Viewer acquisition. The call is idempotent when the recorder is already stopped.",
+					  .inputSchema = objectSchema(Json::object({})),
+					  .handler = stopRecorder});
 	}
 }  // namespace mcp

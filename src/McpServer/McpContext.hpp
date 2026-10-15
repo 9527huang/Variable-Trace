@@ -120,6 +120,10 @@ struct McpContext
 	/* May an API client write to the target at all. This is the outer guard; the
 	   per-variable min/max limits are the inner one. */
 	std::function<bool()> getApiWritesEnabled;
+
+	/* Collected on the GUI thread and read through the same bridge, so no
+	   cross-thread access to the rolling frame window is needed. */
+	std::function<mcp::Json()> getGuiPerformanceMetrics;
 };
 
 #endif

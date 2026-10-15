@@ -210,6 +210,16 @@ void Plot::updateSeries()
 		xAxisSeries.addPointFromVar();
 }
 
+void Plot::updateSeries(const std::vector<std::shared_ptr<Series>>& visibleSeries, bool updateXAxis)
+{
+	for (const auto& series : visibleSeries)
+		if (series != nullptr)
+			series->addPointFromVar();
+
+	if (updateXAxis && xAxisSeries.var != nullptr)
+		xAxisSeries.addPointFromVar();
+}
+
 bool Plot::addTimePoint(double t)
 {
 	time.addPoint(t);

@@ -198,6 +198,9 @@ void Gui::mainThread(std::string externalPath)
 			continue;
 		}
 
+		const auto frameStarted = std::chrono::steady_clock::now();
+		guiPerformance.beginFrame(viewerDataHandler->getPerformanceRunId());
+
 		if (glfwGetWindowAttrib(window, GLFW_FOCUSED) || (traceDataHandler->getStateImmediate() == DataHandlerBase::State::RUN) || (viewerDataHandler->getStateImmediate() == DataHandlerBase::State::RUN))
 			glfwSwapInterval(1);
 		else
@@ -207,6 +210,7 @@ void Gui::mainThread(std::string externalPath)
 		glfwPollEvents();
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
+		const auto frameBuildStarted = std::chrono::steady_clock::now();
 
 		/* Changing the language changes which glyphs are needed, so the atlas
 		   has to be rebuilt and its texture replaced. ImGui only allows that
@@ -304,7 +308,11 @@ void Gui::mainThread(std::string externalPath)
 			plotEditWindow->draw();
 			ImGui::SetNextWindowClass(&window_class);
 			if (ImGui::Begin(I18n::windowTitle("Plots").c_str()))
+			{
+				const auto plotStarted = std::chrono::steady_clock::now();
 				drawPlots();
+				guiPerformance.recordVariablePlot(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - plotStarted).count()));
+			}
 			ImGui::End();
 		}
 		ImGui::End();
@@ -340,7 +348,12 @@ void Gui::mainThread(std::string externalPath)
 			glfwMakeContextCurrent(backup_current_context);
 		}
 
+		const auto frameBuildFinished = std::chrono::steady_clock::now();
 		glfwSwapBuffers(window);
+		const auto frameFinished = std::chrono::steady_clock::now();
+		guiPerformance.endFrame(
+			static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(frameBuildFinished - frameBuildStarted).count()),
+			static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(frameFinished - frameStarted).count()));
 	}
 
 	logger->info("Exiting GUI main thread");
@@ -441,6 +454,49 @@ static void drawIndicatorRow(const char* label, const std::string& value)
 	ImGui::TextUnformatted(value.c_str());
 }
 
+static const char* csvFailureText(CSVStreamer::FailureReason reason)
+{
+	switch (reason)
+	{
+		case CSVStreamer::FailureReason::QueueOverload:
+			return I18n::tr("Queue overload");
+		case CSVStreamer::FailureReason::OpenFailed:
+			return I18n::tr("File open failed");
+		case CSVStreamer::FailureReason::WriteFailed:
+			return I18n::tr("File write failed");
+		default:
+			return "-";
+	}
+}
+
+static const char* performanceBottleneckText(PerformanceBottleneck bottleneck)
+{
+	switch (bottleneck)
+	{
+		case PerformanceBottleneck::ProbeLatency:
+			return I18n::tr("Probe latency");
+		case PerformanceBottleneck::AddressFragmentation:
+			return I18n::tr("Address fragmentation");
+		case PerformanceBottleneck::RenderContention:
+			return I18n::tr("Render contention");
+		case PerformanceBottleneck::CsvBacklog:
+			return I18n::tr("CSV backlog");
+		case PerformanceBottleneck::DeadlineLimited:
+			return I18n::tr("Deadline limited");
+		case PerformanceBottleneck::None:
+			return I18n::tr("No bottleneck");
+		default:
+			return I18n::tr("Warming up");
+	}
+}
+
+static std::string percentageText(double ratio)
+{
+	char text[32]{};
+	std::snprintf(text, sizeof(text), "%.1f%%", ratio * 100.0);
+	return text;
+}
+
 void Gui::drawConnectionIndicator()
 {
 	const bool isVariableView = (activeView == ActiveViewType::VarViewer);
@@ -504,6 +560,15 @@ void Gui::drawConnectionIndicator()
 	   data flows". */
 	const bool transitioning = handler->isTransitionPending();
 	const bool acquired = (handler->getStateImmediate() == DataHandlerBase::State::RUN);
+	const CSVStreamer::Metrics csvMetrics = handler->getCsvMetrics();
+	const bool csvWarning = csvMetrics.failureReason != CSVStreamer::FailureReason::None;
+	PerformanceDiagnosis diagnosis;
+	if (isVariableView)
+	{
+		const GuiPerformanceMetrics guiMetrics = guiPerformance.getMetrics();
+		diagnosis = viewerDataHandler->getPerformanceDiagnosis({guiMetrics.measuredFrames, guiMetrics.frameBuildP95Us});
+	}
+	bool showDiagnosis = isVariableView && acquired && !transitioning && diagnosis.active();
 
 	/* The four names the state takes, gathered so that the width below can be
 	   measured over all of them: the segment keeps the width of the longest, or
@@ -572,6 +637,10 @@ void Gui::drawConnectionIndicator()
 	stateWidth += 2.0f * textPadding;
 
 	const float probeWidth = ImGui::CalcTextSize(probeName).x + 2.0f * textPadding;
+	const float csvWidth = csvWarning ? ImGui::CalcTextSize(I18n::tr("CSV stopped")).x + 2.0f * textPadding : 0.0f;
+	const float csvReservedWidth = csvWarning ? csvWidth + gap : 0.0f;
+	const float diagnosisWidth = showDiagnosis ? ImGui::CalcTextSize(performanceBottleneckText(diagnosis.bottleneck)).x + 2.0f * textPadding : 0.0f;
+	const float diagnosisReservedWidth = showDiagnosis ? diagnosisWidth + gap : 0.0f;
 
 	char samplingText[64] = "";
 	float samplingWidth = 0.0f;
@@ -590,7 +659,7 @@ void Gui::drawConnectionIndicator()
 	/* The menu titles are drawn first, so where the bar cursor sits now is the
 	   left edge this group must not cross. */
 	const float titlesEndX = ImGui::GetCursorPosX() + gap;
-	float startX = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - margin - rateWidth - stateWidth - probeWidth;
+	float startX = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - margin - rateWidth - csvReservedWidth - diagnosisReservedWidth - stateWidth - probeWidth;
 
 	if (startX < titlesEndX && withSampling)
 	{
@@ -598,6 +667,12 @@ void Gui::drawConnectionIndicator()
 		   one that is given up when the window is too narrow for both. */
 		samplingText[0] = '\0';
 		startX += rateWidth;
+	}
+
+	if (startX < titlesEndX && showDiagnosis)
+	{
+		showDiagnosis = false;
+		startX += diagnosisReservedWidth;
 	}
 
 	if (startX < titlesEndX)
@@ -629,6 +704,29 @@ void Gui::drawConnectionIndicator()
 	hovered |= ImGui::IsItemHovered();
 
 	ImGui::PopStyleColor(3);
+
+	if (csvWarning)
+	{
+		ImGui::SameLine(0.0f, gap);
+		const bool overload = csvMetrics.failureReason == CSVStreamer::FailureReason::QueueOverload;
+		ImGui::PushStyleColor(ImGuiCol_Button, overload ? GuiHelper::orange() : GuiHelper::red());
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, overload ? GuiHelper::orangeLight() : GuiHelper::redLight());
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, overload ? GuiHelper::orangeLightDim() : GuiHelper::redLightDim());
+		pressed |= ImGui::Button(I18n::tr("CSV stopped"), ImVec2(csvWidth, height));
+		hovered |= ImGui::IsItemHovered();
+		ImGui::PopStyleColor(3);
+	}
+
+	if (showDiagnosis)
+	{
+		ImGui::SameLine(0.0f, gap);
+		ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::orange());
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::orangeLight());
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::orangeLightDim());
+		pressed |= ImGui::Button(performanceBottleneckText(diagnosis.bottleneck), ImVec2(diagnosisWidth, height));
+		hovered |= ImGui::IsItemHovered();
+		ImGui::PopStyleColor(3);
+	}
 
 	if (pressed)
 		showAcqusitionSettingsWindow = true;
@@ -686,6 +784,36 @@ void Gui::drawConnectionIndicator()
 		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 360.0f * GuiHelper::contentScale);
 		ImGui::TextUnformatted(readerError.c_str());
 		ImGui::PopTextWrapPos();
+	}
+
+	if (csvWarning)
+	{
+		ImGui::Separator();
+		drawIndicatorRow(I18n::tr("CSV status"), I18n::tr("CSV stopped"));
+		drawIndicatorRow(I18n::tr("Reason"), csvFailureText(csvMetrics.failureReason));
+		drawIndicatorRow(I18n::tr("Queue"), std::to_string(csvMetrics.queueDepth) + " / " + std::to_string(csvMetrics.queueCapacity));
+		drawIndicatorRow(I18n::tr("Written"), std::to_string(csvMetrics.writtenSamples));
+		drawIndicatorRow(I18n::tr("Failed"), std::to_string(csvMetrics.failedSamples));
+		drawIndicatorRow(I18n::tr("Rejected"), std::to_string(csvMetrics.rejectedSamples));
+		if (!csvMetrics.errorMessage.empty())
+		{
+			ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 360.0f * GuiHelper::contentScale);
+			ImGui::TextUnformatted(csvMetrics.errorMessage.c_str());
+			ImGui::PopTextWrapPos();
+		}
+	}
+
+	if (isVariableView)
+	{
+		ImGui::Separator();
+		drawIndicatorRow(I18n::tr("Bottleneck"), performanceBottleneckText(diagnosis.bottleneck));
+		drawIndicatorRow(I18n::tr("Requested / actual"), std::to_string(diagnosis.requestedSamplingHz) + " / " + std::to_string(static_cast<uint32_t>(diagnosis.actualSamplingHz + 0.5)) + " Hz");
+		drawIndicatorRow(I18n::tr("Rate attained"), percentageText(diagnosis.requestAttainmentRatio));
+		drawIndicatorRow(I18n::tr("Deadline misses"), percentageText(diagnosis.deadlineMissRatio));
+		drawIndicatorRow(I18n::tr("Probe time"), percentageText(diagnosis.probeReadRatio));
+		drawIndicatorRow(I18n::tr("Buffer wait"), percentageText(diagnosis.sharedBufferWaitRatio));
+		if (csvMetrics.active || csvWarning)
+			drawIndicatorRow(I18n::tr("CSV queue"), percentageText(diagnosis.csvQueueFillRatio));
 	}
 
 	ImGui::Separator();
@@ -1904,6 +2032,31 @@ void Gui::setupMcpServer()
 	mcpContext->projectHandler = projectHandler;
 	mcpContext->logger = logger;
 	mcpContext->mtx = mtx;
+	mcpContext->getGuiPerformanceMetrics = [this]()
+	{
+		const GuiPerformanceMetrics metrics = guiPerformance.getMetrics();
+		const double frames = static_cast<double>(metrics.measuredFrames);
+		const double rawPoints = static_cast<double>(metrics.rawPointsSubmitted);
+		return mcp::Json::object({
+			{"run_id", metrics.runId},
+			{"measured_frames", metrics.measuredFrames},
+			{"percentile_window_frames", std::min<uint64_t>(metrics.measuredFrames, GuiPerformanceTracker::historyLimit)},
+			{"frame_build_p50_us", metrics.frameBuildP50Us},
+			{"frame_build_p95_us", metrics.frameBuildP95Us},
+			{"frame_build_p99_us", metrics.frameBuildP99Us},
+			{"frame_total_p50_us", metrics.frameTotalP50Us},
+			{"frame_total_p95_us", metrics.frameTotalP95Us},
+			{"frame_total_p99_us", metrics.frameTotalP99Us},
+			{"snapshot_copied_bytes", metrics.snapshotCopiedBytes},
+			{"average_snapshot_copied_bytes_per_frame", frames > 0.0 ? static_cast<double>(metrics.snapshotCopiedBytes) / frames : 0.0},
+			{"raw_points_submitted", metrics.rawPointsSubmitted},
+			{"display_points_submitted", metrics.displayPointsSubmitted},
+			{"display_point_ratio", rawPoints > 0.0 ? static_cast<double>(metrics.displayPointsSubmitted) / rawPoints : 0.0},
+			{"decimated_series", metrics.decimatedSeries},
+			{"decimation_cache_misses", metrics.decimationCacheMisses},
+			{"decimation_us", static_cast<double>(metrics.decimationNs) / 1000.0},
+			{"variable_plot_us", static_cast<double>(metrics.variablePlotNs) / 1000.0}});
+	};
 
 	/* The recorder is owned by the window, and the tools work through the same
 	   object, so a setting changed over the API is the one the window shows. */

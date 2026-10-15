@@ -41,8 +41,8 @@ inline void exportPlotToCSV(const std::shared_ptr<Plot>& plot, IFileHandler* fil
 	for (auto& [name, series] : plot->getSeriesMap())
 		series->buffer->copyData();
 
-	const uint32_t size = plot->getXAxisSeries()->getSize();
-	const uint32_t offset = plot->getXAxisSeries()->getOffset();
+	const uint32_t size = plot->getXAxisSeries()->getCopySize();
+	const uint32_t offset = plot->getXAxisSeries()->getCopyOffset();
 
 	csvFile << "time [s],";
 

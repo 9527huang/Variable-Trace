@@ -36,6 +36,7 @@ class ScrollingBuffer
 
 		data[offset] = x;
 		offset = (offset + 1) % maxSize;
+		generation++;
 
 		if (offset == 0)
 			isFull = true;
@@ -53,20 +54,68 @@ class ScrollingBuffer
 		return data.empty() ? nullptr : &data[0];
 	}
 
-	void copyData()
+	bool copyData()
 	{
 		std::lock_guard<std::mutex> lock(mtx);
 
 		if (maxSize == 0)
-			return;
+		{
+			copySize = 0;
+			copyOffset = 0;
+			copyGeneration = generation;
+			return false;
+		}
 
-		std::memcpy(&dataCopy[0], &data[0], maxSize * sizeof(data[0]));
+		if (copyGeneration == generation)
+			return false;
+
+		copySize = sizeLocked();
+		copyOffset = isFull ? offset : 0;
+		if (copySize > 0)
+			std::memcpy(dataCopy.data(), data.data(), copySize * sizeof(data[0]));
+		copyGeneration = generation;
+		return true;
 	}
 
 	T* getFirstElementCopy() const
 	{
 		std::lock_guard<std::mutex> lock(mtx);
 		return dataCopy.empty() ? nullptr : &dataCopy[0];
+	}
+
+	uint32_t getCopySize() const
+	{
+		std::lock_guard<std::mutex> lock(mtx);
+		return copySize;
+	}
+
+	uint32_t getCopyOffset() const
+	{
+		std::lock_guard<std::mutex> lock(mtx);
+		return copyOffset;
+	}
+
+	uint32_t getCopyIndexFromValue(double value) const
+	{
+		std::lock_guard<std::mutex> lock(mtx);
+		if (copySize == 0)
+			return 0;
+
+		for (uint32_t index = 0; index + 1 < copySize; ++index)
+		{
+			const uint32_t position = (index + copyOffset) % copySize;
+			const uint32_t nextPosition = (index + 1 + copyOffset) % copySize;
+			if (value >= dataCopy[position] && value < dataCopy[nextPosition])
+				return position;
+		}
+
+		return (copyOffset + copySize - 1) % copySize;
+	}
+
+	uint64_t getCopyGeneration() const
+	{
+		std::lock_guard<std::mutex> lock(mtx);
+		return copyGeneration;
 	}
 
 	/* The newest sample, and the one that has been in hand the longest.
@@ -115,6 +164,7 @@ class ScrollingBuffer
 		std::lock_guard<std::mutex> lock(mtx);
 		offset = 0;
 		isFull = false;
+		generation++;
 	}
 
 	/* Sets how many samples are kept.
@@ -151,6 +201,10 @@ class ScrollingBuffer
 		maxSize = newMaxSize;
 		offset = newMaxSize == 0 ? 0 : kept % newMaxSize;
 		isFull = newMaxSize != 0 && kept == newMaxSize;
+		generation++;
+		copyGeneration = UINT64_MAX;
+		copySize = 0;
+		copyOffset = 0;
 	}
 
 	uint32_t getMaxSize() const
@@ -217,6 +271,10 @@ class ScrollingBuffer
 	uint32_t maxSize = 10000;
 	uint32_t offset = 0;
 	bool isFull = false;
+	uint64_t generation = 0;
+	uint64_t copyGeneration = UINT64_MAX;
+	uint32_t copySize = 0;
+	uint32_t copyOffset = 0;
 
 	mutable std::vector<T> data{std::vector<T>(maxSize + 1)};
 	mutable std::vector<T> dataCopy{std::vector<T>(maxSize + 1)};

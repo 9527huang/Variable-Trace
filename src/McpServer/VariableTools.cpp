@@ -406,6 +406,7 @@ namespace mcp
 
 			Json changed = Json::object();
 			bool frequencyChanged = false;
+			bool readStrategyChanged = false;
 
 			if (has(arguments, "sample_frequency_hz"))
 			{
@@ -463,9 +464,17 @@ namespace mcp
 				changed["viewport_width_ms"] = windowMs;
 			}
 
+			if (has(arguments, "merge_contiguous_reads"))
+			{
+				const bool enabled = *optionalBool(arguments, "merge_contiguous_reads");
+				readStrategyChanged = settings.mergeContiguousReads != enabled;
+				settings.mergeContiguousReads = enabled;
+				changed["merge_contiguous_reads"] = enabled;
+			}
+
 			if (changed.empty())
 				throw ToolError("No sampling parameter was provided. Pass at least one of 'sample_frequency_hz', 'max_points', "
-								"'max_viewport_points' or 'viewport_width_ms'.");
+								"'max_viewport_points', 'viewport_width_ms' or 'merge_contiguous_reads'.");
 
 			settings.viewportWidthMs = std::clamp(settings.viewportWidthMs, ViewerDataHandler::minViewportWidthMs, ViewerDataHandler::maxViewportWidthMs);
 
@@ -479,7 +488,7 @@ namespace mcp
 
 			/* The frequency is handed to the probe when it is started, so a changed
 			   value only takes effect through a restart. */
-			changed["acquisition_restarted"] = frequencyChanged && requestAcquisitionRestart(context);
+			changed["acquisition_restarted"] = (frequencyChanged || readStrategyChanged) && requestAcquisitionRestart(context);
 
 			return changed;
 		}
@@ -634,11 +643,13 @@ namespace mcp
 									 "  sample_frequency_hz : 1 - 1 000 000 "
 									 "  max_points          : total samples kept per series "
 									 "  viewport_width_ms   : visible time window in ms (1 - 3 600 000) "
-									 "  max_viewport_points : the same window given in samples, converted at the sampling frequency",
+									 "  max_viewport_points : the same window given in samples, converted at the sampling frequency "
+									 "  merge_contiguous_reads: merge adjacent known-RAM variables (default 1; set 0 for the original path)",
 					  .inputSchema = objectSchema(Json::object({{"sample_frequency_hz", integerProperty("Sampling frequency in Hz (1 - 1 000 000)")},
 																{"max_points", integerProperty("Max stored samples per series")},
 																{"viewport_width_ms", integerProperty("Visible time window in ms (1 - 3 600 000)")},
-																{"max_viewport_points", integerProperty("Visible time window in samples, converted at the sampling frequency")}})),
+																{"max_viewport_points", integerProperty("Visible time window in samples, converted at the sampling frequency")},
+																{"merge_contiguous_reads", booleanProperty("1 = merge adjacent known-RAM reads, 0 = original per-variable path")}})),
 					  .handler = setSampling});
 
 		registry.add({.name = "set_elf_parser",
