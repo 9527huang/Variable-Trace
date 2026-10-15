@@ -15,6 +15,12 @@
     07 绕回两段        缓冲里的有效事件分成两段，拼起来序号连续
     08 写指针为 0 且满 重建出 32 条，顺序正确
     09 写指针为 0 且空 重建出 0 条
+    10 epoch 结束前     序号接近上限，但不在同一 epoch 内回绕
+    11 新 epoch         序号、时间和编号可重置，但身份与旧会话隔离
+    12 多圈绕回        累计写入可超过两圈，仍只重建最后一圈
+
+`invalid/` 里的样本必须被拒绝。它们分别破坏 generation、文件长度、区段偏移、
+事件提交、字典完整性、字典区间、epoch 规则和写指针对齐。
 """
 import os
 import struct
@@ -27,8 +33,25 @@ FILE_HDR_LEN = 32
 
 TASK, QUEUE, SEM, MTX = 0, 1, 2, 3
 SNAPSHOT_INTERVAL_MS = 500
+MAX_EVENT_TYPE = 17
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+INVALID_DIR = os.path.join(HERE, "invalid")
+
+OBJECT_KIND_BY_EVENT = {
+    7: QUEUE, 8: QUEUE, 9: QUEUE, 10: QUEUE,
+    11: SEM, 12: SEM,
+    13: MTX, 14: MTX,
+}
+
+
+class SampleError(ValueError):
+    pass
+
+
+def require(condition, message):
+    if not condition:
+        raise SampleError(message)
 
 
 class Rec:
@@ -38,21 +61,39 @@ class Rec:
             raw = f.read()
         self.size = len(raw)
 
+        require(self.size >= FILE_HDR_LEN, f"{path}: 文件长度不足文件头")
+
         magic, ver, hlen, moff, mlen, boff, blen, doff, dlen = \
             struct.unpack_from("<4sHHIIIIII", raw, 0)
-        assert magic == b"VTRC", f"{path}: 魔术不对 {magic!r}"
-        assert ver == 1, f"{path}: 版本 {ver}"
-        assert hlen == FILE_HDR_LEN and mlen == META_LEN, "头部长度不对"
-        assert boff == moff + mlen, "缓冲镜象没紧跟元数据"
-        assert doff == boff + blen, "字典区没紧跟缓冲镜象"
-        assert self.size == doff + dlen, \
-            f"{path}: 文件长 {self.size}，按头部算应为 {doff + dlen}"
+        require(magic == b"VTRC", f"{path}: 魔术不对 {magic!r}")
+        require(ver == 1, f"{path}: 版本 {ver}")
+        require(hlen == FILE_HDR_LEN and mlen == META_LEN, "头部长度不对")
+        require(moff == hlen, "元数据没紧跟文件头")
+        require(boff == moff + mlen, "缓冲镜象没紧跟元数据")
+        require(doff == boff + blen, "字典区没紧跟缓冲镜象")
+        require(moff + mlen <= self.size, "元数据区越界")
+        require(boff + blen <= self.size, "缓冲镜象区越界")
+        require(doff + dlen <= self.size, "字典区越界")
+        require(self.size == doff + dlen,
+                f"{path}: 文件长度 {self.size}，按头部算应为 {doff + dlen}")
+        require(dlen % DICT_LEN == 0, "字典区长度不是条目大小的整数倍")
 
         (self.write_ptr, self.written_total, self.overflow, self.tick_high,
          self.epoch, self.buffer_bytes, self.freq_mhz, self.core,
-         self.flag_wrapped, _) = struct.unpack_from("<IIIIIIHBBI", raw, moff)
-        assert blen == self.buffer_bytes, \
-            f"{path}: 镜象长 {blen} 与元数据 {self.buffer_bytes} 不一致"
+         self.flag_wrapped, self.generation) = struct.unpack_from(
+             "<IIIIIIHBBI", raw, moff)
+        require(blen == self.buffer_bytes,
+                f"{path}: 镜象长 {blen} 与元数据 {self.buffer_bytes} 不一致")
+        require(self.buffer_bytes > 0 and self.buffer_bytes % EVENT_LEN == 0,
+                "缓冲大小必须是非零事件长度整数倍")
+        require(self.write_ptr < self.buffer_bytes,
+                "写指针越过缓冲区")
+        require(self.write_ptr % EVENT_LEN == 0,
+                "写指针未按事件长度对齐")
+        require(self.freq_mhz > 0, "目标频率不能为零")
+        require(self.epoch != 0, "epoch 不能为零")
+        require(self.generation % 2 == 0,
+                "generation 必须是偶数，奇数表示目标正在写入")
 
         self.image = raw[boff:boff + blen]
 
@@ -60,10 +101,29 @@ class Rec:
         for i in range(dlen // DICT_LEN):
             k, st, oid, gen, sf, st_, nm = struct.unpack_from(
                 "<BBHIII16s", raw, doff + i * DICT_LEN)
+            require(k in (TASK, QUEUE, SEM, MTX), "字典包含未知对象种类")
+            require(st in (0, 1), "字典包含未知状态")
+            require(gen > 0, "字典代次必须大于零")
+            require(sf <= st_, "同一 epoch 内字典区间不能回绕")
+            try:
+                name = nm.split(b"\0")[0].decode("utf-8")
+            except UnicodeDecodeError as ex:
+                raise SampleError("字典名称不是合法 UTF-8") from ex
+            require(bool(name), "字典名称不能为空")
             self.dict.append((k, st, oid, gen, sf, st_,
-                              nm.split(b"\0")[0].decode("utf-8")))
+                              name))
+
+        by_identity = {}
+        for entry in self.dict:
+            by_identity.setdefault((entry[0], entry[2]), []).append(entry)
+        for identity, entries in by_identity.items():
+            ordered = sorted(entries, key=lambda d: d[4])
+            for previous, current in zip(ordered, ordered[1:]):
+                require(previous[5] < current[4],
+                        f"字典生效区间重叠：{identity}")
 
         self.events = self._reconstruct()
+        self._validate_events()
 
     # ---- 从环形缓冲还原事件，逻辑顺序：最旧在前 ----
     def _reconstruct(self):
@@ -89,8 +149,8 @@ class Rec:
             self.offsets = list(range(self.write_ptr, self.buffer_bytes, EVENT_LEN))
             self.offsets += list(range(0, self.write_ptr, EVENT_LEN))
             self.wrapped = True
-        assert len(self.offsets) == kept, \
-            f"拼出 {len(self.offsets)} 条，应为 {kept}"
+        require(len(self.offsets) == kept,
+                f"拼出 {len(self.offsets)} 条，应为 {kept}")
 
         out = []
         for off in self.offsets:
@@ -98,6 +158,22 @@ class Rec:
             pm = int.from_bytes(self.image[off + 13:off + 16], "little")
             out.append((seq, ts, et, tk, ob, pm))
         return out
+
+    def _validate_events(self):
+        require(all(a[0] < b[0] for a, b in zip(self.events, self.events[1:])),
+                "同一 epoch 内序号必须严格递增，回绕前应切换 epoch")
+
+        for event in self.events:
+            seq, _, event_type, task, obj, _ = event
+            require(event_type <= MAX_EVENT_TYPE,
+                    f"未知事件类型 {event_type}，可能是半写记录")
+            if task != 0:
+                require(self.name_of(TASK, task, seq) is not None,
+                        f"事件 {seq} 缺少任务字典：{task}")
+            object_kind = OBJECT_KIND_BY_EVENT.get(event_type)
+            if object_kind is not None and obj != 0:
+                require(self.name_of(object_kind, obj, seq) is not None,
+                        f"事件 {seq} 缺少对象字典：{obj}")
 
     def name_of(self, kind, oid, seq):
         """按编号加序号区间解析名字。"""
@@ -292,6 +368,29 @@ def main():
             check("重建出 0 条", len(rec.events) == 0, f"实测 {len(rec.events)} 条")
             check("缓冲镜象里没有非零字节（真的是空的）",
                   not any(rec.image), "全 0")
+
+        elif f.startswith("10"):
+            check("旧 epoch 的序号接近上限但没有回绕",
+                  rec.events[-1][0] < 0xFFFFFFFF
+                  and rec.events[0][0] > 0xFFFFFF00,
+                  f"{rec.events[0][0]:#x}..{rec.events[-1][0]:#x}")
+
+        elif f.startswith("11"):
+            check("新 epoch 从小序号重新开始",
+                  rec.events[0][0] == 1 and rec.epoch == 101,
+                  f"epoch {rec.epoch}，首序号 {rec.events[0][0]}")
+
+        elif f.startswith("12"):
+            check("累计写入超过两圈",
+                  rec.written_total > 2 * (rec.buffer_bytes // EVENT_LEN),
+                  f"累计 {rec.written_total}，槽数 {rec.buffer_bytes // EVENT_LEN}")
+            check("多圈后只保留一圈", rec.kept == 32 and len(rec.events) == 32,
+                  f"保留 {rec.kept}")
+            check("多圈后序号范围正确",
+                  rec.events[0][0] == 69 and rec.events[-1][0] == 100,
+                  f"{rec.events[0][0]}..{rec.events[-1][0]}")
+            check("多圈后序号仍连续", not gap_analysis(rec),
+                  f"缺口 {gap_analysis(rec) or '无'}")
         print()
 
     # ---- 跨样本：写指针相同、含义不同 ----
@@ -306,6 +405,53 @@ def main():
         check("只靠累计写入数就能区分", a.written_total != b.written_total,
               f"{a.written_total} vs {b.written_total}")
         print()
+
+    # ---- 跨样本：epoch 是身份、序号和时间的硬边界 ----
+    if "10" in recs and "11" in recs:
+        old, new = recs["10"], recs["11"]
+        print("跨样本核对：新 epoch 允许计数重置，但禁止身份串联")
+        check("epoch 已变化", old.epoch != new.epoch,
+              f"{old.epoch} -> {new.epoch}")
+        check("序号在新 epoch 重置", old.events[-1][0] > new.events[0][0],
+              f"{old.events[-1][0]} -> {new.events[0][0]}")
+        check("时间戳在新 epoch 重置", old.events[-1][1] > new.events[0][1],
+              f"{old.events[-1][1]} -> {new.events[0][1]}")
+        old_name = old.name_of(TASK, 1, old.events[0][0])
+        new_name = new.name_of(TASK, 1, new.events[0][0])
+        check("相同编号在不同 epoch 解析为不同身份", old_name != new_name,
+              f"{old_name} vs {new_name}")
+        print()
+
+    # ---- 负例：每个损坏输入都必须因对应契约而被拒绝 ----
+    invalid_expected = {
+        "01_odd_generation.vtrc": "generation 必须是偶数",
+        "02_truncated.vtrc": "字典区越界",
+        "03_offset_out_of_range.vtrc": "字典区没紧跟缓冲镜象",
+        "04_torn_event.vtrc": "未知事件类型",
+        "05_missing_dictionary.vtrc": "缺少任务字典",
+        "06_overlapping_dictionary.vtrc": "字典生效区间重叠",
+        "07_sequence_wrap_without_epoch.vtrc": "同一 epoch 内序号必须严格递增",
+        "08_unaligned_write_pointer.vtrc": "写指针未按事件长度对齐",
+    }
+    print("无效样本核对：损坏输入必须被明确拒绝")
+    found_invalid = set()
+    if os.path.isdir(INVALID_DIR):
+        for f in sorted(os.listdir(INVALID_DIR)):
+            if not f.endswith(".vtrc"):
+                continue
+            found_invalid.add(f)
+            expected = invalid_expected.get(f)
+            try:
+                Rec(os.path.join(INVALID_DIR, f))
+                error = None
+            except SampleError as ex:
+                error = str(ex)
+            check(f"拒绝 {f}", error is not None and expected is not None
+                  and expected in error,
+                  error or "错误地接受了无效样本")
+    check("无效样本集合完整", found_invalid == set(invalid_expected),
+          f"实有 {sorted(found_invalid)}")
+    print()
 
     ok = sum(1 for _, o, _ in RESULTS if o)
     bad = [n for n, o, _ in RESULTS if not o]

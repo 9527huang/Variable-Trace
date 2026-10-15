@@ -3,7 +3,8 @@
 为什么要固定样本
 ================
 分析链路（事件解码、序号与丢失检测、时间回绕、代次与墓碑、泳道聚合、
-区间查询、环形缓冲重组）必须在**不依赖目标板、不依赖固件**的情况下就能
+区间查询、会话分段、环形缓冲重组和损坏输入拒绝）必须在**不依赖目标板、
+不依赖固件**的情况下就能
 开发和回归。所以先把内容已知、期望属性已知的记录固化下来，进版本控制。
 
 配套的 `check_samples.py` 是独立实现的读取端：不看这里的中间结果，只从字节
@@ -90,6 +91,16 @@
     总共丢失 = 被覆盖 + 被丢弃
 
 样本 02 用的是「被丢弃」，样本 07、08 用的是「被覆盖」。
+
+序号与会话
+============
+同一 epoch 内事件序号严格递增，不允许回绕。序号接近 0xFFFFFFFF 时，目标必须
+先结束当前 epoch，再以新 epoch 和从 1 开始的序号继续。时间戳仍允许在 epoch
+内回绕，由序号消歧。这样字典的 32 位生效区间、缺口检测和分页游标都保持单义。
+
+`invalid/` 下另有一组故意损坏的样本。它们不是供时间线回放的输入，而是验证
+解码器能拒绝奇数 generation、截断、越界、半写记录、字典缺失、区间重叠、
+未切 epoch 的序号回绕和未对齐写指针。
 """
 import os
 import struct
@@ -118,6 +129,7 @@ FREQ_HZ = 8_000_000
 CYC_PER_US = FREQ_HZ // 1_000_000
 
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
+INVALID_DIR = os.path.join(OUT_DIR, "invalid")
 
 
 class Sample:
@@ -141,8 +153,10 @@ class Sample:
 
     def define(self, kind, oid, gen, name, seq_from=0, seq_to=0xFFFFFFFF,
                status=STAT_ALIVE):
+        raw_name = name.encode("utf-8")
+        encoded_name = raw_name[:16].decode("utf-8", errors="ignore").encode("utf-8")
         self.dict.append((KIND[kind], status, oid & 0xFFFF, gen,
-                          seq_from, seq_to, name.encode("utf-8")[:16]))
+                          seq_from, seq_to, encoded_name))
 
     # ---- 把事件摆进环形缓冲 ----
     def _buffer_image(self):
@@ -154,8 +168,6 @@ class Sample:
         kept = min(written, slots)
         assert kept == len(self.events), \
             f"{self.name}: 保留数应为 {kept}，实际摆了 {len(self.events)} 条"
-        assert written - kept <= slots, f"{self.name}: 绕过的圈数不合法"
-
         first_slot = (written - kept) % slots if slots else 0
         img = bytearray(self.buffer_bytes)
         for i, (seq, ts, et, tk, ob, pm) in enumerate(self.events):
@@ -318,7 +330,8 @@ def s05():
     s = Sample("05_id_reuse", "编号回收后再分配", buffer_bytes=512)
     s.define("task", 1, 1, "SensorTask")
     s.define("task", 2, 1, "CommTask")
-    s.define("queue", 1, 1, "q_old", seq_from=0, seq_to=11)
+    s.define("queue", 1, 1, "q_old", seq_from=0, seq_to=11,
+             status=STAT_TOMB)
     s.define("queue", 1, 2, "q_new", seq_from=12)
 
     step = 200 * CYC_PER_US
@@ -419,7 +432,103 @@ def s09():
     return s
 
 
-SAMPLES = [s01, s02, s03, s04, s05, s06, s07, s08, s09]
+# ============================================================ 10/11 epoch 边界
+def s10():
+    """旧会话结束前的最后一段；序号尚未回绕。"""
+    s = Sample("10_epoch_before", "epoch 100 的末段", buffer_bytes=256,
+               epoch=100)
+    s.define("task", 1, 7, "OldSession", seq_from=0xFFFFFFF8,
+             status=STAT_ALIVE)
+    ts = 0xFFF00000
+    for i in range(6):
+        s.add(0xFFFFFFF8 + i, ts, "task_switch", task=1)
+        ts = (ts + 800) & 0xFFFFFFFF
+    return s
+
+
+def s11():
+    """新会话可以重置序号、时间戳并复用编号，但身份不能跨 epoch。"""
+    s = Sample("11_epoch_after", "epoch 101 重新从序号 1 开始", buffer_bytes=256,
+               epoch=101)
+    s.define("task", 1, 1, "NewSession", seq_from=1, status=STAT_ALIVE)
+    ts = 1000
+    for i in range(6):
+        s.add(i + 1, ts, "task_switch", task=1)
+        ts += 800
+    return s
+
+
+# ============================================================ 12 多圈绕回
+def s12():
+    """累计写入跨过多圈，重组不能假设最多只覆盖一圈。"""
+    s = Sample("12_multiple_wraps", "累计写入 100 条，仅保留 69..100",
+               buffer_bytes=512, written_total=100, epoch=200)
+    s.define("task", 1, 1, "LongRunner", seq_from=1, status=STAT_ALIVE)
+    ts = 5_000_000
+    for seq in range(69, 101):
+        s.add(seq, ts, "task_switch", task=1)
+        ts += 800
+    return s
+
+
+SAMPLES = [s01, s02, s03, s04, s05, s06, s07, s08, s09, s10, s11, s12]
+
+
+def _write_invalid(name, raw):
+    os.makedirs(INVALID_DIR, exist_ok=True)
+    path = os.path.join(INVALID_DIR, name + ".vtrc")
+    with open(path, "wb") as f:
+        f.write(raw)
+    return path
+
+
+def make_invalid_samples(paths):
+    """从合法样本派生负例，每个文件只破坏一个契约。"""
+    with open(paths["01"], "rb") as f:
+        normal = bytearray(f.read())
+    with open(paths["05"], "rb") as f:
+        reused = bytearray(f.read())
+    with open(paths["10"], "rb") as f:
+        before = bytearray(f.read())
+
+    cases = []
+
+    raw = bytearray(normal)
+    struct.pack_into("<I", raw, FILE_HDR_LEN + 28, 1)
+    cases.append(_write_invalid("01_odd_generation", raw))
+
+    cases.append(_write_invalid("02_truncated", normal[:-7]))
+
+    raw = bytearray(normal)
+    struct.pack_into("<I", raw, 24, 0xFFFFFFF0)
+    cases.append(_write_invalid("03_offset_out_of_range", raw))
+
+    raw = bytearray(normal)
+    buffer_offset = struct.unpack_from("<I", raw, 16)[0]
+    raw[buffer_offset + 8] = 0xFF
+    cases.append(_write_invalid("04_torn_event", raw))
+
+    raw = bytearray(normal)
+    struct.pack_into("<H", raw, buffer_offset + 9, 99)
+    cases.append(_write_invalid("05_missing_dictionary", raw))
+
+    raw = bytearray(reused)
+    dict_offset = struct.unpack_from("<I", raw, 24)[0]
+    # 第四条字典项是 q_new；把起点移进 q_old 的闭区间。
+    struct.pack_into("<I", raw, dict_offset + 3 * DICT_LEN + 8, 10)
+    cases.append(_write_invalid("06_overlapping_dictionary", raw))
+
+    raw = bytearray(before)
+    buffer_offset = struct.unpack_from("<I", raw, 16)[0]
+    for i, seq in enumerate((0xFFFFFFFE, 0xFFFFFFFF, 0, 1, 2, 3)):
+        struct.pack_into("<I", raw, buffer_offset + i * EVENT_LEN, seq)
+    cases.append(_write_invalid("07_sequence_wrap_without_epoch", raw))
+
+    raw = bytearray(normal)
+    struct.pack_into("<I", raw, FILE_HDR_LEN, 1)
+    cases.append(_write_invalid("08_unaligned_write_pointer", raw))
+
+    return cases
 
 
 def main():
@@ -428,16 +537,20 @@ def main():
           f"{2 ** 32 / FREQ_HZ:.0f} 秒回绕一次）")
     print("事件 16 字节，缓冲镜象按环形摆放\n")
     total = 0
+    paths = {}
     for fn in SAMPLES:
         s = fn()
         path, size = s.write()
+        paths[os.path.basename(path)[:2]] = path
         total += size
         slots = s.buffer_bytes // EVENT_LEN
         written = s.written_total if s.written_total is not None else len(s.events)
         print(f"  {os.path.basename(path):30s} 缓冲 {s.buffer_bytes:5d} 字节"
               f"（{slots:2d} 槽）  保留 {len(s.events):2d}  累计写入 {written:3d}"
               f"  溢出 {s.overflow:2d}  {size:5d} 字节  {s.note}")
-    print(f"\n共 {len(SAMPLES)} 个文件，{total} 字节")
+    invalid = make_invalid_samples(paths)
+    print(f"\n共 {len(SAMPLES)} 个合法文件，{total} 字节；"
+          f"{len(invalid)} 个拒绝用例位于 invalid/")
     return 0
 
 
