@@ -97,7 +97,21 @@ namespace mcp
 								    against the addresses list_sync_objects reports - the
 								    comparison that tells a name that went missing from a
 								    task that was never on the list. */
-								 {"event_list", task.hasEventList ? Json(hexOf(task.eventList)) : Json()}});
+								 {"event_list", task.hasEventList ? Json(hexOf(task.eventList)) : Json()},
+								 /* How much of the stack is free, read on this side from the
+								    pattern a new stack is filled with. The age is beside it
+								    because the sweep takes a few tasks a round, so the numbers
+								    in one snapshot are not all from the same moment. A null free
+								    count means there is no reading - either none was taken yet, or
+								    the target does not fill its stacks, which `stack_scan` in
+								    get_rtos_info tells apart. `reached_cap` true means the scan
+								    stopped at its limit, so the used part is at most what it says. */
+								 {"stack_free_bytes", task.hasStackWatermark ? Json(task.stackFreeBytes) : Json()},
+								 {"stack_used_bytes",
+								  task.hasStackWatermark ? Json(task.stackWatermarkStackBytes > task.stackFreeBytes ? task.stackWatermarkStackBytes - task.stackFreeBytes : 0u)
+								                        : Json()},
+								 {"stack_watermark_age_s", task.hasStackWatermark ? Json(task.stackWatermarkAgeSeconds) : Json()},
+								 {"stack_watermark_reached_cap", task.hasStackWatermark ? Json(task.stackWatermarkReachedCap) : Json()}});
 		}
 
 		Json rtosInfo(McpContext& context, const Json& args)
@@ -129,7 +143,8 @@ namespace mcp
 									 {"rounds_published", 0},
 									 {"rounds_rejected", 0},
 									 {"last_rejection", ""},
-									 {"problems", Json::array()}});
+									 {"problems", Json::array()},
+								 {"stack_scan", Json::object({{"enabled", false}, {"fill_seen", false}, {"tasks_scanned", 0}, {"oldest_age_s", 0.0}})}});
 			}
 
 			const std::shared_ptr<const RtosSnapshot> snapshot = model->current();
@@ -168,7 +183,14 @@ namespace mcp
 								 {"problems", problems},
 								 {"inconsistencies", inconsistencies},
 								 {"lists_walked", snapshot != nullptr ? Json(snapshot->listsWalked) : Json()},
-								 {"lists_failed", snapshot != nullptr ? Json(snapshot->listsFailed) : Json()}});
+								 {"lists_failed", snapshot != nullptr ? Json(snapshot->listsFailed) : Json()},
+								 /* The stack water marks are read a few tasks a round, so the
+								    snapshot carries readings of several ages and covers part of
+								    the set. `fill_seen` false while readings exist means the
+								    target does not fill its stacks, which is a build option
+								    rather than a fault: the column claims nothing then. */
+								 {"stack_scan",
+								  snapshot == nullptr ? Json() : Json(Json::object({{"enabled", snapshot->stackScan.enabled}, {"fill_seen", snapshot->stackScan.fillSeen}, {"tasks_scanned", static_cast<uint32_t>(snapshot->stackScan.tasksScanned)}, {"oldest_age_s", snapshot->stackScan.oldestReadingAgeSeconds}}))}});
 		}
 
 		Json listTasks(McpContext& context, const Json& args)
@@ -304,7 +326,9 @@ namespace mcp
 
 		registry.add({.name = "get_rtos_info",
 					  .description = "Return the state of the task view as JSON: {enabled, session_id, sequence, consistency, capture_started_at_s, "
-									 "capture_finished_at_s, capture_span_s, task_count, rounds_published, rounds_rejected, last_rejection, problems}. "
+									 "capture_finished_at_s, capture_span_s, task_count, sync_object_count, lists_walked, lists_failed, rounds_published, "
+									 "rounds_rejected, last_rejection, stack_scan, problems, inconsistencies}. "
+									 "stack_scan carries {enabled, fill_seen, tasks_scanned, oldest_age_s}. "
 									 "Reads the last published snapshot; it does not touch the target.",
 					  .inputSchema = objectSchema(Json::object({})),
 					  .handler = rtosInfo});
@@ -312,7 +336,8 @@ namespace mcp
 		registry.add({.name = "list_tasks",
 					  .description = "Return the tasks of the most recent snapshot as JSON: {session_id, sequence, consistency, capture_span_s, "
 									 "task_count, returned, limit, max_limit, problems, tasks}. Each task carries {address, name, state, list, "
-									 "priority, base_priority, kernel_task_number, stack_base, stack_top, stack_bytes}. A field the round did not "
+									 "priority, base_priority, kernel_task_number, stack_base, stack_top, stack_bytes, waiting_on, event_list, "
+									 "stack_free_bytes, stack_used_bytes, stack_watermark_age_s, stack_watermark_reached_cap}. A field the round did not "
 									 "read is null rather than zero.",
 					  .inputSchema = objectSchema(Json::object({{"limit", integerProperty("Most tasks to return (default 100, at most 1000)")}})),
 					  .handler = listTasks});

@@ -402,6 +402,11 @@ bool ViewerDataHandler::prepareRtos()
 	rtosSessionId = "session-" + std::to_string(seconds);
 
 	rtosModel->beginSession(rtosSessionId);
+
+	/* A new session starts with no readings. A water mark taken against the
+	   previous target would be a number about a stack that is not the one on
+	   screen any more. */
+	rtosStackSweep.forget();
 	rtosLastRoundAt = -1.0;
 	rtosSampler = std::move(sampler);
 
@@ -628,38 +633,57 @@ void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start
 
 	RtosSampler::Round round = rtosSampler->collect(memory, rtosSessionId, rtosSettings);
 
-	rtosLastRoundAt = secondsSinceStart();
-
-	if (round.usable())
+	if (!round.usable())
 	{
-		/* The end of the round is only known now, which is why the sampler
-		   leaves the capture times to this side. A round that had to be split
-		   over the budget shows the span rather than pretending its pieces
-		   came from one moment. */
-		round.snapshot->captureStartedAt = startedAt;
-		round.snapshot->captureFinishedAt = rtosLastRoundAt;
-		round.snapshot->captureSpanSeconds = round.snapshot->captureFinishedAt - round.snapshot->captureStartedAt;
+		/* A round that did not hold together is not published. The previous
+		   one stays, and the reason is kept so the interface can say a round
+		   went missing instead of showing half of one. */
+		rtosLastRoundAt = secondsSinceStart();
 
-		/* The depths go into their variables before the round is published, on
-		   this thread and outside the sampling loop's own bookkeeping: the
-		   values come from the snapshot, which cannot change, and they are
-		   written into the variable model, which has its own lock. */
-		publishSyncDepths(*round.snapshot);
+		std::string reason;
 
-		rtosModel->publish(std::move(round.snapshot));
+		for (const std::string& problem : round.problems)
+			reason += (reason.empty() ? "" : "; ") + problem;
+
+		rtosModel->recordRejectedRound(reason.empty() ? "the round did not hold together" : reason, startedAt);
 
 		return;
 	}
 
-	/* A round that did not hold together is not published. The previous one
-	   stays, and the reason is kept so the interface can say a round went
-	   missing instead of showing half of one. */
-	std::string reason;
+	/*
+	 * The stack water marks, a few tasks of this round's set.
+	 *
+	 * It runs here rather than inside the sampler because it is the one part of
+	 * the task view that is deliberately not a function of a single round: a
+	 * stack costs hundreds of bytes to read, which is milliseconds, and the
+	 * whole set of them would not fit in a sampling period. The sweep holds the
+	 * turn and the readings, and it is handed the same memory reader the round
+	 * used, so its reads are counted with the round's.
+	 *
+	 * Before the depths and before the publish: what this adds has to be part
+	 * of the snapshot that is published, and nothing may modify a snapshot once
+	 * the model has handed it out.
+	 */
+	rtosStackSweep.step(memory, round.snapshot->tasks, rtosStackSweepSettings, startedAt);
+	rtosStackSweep.applyTo(*round.snapshot, startedAt);
 
-	for (const std::string& problem : round.problems)
-		reason += (reason.empty() ? "" : "; ") + problem;
+	/* The end of the round is only known now, which is why the sampler leaves
+	   the capture times to this side. It is the end of everything the snapshot
+	   holds, the stack reads included: stamping it before them would have the
+	   snapshot claim its parts were read over a shorter span than they were. */
+	rtosLastRoundAt = secondsSinceStart();
+	round.snapshot->captureStartedAt = startedAt;
+	round.snapshot->captureFinishedAt = rtosLastRoundAt;
+	round.snapshot->captureSpanSeconds = round.snapshot->captureFinishedAt - round.snapshot->captureStartedAt;
 
-	rtosModel->recordRejectedRound(reason.empty() ? "the round did not hold together" : reason, startedAt);
+	/* The depths go into their variables before the round is published, on this
+	   thread and outside the sampling loop's own bookkeeping: the values come
+	   from the snapshot, which cannot change, and they are written into the
+	   variable model, which has its own lock. */
+	publishSyncDepths(*round.snapshot);
+
+	rtosModel->publish(std::move(round.snapshot));
+
 }
 
 void ViewerDataHandler::updateVariables(double timestamp, const std::unordered_map<uint32_t, double>& values)

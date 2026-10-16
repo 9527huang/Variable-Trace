@@ -26,6 +26,9 @@ enum class RtosTaskColumn
 	Priority,
 	State,
 	StackSize,
+	/* Free bytes out of the stack's size, scanned on this side. */
+	StackWatermark,
+
 
 	/* Last, because the panel draws its headers by casting the column index
 	   to this type: the order here is the order on screen. */
@@ -76,6 +79,33 @@ struct RtosTaskRow
 
 	bool hasStack = false;
 	uint32_t stackBytes = 0;
+
+	/* What the stack scan found, and what the reading is worth: the moment it
+	   was taken at, since the sweep reads a few tasks a round, and whether the
+	   scan stopped at its cap and so gives a lower bound rather than a count.
+	   All of it is kept so the panel can say how old a number is instead of
+	   presenting every row as equally fresh. */
+	bool hasStackWatermark = false;
+	uint32_t stackFreeBytes = 0;
+	uint32_t stackWatermarkStackBytes = 0;
+	double stackWatermarkAgeSeconds = 0.0;
+	bool stackWatermarkReachedCap = false;
+
+	/* The stack the task has touched, and its share of the whole. Worked out
+	   here rather than in the panel: the panel is not built into the test
+	   binary, so a number worked out there is a number nothing checks. */
+	uint32_t stackUsedBytes() const
+	{
+		return stackWatermarkStackBytes > stackFreeBytes ? stackWatermarkStackBytes - stackFreeBytes : 0;
+	}
+
+	uint32_t stackUsedPercent() const
+	{
+		if (stackWatermarkStackBytes == 0)
+			return 0;
+
+		return static_cast<uint32_t>((static_cast<uint64_t>(stackUsedBytes()) * 100u) / stackWatermarkStackBytes);
+	}
 
 	/* The name of the object it is waiting on, and empty when it is waiting on
 	   none. Unlike the fields above, an empty one here is not missing data -

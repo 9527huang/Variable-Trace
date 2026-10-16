@@ -111,6 +111,8 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/GdbRtosLayout.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosSyncEnumerator.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosTableModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosStackScanner.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosStackSweep.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpTypes.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpProtocol.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpToolRegistry.cpp
@@ -191,6 +193,8 @@ add_executable(${EXECUTABLE} main.cpp
     PlotDerivedSeriesTest.cpp
     RtosTableModelTest.cpp
     RtosSyncEnumerationTest.cpp
+    RtosStackScannerTest.cpp
+    RtosStackSweepTest.cpp
     ${SOURCES})
 
 add_compile_options(-Wall -Wextra -Wpedantic)

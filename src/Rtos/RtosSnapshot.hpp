@@ -69,6 +69,33 @@ struct RtosLayerAge
  * modifies a snapshot after it was published, which is what lets the interface
  * read it every frame without a lock and without ever seeing half a round.
  */
+/*
+ * What the stack sweep holds, and how far it can be trusted.
+ *
+ * The water marks are read a few tasks at a time, so a snapshot carries
+ * readings of several ages and covers part of the set. Both are part of the
+ * answer rather than defects to hide: a column of numbers with no hint of when
+ * they were taken invites a decision they cannot support.
+ */
+struct RtosStackScanSummary
+{
+	/* The sweep has run at least once. Before that there is nothing to say
+	   about stacks, and an empty column is what is expected. */
+	bool enabled = false;
+
+	/* The fill pattern was found in some stack, so a free count means what it
+	   says. False while readings exist says the kernel fills nothing: a build
+	   option rather than a fault in the target, so it is reported plainly and
+	   not as a problem, and the column claims nothing. */
+	bool fillSeen = false;
+
+	/* How many tasks this snapshot carries a reading for, and the age of the
+	   oldest of them. */
+	uint32_t tasksScanned = 0;
+	double oldestReadingAgeSeconds = 0.0;
+};
+
+
 struct RtosSnapshot
 {
 	std::vector<RtosTask> tasks;
@@ -88,6 +115,10 @@ struct RtosSnapshot
 	bool queueRegistryAvailable = false;
 
 	std::vector<RtosLayerAge> layerAges;
+
+	/* The stack water marks: how much of each stack is free, and how much of
+	   the set this round managed to cover. */
+	RtosStackScanSummary stackScan;
 
 	/* One sentence per thing that went wrong while the round was collected.
 	   A round can be usable and still have something worth saying: a list that

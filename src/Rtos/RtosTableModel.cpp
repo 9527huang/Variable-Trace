@@ -1,6 +1,7 @@
 #include "RtosTableModel.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <cctype>
 
 namespace
@@ -25,18 +26,50 @@ namespace
 
 	int compareNames(const std::string& left, const std::string& right)
 	{
-		/* A task whose name could not be read sorts last rather than first.
-		   An empty name is missing data, not a name that comes before every
-		   other name, and putting it at the top would have it noticed least. */
-		if (left.empty() != right.empty())
-			return left.empty() ? 1 : -1;
-
+		/* No case for a missing name here: a row with nothing read never meets
+		   a row with something in the same sorted group. */
 		return left.compare(right);
 	}
 
 	int signOf(int64_t left, int64_t right)
 	{
 		return left < right ? -1 : (left > right ? 1 : 0);
+	}
+
+	/*
+	 * Whether the column's value was read for this row.
+	 *
+	 * A row with nothing read is not a small value and not a large one, so it
+	 * cannot take part in the ordering. Sorting a column is a question - which
+	 * task is closest to the end of its stack - and a row nobody has measured
+	 * cannot answer it. Those rows are put at the end whichever way the column
+	 * is sorted, so that the answer is not hidden behind the gaps.
+	 */
+	bool hasValueFor(const RtosTaskRow& row, RtosTaskColumn column)
+	{
+		switch (column)
+		{
+			case RtosTaskColumn::Name:
+				return !row.name.empty();
+
+			case RtosTaskColumn::Priority:
+				return row.hasPriority;
+
+			case RtosTaskColumn::StackSize:
+				return row.hasStack;
+
+			case RtosTaskColumn::StackWatermark:
+				return row.hasStackWatermark;
+
+			case RtosTaskColumn::Address:
+			case RtosTaskColumn::State:
+			case RtosTaskColumn::WaitingOn:
+			default:
+				/* Always present: an address comes from the list the task was
+				   found on, and "waiting on nothing" is an answer rather than a
+				   gap. */
+				return true;
+		}
 	}
 
 	int compareRows(const RtosTaskRow& left, const RtosTaskRow& right, RtosTaskColumn column)
@@ -57,6 +90,14 @@ namespace
 
 			case RtosTaskColumn::StackSize:
 				return signOf(left.stackBytes, right.stackBytes);
+
+			case RtosTaskColumn::StackWatermark:
+				/* Least free first, so that the order answers the question the
+				   column gets asked: which task is closest to the end of its
+				   stack. A row with no reading never reaches this - it is put in
+				   the group that trails, whichever way the column is sorted. */
+				return signOf(left.stackFreeBytes, right.stackFreeBytes);
+
 
 			case RtosTaskColumn::WaitingOn:
 				return compareNames(left.waitingOn, right.waitingOn);
@@ -99,6 +140,12 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 		row.priorityRank = task.priorityRank;
 		row.hasStack = task.hasStack;
 		row.stackBytes = (task.hasStack && task.stackTop > task.stackBase) ? task.stackTop - task.stackBase : 0;
+		row.hasStackWatermark = task.hasStackWatermark;
+		row.stackFreeBytes = task.stackFreeBytes;
+		row.stackWatermarkStackBytes = task.stackWatermarkStackBytes;
+		row.stackWatermarkAgeSeconds = task.stackWatermarkAgeSeconds;
+		row.stackWatermarkReachedCap = task.stackWatermarkReachedCap;
+
 		row.waitingOn = task.waitingOn;
 		row.sourceList = task.sourceList;
 
@@ -107,14 +154,35 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 
 	/* Stable, so that two tasks with the same key keep the order the round
 	   found them in rather than swapping places on every redraw. */
-	std::stable_sort(rows.begin(), rows.end(), [&query](const RtosTaskRow& left, const RtosTaskRow& right)
+	const auto order = [&query](const RtosTaskRow& left, const RtosTaskRow& right)
 	{
 		const int comparison = compareRows(left, right, query.sortColumn);
 
 		return query.descending ? comparison > 0 : comparison < 0;
-	});
+	};
 
-	return rows;
+	/* Two groups rather than one comparison that would have to know the
+	   direction: rows with a value for this column, sorted, then the rows
+	   without one, sorted among themselves and left at the end. */
+	std::vector<RtosTaskRow> read;
+	std::vector<RtosTaskRow> notRead;
+
+	read.reserve(rows.size());
+
+	for (RtosTaskRow& row : rows)
+	{
+		if (hasValueFor(row, query.sortColumn))
+			read.push_back(std::move(row));
+		else
+			notRead.push_back(std::move(row));
+	}
+
+	std::stable_sort(read.begin(), read.end(), order);
+	std::stable_sort(notRead.begin(), notRead.end(), order);
+
+	read.insert(read.end(), std::make_move_iterator(notRead.begin()), std::make_move_iterator(notRead.end()));
+
+	return read;
 }
 
 std::vector<uint32_t> RtosTableModel::addressesOf(const std::vector<RtosTaskRow>& rows)

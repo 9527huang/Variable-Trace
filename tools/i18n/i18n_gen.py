@@ -30,6 +30,7 @@ OUTPUT = os.path.join(ROOT, "src", "I18n", "I18nTable.inc")
 WINDOW_TITLES = [
     "Trace Viewer",
     "Trace Plots",
+    "Task Viewer",
     "Var Viewer",
     "Plots",
     "Flash Output",

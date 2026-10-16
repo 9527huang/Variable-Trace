@@ -27,12 +27,16 @@
  * decision nothing checks.
  *
  * The columns the plan asks for and this table does not show are missing for a
- * reason worth writing down. CPU load and context switch counts need the
- * target built with `configGENERATE_RUN_TIME_STATS`; the stack water mark needs
- * the kernel asked for it, which the task view does not do yet; the object a
- * task waits on needs the wait lists chased back to whatever owns them. None of
- * them can be filled in from what a round reads today, and a column filled with
- * zeroes would be a claim about the target rather than a gap in the reading.
+ * reason worth writing down. CPU load needs the target built with
+ * `configGENERATE_RUN_TIME_STATS`, and the kernel keeps no per task switch
+ * count at all. Neither can be filled in from what a round reads today, and a
+ * column filled with zeroes would be a claim about the target rather than a
+ * gap in the reading.
+ *
+ * The stack columns are here because they ask nothing of the target beyond
+ * what makes them measurable anywhere: the range comes out of the control
+ * block, and how much of it is used is worked out on this side from the
+ * pattern a new stack is filled with.
  */
 class GuiRtosPanel
 {
@@ -66,6 +70,7 @@ class GuiRtosPanel
 		}
 
 		drawInconsistencyNotice(*snapshot);
+		drawStackScanNotice(*snapshot);
 		drawFilters(snapshot);
 		drawTable(snapshot);
 		drawSyncObjects(*snapshot);
@@ -101,6 +106,46 @@ class GuiRtosPanel
 
 		ImGui::Separator();
 	}
+
+	/*
+	 * Why the stack column is empty, when it is empty because of the target.
+	 *
+	 * A kernel that never fills its stacks leaves nothing to measure: every byte
+	 * was written at some point and no boundary between used and unused exists.
+	 * The scan then starts on a byte that is not the pattern and reports zero
+	 * free bytes, which is exactly what a stack that is full to the brim
+	 * reports. The two cannot be told apart from one stack, so nothing is shown
+	 * until the pattern has been seen somewhere - and while nothing is shown,
+	 * this says which option would make the numbers possible.
+	 */
+	static void drawStackScanNotice(const RtosSnapshot& snapshot)
+	{
+		if (!snapshot.stackScan.enabled || snapshot.stackScan.fillSeen)
+			return;
+
+		ImGui::TextDisabled("%s", I18n::tr("The target does not fill its stacks, so how much of one is used cannot be worked out. FreeRTOS fills them when configCHECK_FOR_STACK_OVERFLOW is above 1, or configUSE_TRACE_FACILITY, or INCLUDE_uxTaskGetStackHighWaterMark, or INCLUDE_uxTaskGetStackHighWaterMark2 is set."));
+
+		ImGui::Separator();
+	}
+
+	/*
+	 * What this column is made of, for a reader who wants to know how fresh the
+	 * numbers are. A tooltip on the header rather than a line of its own: the
+	 * answer is wanted once, when someone wonders whether to trust the column,
+	 * and not on every frame.
+	 */
+	static void drawStackColumnTooltip(const RtosSnapshot& snapshot)
+	{
+		if (!snapshot.stackScan.enabled || !snapshot.stackScan.fillSeen)
+			return;
+
+		ImGui::BeginTooltip();
+		ImGui::Text(I18n::tr("Scanned on this side over %d task(s); the oldest reading is %.1f s old."), static_cast<int>(snapshot.stackScan.tasksScanned),
+		            snapshot.stackScan.oldestReadingAgeSeconds);
+		ImGui::TextDisabled("%s", I18n::tr("A few tasks are scanned per round, so the readings are not all from the same moment. A reading marked with a leading <= stopped at the scan limit, so the used part is at most what it says."));
+		ImGui::EndTooltip();
+	}
+
 
    private:
 	/* The filters live as long as the program, because they are the user's
@@ -186,7 +231,7 @@ class GuiRtosPanel
 		 */
 		const ImVec2 size(0.0f, ImGui::GetContentRegionAvail().y * 0.6f);
 
-		if (!ImGui::BeginTable("rtosTasks", 6, flags, size))
+		if (!ImGui::BeginTable("rtosTasks", 7, flags, size))
 			return;
 
 		ImGui::TableSetupScrollFreeze(0, 1);
@@ -206,9 +251,10 @@ class GuiRtosPanel
 		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Priority));
 		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::State));
 		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackSize));
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackWatermark));
 		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::WaitingOn));
 
-		drawHeaderRow();
+			drawHeaderRow(snapshot);
 
 		for (const RtosTaskRow& row : rows)
 		{
@@ -245,6 +291,24 @@ class GuiRtosPanel
 			else
 				ImGui::Text("%u", static_cast<unsigned>(row.stackBytes));
 
+			/*
+			 * The stack the task has touched, against the size of the stack. A
+			 * free count on its own is a number nobody can judge: 184 bytes is
+			 * comfortable in a 512 byte stack and a warning in a 256 byte one,
+			 * and the size it belongs to is in the column beside it.
+			 */
+			ImGui::TableNextColumn();
+
+			if (!row.hasStackWatermark)
+				ImGui::TextUnformatted(unknown());
+			else if (row.stackWatermarkReachedCap)
+				ImGui::Text("<= %u / %u (%u%%)", static_cast<unsigned>(row.stackUsedBytes()), static_cast<unsigned>(row.stackWatermarkStackBytes),
+				            static_cast<unsigned>(row.stackUsedPercent()));
+			else
+				ImGui::Text("%u / %u (%u%%)", static_cast<unsigned>(row.stackUsedBytes()), static_cast<unsigned>(row.stackWatermarkStackBytes),
+				            static_cast<unsigned>(row.stackUsedPercent()));
+
+
 			/* Empty means it is not waiting on an object, which is a real
 			   answer rather than a missing one, so it is left blank. */
 			ImGui::TableNextColumn();
@@ -277,6 +341,10 @@ class GuiRtosPanel
 			case RtosTaskColumn::StackSize:
 				return I18n::tr("Stack");
 
+			case RtosTaskColumn::StackWatermark:
+				return I18n::tr("Stack used");
+
+
 			case RtosTaskColumn::WaitingOn:
 				return I18n::tr("Waiting on");
 
@@ -285,11 +353,11 @@ class GuiRtosPanel
 		}
 	}
 
-	static void drawHeaderRow()
+	static void drawHeaderRow(const std::shared_ptr<const RtosSnapshot>& snapshot)
 	{
 		ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
 
-		for (int index = 0; index < 6; ++index)
+		for (int index = 0; index < 7; ++index)
 		{
 			ImGui::TableSetColumnIndex(index);
 
@@ -313,6 +381,9 @@ class GuiRtosPanel
 					query.descending = false;
 				}
 			}
+
+			if (column == RtosTaskColumn::StackWatermark && ImGui::IsItemHovered())
+				drawStackColumnTooltip(*snapshot);
 		}
 	}
 

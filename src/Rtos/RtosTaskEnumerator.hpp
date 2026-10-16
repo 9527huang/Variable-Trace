@@ -108,6 +108,29 @@ struct RtosTask
 	uint32_t stackTop = 0;
 	bool hasStack = false;
 
+	/* How much of that stack the task has ever used, scanned on this side from
+	   the pattern the kernel fills a new stack with. Each reading carries its
+	   own age, because the sweep that produces them goes round the tasks a few
+	   at a time - the oldest reading in a snapshot is seconds old rather than
+	   one round.
+	 *
+	 * A flag rather than a bare number, for the usual reason: a free count of
+	 * zero means a stack that is full to the brim, which is the finding this
+	 * column exists to produce, and it must not be confusable with a scan that
+	 * has not happened yet. */
+	bool hasStackWatermark = false;
+	uint32_t stackFreeBytes = 0;
+
+	/* The range the reading was taken over. Kept beside the reading so that the
+	   share of the stack it represents survives a round that read no control
+	   blocks. */
+	uint32_t stackWatermarkStackBytes = 0;
+	double stackWatermarkAgeSeconds = 0.0;
+
+	/* The scan stopped at its cap with the pattern still unbroken, so the
+	   reading is a lower bound: at least this much of the stack is free. */
+	bool stackWatermarkReachedCap = false;
+
 	/* The priority the task was created with. Under priority inheritance this
 	   differs from `rawPriority`, and that difference is the diagnostic. */
 	uint32_t basePriority = 0;

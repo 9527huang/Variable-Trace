@@ -206,3 +206,83 @@ TEST(RtosTableModel, TheAddressListFollowsTheRowsAndNotTheSnapshot)
 	/* First by priority, so the highest one leads. */
 	EXPECT_EQ(rows.front().priority, 3u);
 }
+
+TEST(RtosTableModel, TheStackColumnSortsRowsWithNoReadingLast)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+
+	/* Two tasks have a reading and the rest do not: the sweep goes round a few
+	   tasks a round, so a table in which every row has one is the exception. */
+	snapshot.tasks[0].hasStackWatermark = true;
+	snapshot.tasks[0].stackFreeBytes = 400;
+	snapshot.tasks[0].stackWatermarkStackBytes = 504;
+	snapshot.tasks[2].hasStackWatermark = true;
+	snapshot.tasks[2].stackFreeBytes = 20;
+	snapshot.tasks[2].stackWatermarkStackBytes = 504;
+
+	RtosTaskTableQuery query;
+	query.sortColumn = RtosTaskColumn::StackWatermark;
+
+	const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(snapshot, query);
+
+	ASSERT_EQ(rows.size(), 5u);
+
+	/* Least free first, which is the order a reader wants: the task closest to
+	   the end of its stack leads. */
+	EXPECT_EQ(rows[0].name, "prod");
+	EXPECT_EQ(rows[0].stackUsedBytes(), 484u);
+	EXPECT_EQ(rows[0].stackUsedPercent(), 96u);
+
+	EXPECT_EQ(rows[1].name, "IDLE");
+	EXPECT_EQ(rows[1].stackUsedBytes(), 104u);
+	EXPECT_EQ(rows[1].stackUsedPercent(), 20u);
+
+	/* A row with no reading goes last either way round, the way a task whose
+	   name could not be read does. Missing data is not the smallest number. */
+	for (size_t index = 2; index < rows.size(); ++index)
+		EXPECT_FALSE(rows[index].hasStackWatermark);
+
+	query.descending = true;
+
+	const std::vector<RtosTaskRow> reversed = RtosTableModel::taskRows(snapshot, query);
+
+	ASSERT_EQ(reversed.size(), 5u);
+	EXPECT_EQ(reversed[0].name, "IDLE");
+	EXPECT_EQ(reversed[1].name, "prod");
+
+	for (size_t index = 2; index < reversed.size(); ++index)
+		EXPECT_FALSE(reversed[index].hasStackWatermark);
+
+	/* The size column is untouched by the scan being behind: a row can know
+	   how big its stack is and not how much of it is used. */
+	EXPECT_TRUE(reversed[2].hasStack);
+}
+
+TEST(RtosTableModel, AReadingThatStoppedAtTheCapIsMarked)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+
+	snapshot.tasks[3].hasStackWatermark = true;
+	snapshot.tasks[3].stackFreeBytes = 256;
+	snapshot.tasks[3].stackWatermarkStackBytes = 1016;
+	snapshot.tasks[3].stackWatermarkReachedCap = true;
+
+	const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(snapshot, {});
+	const RtosTaskRow* work = nullptr;
+
+	for (const RtosTaskRow& row : rows)
+	{
+		if (row.name == "work")
+			work = &row;
+	}
+
+	ASSERT_NE(work, nullptr);
+
+	/* 1016 - 256 is 760 used, but the scan stopped at its limit and only knows
+	   that at least 256 bytes are free, so the used part is at most that. The
+	   panel says so with a leading marker rather than presenting it as a
+	   count. */
+	EXPECT_TRUE(work->hasStackWatermark);
+	EXPECT_TRUE(work->stackWatermarkReachedCap);
+	EXPECT_EQ(work->stackUsedPercent(), 74u);
+}

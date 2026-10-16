@@ -18,6 +18,7 @@
 
 #include "RtosModel.hpp"
 #include "RtosSampler.hpp"
+#include "RtosStackSweep.hpp"
 #include "MovingAverage.hpp"
 #include "PerformanceDiagnosis.hpp"
 #include "VariableHandler.hpp"
@@ -359,6 +360,12 @@ class ViewerDataHandler : public DataHandlerBase
 	std::shared_ptr<RtosSampler> rtosSampler;
 	RtosSymbolProvider rtosSymbolProvider;
 	RtosSampler::Settings rtosSettings{};
+
+	/* The stack water marks are not part of a round: a round is a function of
+	   the target and the settings, while these are read a few tasks at a time
+	   across several rounds. The sweep owns the turn and the readings. */
+	RtosStackSweep rtosStackSweep;
+	RtosStackSweep::Settings rtosStackSweepSettings{};
 	std::atomic<bool> rtosEnabled{false};
 
 	/* Set by the sampling loop on the pass where it prepared the sampler.
