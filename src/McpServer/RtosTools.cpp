@@ -112,6 +112,14 @@ namespace mcp
 								                        : Json()},
 								 {"stack_watermark_age_s", task.hasStackWatermark ? Json(task.stackWatermarkAgeSeconds) : Json()},
 								 {"stack_watermark_reached_cap", task.hasStackWatermark ? Json(task.stackWatermarkReachedCap) : Json()},
+								 /* The share still free, which is the number a stack alert is
+								    about. The threshold is the caller's: the task view keeps
+								    its own in the settings file, and an API client may want a
+								    different one per target. */
+								 {"stack_free_percent",
+								  (task.hasStackWatermark && task.stackWatermarkStackBytes > 0)
+								      ? Json(static_cast<uint32_t>((static_cast<uint64_t>(task.stackFreeBytes) * 100u) / task.stackWatermarkStackBytes))
+								      : Json()},
 								 /* This task's share of the time the kernel counted across all
 								    tasks, and the window the snapshot reports. It is not a
 								    share of the wall clock: the time the kernel attributes to
@@ -352,7 +360,7 @@ namespace mcp
 					  .description = "Return the tasks of the most recent snapshot as JSON: {session_id, sequence, consistency, capture_span_s, "
 									 "task_count, returned, limit, max_limit, problems, tasks}. Each task carries {address, name, state, list, "
 									 "priority, base_priority, kernel_task_number, stack_base, stack_top, stack_bytes, waiting_on, event_list, "
-									 "stack_free_bytes, stack_used_bytes, stack_watermark_age_s, stack_watermark_reached_cap, cpu_share_percent}. A field the round did not "
+									 "stack_free_bytes, stack_used_bytes, stack_free_percent, stack_watermark_age_s, stack_watermark_reached_cap, cpu_share_percent}. A field the round did not "
 									 "read is null rather than zero.",
 					  .inputSchema = objectSchema(Json::object({{"limit", integerProperty("Most tasks to return (default 100, at most 1000)")}})),
 					  .handler = listTasks});

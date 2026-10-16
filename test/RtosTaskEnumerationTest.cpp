@@ -613,3 +613,37 @@ TEST(RtosTaskEnumerator, AListThatKeepsMovingIsGivenUpOnAndReported)
 	EXPECT_NE(result.inconsistencies.front().find("ready.1"), std::string::npos);
 	EXPECT_TRUE(result.tasks.empty());
 }
+
+TEST(RtosTaskEnumerator, AListCaughtMidChangeStillYieldsWhatItRead)
+{
+	MemoryImage memory;
+	ListBuilder ready(memory, listA);
+
+	ready.append(ready.itemAddressAt(0), 1, 0x20008000u);
+	ready.append(ready.itemAddressAt(1), 1, 0x20008020u);
+	ready.append(ready.itemAddressAt(2), 1, 0x20008040u);
+
+	const std::vector<RtosTaskEnumerator::ListSource> sources = {
+		{"ready.1", listA, RtosTaskState::Ready, true, false},
+	};
+
+	/* The third node's backward pointer comes back carrying what it held a
+	   moment ago, so the walk stops there - both attempts. The first two nodes
+	   were checked against their predecessor before being kept, and the one
+	   that failed is not among them: what is there is what the target really
+	   said, up to the point where it moved. */
+	memory.breakWord(ready.itemAddressAt(2) + layout::itemPrevious, 0xDEADBEEFu, 2);
+
+	const RtosTaskEnumeration result = RtosTaskEnumerator::enumerate(memory, layoutRef(), sources, 0u, true);
+
+	/* The round stays publishable, says where it moved, and keeps the two
+	   tasks. Throwing them away would cost the round every task on that list,
+	   and on a running target the delayed list is rewritten every tick. */
+	EXPECT_TRUE(result.complete);
+	EXPECT_EQ(result.listsFailed, 1u);
+	EXPECT_FALSE(result.inconsistencies.empty());
+
+	ASSERT_EQ(result.tasks.size(), 2u);
+	EXPECT_EQ(result.tasks[0].tcbAddress, 0x20008000u);
+	EXPECT_EQ(result.tasks[1].tcbAddress, 0x20008020u);
+}

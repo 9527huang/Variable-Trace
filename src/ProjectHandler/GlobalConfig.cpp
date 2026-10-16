@@ -109,6 +109,7 @@ bool GlobalConfig::load()
 	{
 		const auto& rtos = root.at("rtos");
 		settings.rtosEnabled = rtos.value("enabled", settings.rtosEnabled);
+		settings.rtosStackAlertFreePercent = rtos.value("stackAlertFreePercent", settings.rtosStackAlertFreePercent);
 	}
 
 	if (root.contains("plotExport"))
@@ -166,7 +167,7 @@ bool GlobalConfig::save()
 	root["formatVersion"] = formatVersion;
 	root["autoSave"] = {{"enabled", settings.autoSaveEnabled}, {"intervalSeconds", settings.autoSaveIntervalSeconds}};
 	root["interface"] = {{"fontScale", settings.fontScale}, {"theme", settings.theme}, {"language", settings.language}};
-	root["rtos"] = {{"enabled", settings.rtosEnabled}};
+	root["rtos"] = {{"enabled", settings.rtosEnabled}, {"stackAlertFreePercent", settings.rtosStackAlertFreePercent}};
 	root["api"] = {{"enabled", settings.mcpEnabled},
 				   {"preferredPort", settings.mcpPreferredPort},
 				   {"writesEnabled", settings.apiWritesEnabled},

@@ -113,6 +113,14 @@ struct RtosCpuLoadSummary
 	/* Counters were read two rounds in a row and something moved. */
 	bool counting = false;
 
+	/* How many tasks went into the whole at their last measured rate rather
+	 * than being measured this round: the ones the round could not read. The
+	 * shares are then a fraction of what the tasks really used, as far as that
+	 * can be known, instead of a fraction of a set that is missing its busiest
+	 * members.
+	 */
+	uint32_t tasksEstimated = 0;
+
 	/* How many tasks carry a share, against how many the window knows about.
 	 *
 	 * The whole a share is a fraction of is what the tasks used, and a task the

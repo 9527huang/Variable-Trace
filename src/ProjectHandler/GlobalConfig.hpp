@@ -67,6 +67,16 @@ class GlobalConfig
 		 */
 		bool rtosEnabled = false;
 
+		/*
+		 * The stack alert: a task whose stack is this empty or less is marked
+		 * in the table. Zero turns it off.
+		 *
+		 * A number rather than a switch and a number, because zero is the
+		 * switch: no stack is ever less than nothing free, so a threshold of
+		 * zero can only mean that nobody wants to be told.
+		 */
+		uint32_t rtosStackAlertFreePercent = 20;
+
 		/* Flashing. The programmer and the arguments it needs belong to the
 		   machine rather than to the project being debugged, so the command
 		   template lives here and not in the project file. */

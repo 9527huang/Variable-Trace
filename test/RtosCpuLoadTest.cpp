@@ -312,3 +312,39 @@ TEST(RtosCpuLoad, ForgettingDropsTheReferenceCounters)
 	EXPECT_FALSE(summary.counting);
 	EXPECT_EQ(summary.tasksMeasured, 0u);
 }
+
+TEST(RtosCpuLoad, ATaskTheRoundMissedStillCountsInTheWhole)
+{
+	std::vector<RtosTask> both{makeTask(0, 0), makeTask(1, 0)};
+	RtosCpuLoadSummary summary;
+	RtosCpuLoad load;
+	const RtosCpuLoad::Settings settings = settingsOf(2);
+
+	/* Two rounds with both tasks, using the same amount, so each has a rate. */
+	load.step(both, summary, settings, 0.0);
+
+	both[0].runTimeCounter = 100;
+	both[1].runTimeCounter = 100;
+	load.step(both, summary, settings, 0.5);
+
+	ASSERT_TRUE(both[0].hasCpuShare);
+	EXPECT_DOUBLE_EQ(both[0].cpuSharePercent, 50.0);
+
+	/* Now the second task is missing from the round - a walk of one of the
+	   kernel's lists stopped part way, which happens often enough on a running
+	   target - and the first one kept working as before. Left out of the
+	   whole, the first task would read a hundred per cent: the share of the
+	   set that is missing its busiest member is not the share of the target. */
+	both[0].runTimeCounter = 200;
+
+	std::vector<RtosTask> firstOnly{both[0]};
+
+	load.step(firstOnly, summary, settings, 1.0);
+
+	ASSERT_TRUE(firstOnly[0].hasCpuShare);
+	EXPECT_NEAR(firstOnly[0].cpuSharePercent, 50.0, 0.001);
+
+	/* One measured, one counted in at what it was last seen to use. */
+	EXPECT_EQ(summary.tasksMeasured, 1u);
+	EXPECT_EQ(summary.tasksEstimated, 1u);
+}

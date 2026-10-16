@@ -40,6 +40,17 @@ namespace
 		return snapshot;
 	}
 
+	const RtosTaskRow* findRow(const std::vector<RtosTaskRow>& rows, const std::string& name)
+	{
+		for (const RtosTaskRow& row : rows)
+		{
+			if (row.name == name)
+				return &row;
+		}
+
+		return nullptr;
+	}
+
 	std::vector<std::string> namesOf(const std::vector<RtosTaskRow>& rows)
 	{
 		std::vector<std::string> names;
@@ -316,4 +327,65 @@ TEST(RtosTableModel, TheCpuColumnKeepsRowsWithoutAShareLast)
 	   them. */
 	for (size_t index = 2; index < rows.size(); ++index)
 		EXPECT_FALSE(rows[index].hasCpuShare);
+}
+
+TEST(RtosTableModel, MarksOnlyTheStacksBelowTheAlertThreshold)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+
+	/* A quarter of one stack free, half of another. */
+	snapshot.tasks[0].hasStackWatermark = true;
+	snapshot.tasks[0].stackFreeBytes = 126;
+	snapshot.tasks[0].stackWatermarkStackBytes = 504;
+	snapshot.tasks[2].hasStackWatermark = true;
+	snapshot.tasks[2].stackFreeBytes = 252;
+	snapshot.tasks[2].stackWatermarkStackBytes = 504;
+
+	RtosTaskTableQuery query;
+
+	/* Under the threshold, nothing is marked. */
+	query.stackAlertFreePercent = 20;
+
+	for (const RtosTaskRow& row : RtosTableModel::taskRows(snapshot, query))
+		EXPECT_FALSE(row.stackIsLow) << row.name;
+
+	/* At the threshold exactly, still nothing: the alert is for a stack below
+	   it, and a threshold nobody can sit on is a threshold nobody trusts. */
+	query.stackAlertFreePercent = 25;
+
+	const std::vector<RtosTaskRow> atTheLine = RtosTableModel::taskRows(snapshot, query);
+
+	ASSERT_NE(findRow(atTheLine, "IDLE"), nullptr);
+	EXPECT_EQ(findRow(atTheLine, "IDLE")->stackFreePercent(), 25u);
+	EXPECT_FALSE(findRow(atTheLine, "IDLE")->stackIsLow);
+
+	/* One point higher, and the quarter-empty stack is marked while the
+	   half-empty one is not. */
+	query.stackAlertFreePercent = 26;
+
+	const std::vector<RtosTaskRow> marked = RtosTableModel::taskRows(snapshot, query);
+
+	ASSERT_NE(findRow(marked, "IDLE"), nullptr);
+	EXPECT_TRUE(findRow(marked, "IDLE")->stackIsLow);
+
+	ASSERT_NE(findRow(marked, "prod"), nullptr);
+	EXPECT_FALSE(findRow(marked, "prod")->stackIsLow);
+
+	/* A row with no reading is never marked, however high the threshold. Not
+	   knowing is not the same as being comfortable. */
+	query.stackAlertFreePercent = 99;
+
+	const std::vector<RtosTaskRow> everything = RtosTableModel::taskRows(snapshot, query);
+
+	ASSERT_NE(findRow(everything, "led"), nullptr);
+	EXPECT_FALSE(findRow(everything, "led")->hasStackWatermark);
+	EXPECT_FALSE(findRow(everything, "led")->stackIsLow);
+
+	/* Zero is the way to turn it off. */
+	query.stackAlertFreePercent = 0;
+
+	const std::vector<RtosTaskRow> off = RtosTableModel::taskRows(snapshot, query);
+
+	ASSERT_NE(findRow(off, "IDLE"), nullptr);
+	EXPECT_FALSE(findRow(off, "IDLE")->stackIsLow);
 }

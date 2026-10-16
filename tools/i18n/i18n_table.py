@@ -631,6 +631,12 @@ EXTRA = {
     "Stack used": "栈占用",
     "Task Viewer": "任务查看器",
 
+    # The stack water mark alert.
+    "stack alert at": "栈告警阈值",
+    "A task whose stack is this empty or less is marked. Zero turns the marking off, and a task with no reading is never marked.": "栈剩余空间小于等于该百分比的任务会被标记。填 0 关闭标记;没有读数(没扫到)的任务永远不会被标记。",
+    "%u%% of this stack is still free, at or below the alert threshold of %u%%.": "这个栈还有 %u%% 空闲,已达到或低于 %u%% 的告警阈值。",
+    "The mark is on the used part, which is what the row shows.": "标记在已用部分上,那是这一行显示的数字。",
+
     # The CPU column. The numbers are a share of what the tasks used, not of
     # the wall clock, so the tooltip says what the whole is.
     "CPU": "CPU 占用",

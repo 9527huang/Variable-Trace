@@ -165,6 +165,11 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 		row.waitingOn = task.waitingOn;
 		row.sourceList = task.sourceList;
 
+		/* Last, because it reads two of the fields above: computing it while
+		   the row was being filled in would have compared zero against the
+		   threshold and marked every row with a reading. */
+		row.stackIsLow = query.stackAlertFreePercent > 0 && row.hasStackWatermark && row.stackFreePercent() < query.stackAlertFreePercent;
+
 		rows.push_back(std::move(row));
 	}
 

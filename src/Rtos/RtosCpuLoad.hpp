@@ -92,6 +92,21 @@ class RtosCpuLoad
 	};
 
 	std::deque<RoundCounters> rounds;
+
+	/*
+	 * What each address was last seen to use, in counts per second.
+	 *
+	 * A round regularly comes back without a few of its tasks - the delayed
+	 * list is rewritten every tick, and a walk of it often stops part way. A
+	 * task that cannot be read cannot be measured, but it can still be counted
+	 * into the whole at what it was last seen to use, and leaving it out
+	 * instead is what turns a share into a wrong answer: on the fixture target
+	 * a round that missed half its tasks reported the busiest of the rest at
+	 * 92 per cent when its ceiling is about 40. The rates are steady enough
+	 * for this to be a good estimate, and how many tasks it was used for
+	 * travels with the snapshot so the reader knows.
+	 */
+	std::map<uint32_t, double> lastRate;
 };
 
 #endif

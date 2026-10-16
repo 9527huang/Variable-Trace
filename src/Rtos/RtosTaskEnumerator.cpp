@@ -117,14 +117,34 @@ RtosTaskEnumeration RtosTaskEnumerator::enumerate(IRtosMemory& memory,
 			 * not fix itself on the next round.
 			 */
 			if (walk.result == RtosListWalker::Result::Loop || walk.result == RtosListWalker::Result::LinksDisagree)
+			{
 				result.inconsistencies.push_back(sentence);
+
+				/*
+				 * The items already read are kept, and the walk that failed is
+				 * not the last word on the list.
+				 *
+				 * Every item in `walk.items` was checked against its
+				 * predecessor before it was kept, and the one that failed the
+				 * check is not among them: what is there is what the target
+				 * really said, up to the point where it moved. Throwing that
+				 * away costs the round every task that was on that list - and
+				 * the delayed list is rewritten every tick, so on a running
+				 * target it is the list that most often moves while it is
+				 * being read. Measured on the fixture target, the round came
+				 * back with nine of its fourteen tasks, and the CPU shares
+				 * were then scaled up by whatever the missing ones had used.
+				 */
+			}
 			else
 			{
 				result.complete = false;
 				result.problems.push_back(sentence);
-			}
 
-			continue;
+				/* Nothing to hand back: a read failed, or a field has no
+				   offset, and neither fixes itself by being read again. */
+				continue;
+			}
 		}
 
 		if (walk.countDisagrees)

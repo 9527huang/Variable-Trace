@@ -39,8 +39,16 @@
 class GuiRtosPanel
 {
    public:
-	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation)
+	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation, uint32_t stackAlertFreePercent)
 	{
+		/* The threshold comes from the settings file, and is taken once so that
+		   a run does not change under a number someone is moving in the box. */
+		if (!stackAlertSeeded)
+		{
+			query.stackAlertFreePercent = stackAlertFreePercent;
+			stackAlertSeeded = true;
+		}
+
 		if (model == nullptr)
 		{
 			/* The reason is shown when there is one. An empty panel that says
@@ -191,7 +199,10 @@ class GuiRtosPanel
 		ImGui::BeginTooltip();
 		ImGui::Text(I18n::tr("%d of the %d tasks the window knows about could be measured, over the last %.2f s."),
 		            static_cast<int>(snapshot.cpuLoad.tasksMeasured), static_cast<int>(snapshot.cpuLoad.tasksKnown), snapshot.cpuLoad.windowSeconds);
-		ImGui::TextDisabled("%s", I18n::tr("The shares are of the time those tasks used. A task the round could not read has no counter to add to the whole, and time the kernel attributes to no task - the interrupts mostly - was never in it."));
+		if (snapshot.cpuLoad.tasksEstimated > 0)
+			ImGui::TextDisabled("%s", I18n::tr("%d of them were counted into the whole at the rate they were last seen to use."));
+
+		ImGui::TextDisabled("%s", I18n::tr("The shares are of the time the tasks used. Time the kernel attributes to no task - the interrupts mostly - was never in it."));
 		ImGui::EndTooltip();
 	}
 
@@ -219,6 +230,7 @@ class GuiRtosPanel
 	   choice rather than the round's data. */
 	inline static RtosTaskTableQuery query{};
 	inline static bool showOnlyBlocked = false;
+	inline static bool stackAlertSeeded = false;
 
 	/*
 	 * The search field's buffer, kept between frames.
@@ -236,6 +248,8 @@ class GuiRtosPanel
 
 	static void drawFilters(const std::shared_ptr<const RtosSnapshot>& snapshot)
 	{
+		drawAlertThreshold();
+
 		if (!searchBufferPrimed)
 		{
 			std::snprintf(searchBuffer, sizeof(searchBuffer), "%s", query.nameSearch.c_str());
@@ -279,6 +293,36 @@ class GuiRtosPanel
 		            static_cast<int>(snapshot->taskCount()));
 
 		ImGui::Separator();
+	}
+
+	/*
+	 * The threshold the stack alert is measured against.
+	 *
+	 * It starts at what the settings file says and can be moved here, because
+	 * the right number is a judgement about one target: a stack that is
+	 * comfortable on one is nearly full on another, and the moment that
+	 * judgement gets made is while looking at the table. Zero turns the mark
+	 * off, and the number is not written back - it belongs to the run.
+	 */
+	static void drawAlertThreshold()
+	{
+		ImGui::TextUnformatted(I18n::tr("stack alert at"));
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
+
+		int percent = static_cast<int>(query.stackAlertFreePercent);
+
+		if (ImGui::InputInt("##rtosStackAlert", &percent, 0, 0))
+			query.stackAlertFreePercent = percent < 0 ? 0u : static_cast<uint32_t>(percent);
+
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			ImGui::TextUnformatted(I18n::tr("A task whose stack is this empty or less is marked. Zero turns the marking off, and a task with no reading is never marked."));
+			ImGui::EndTooltip();
+		}
+
+		ImGui::SameLine();
 	}
 
 	static void drawTable(const std::shared_ptr<const RtosSnapshot>& snapshot)
@@ -367,14 +411,27 @@ class GuiRtosPanel
 			 */
 			ImGui::TableNextColumn();
 
+			/* A stack close to full is what this column exists to find, so the
+			   row says so twice: the cell is coloured, and a mark is put beside
+			   the number. Colour on its own is not something every reader
+			   has. */
+			if (row.stackIsLow)
+				ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, ImGui::GetColorU32(ImVec4(0.55f, 0.35f, 0.10f, 0.55f)));
+
 			if (!row.hasStackWatermark)
 				ImGui::TextUnformatted(unknown());
-			else if (row.stackWatermarkReachedCap)
-				ImGui::Text("<= %u / %u (%u%%)", static_cast<unsigned>(row.stackUsedBytes()), static_cast<unsigned>(row.stackWatermarkStackBytes),
-				            static_cast<unsigned>(row.stackUsedPercent()));
 			else
-				ImGui::Text("%u / %u (%u%%)", static_cast<unsigned>(row.stackUsedBytes()), static_cast<unsigned>(row.stackWatermarkStackBytes),
-				            static_cast<unsigned>(row.stackUsedPercent()));
+				ImGui::Text("%s%u / %u (%u%%)%s", row.stackWatermarkReachedCap ? "<= " : "", static_cast<unsigned>(row.stackUsedBytes()),
+				            static_cast<unsigned>(row.stackWatermarkStackBytes), static_cast<unsigned>(row.stackUsedPercent()), row.stackIsLow ? " !" : "");
+
+			if (row.stackIsLow && ImGui::IsItemHovered())
+			{
+				ImGui::BeginTooltip();
+				ImGui::Text(I18n::tr("%u%% of this stack is still free, at or below the alert threshold of %u%%."), static_cast<unsigned>(row.stackFreePercent()),
+				            static_cast<unsigned>(query.stackAlertFreePercent));
+				ImGui::TextDisabled("%s", I18n::tr("The mark is on the used part, which is what the row shows."));
+				ImGui::EndTooltip();
+			}
 
 
 			/*

@@ -57,6 +57,11 @@ struct RtosTaskTableQuery
 	/* Case insensitive part of the name. Empty means no search. */
 	std::string nameSearch;
 
+	/* A task whose stack is this empty or less is marked. Zero turns the
+	   marking off, and a row with no reading is never marked: there is nothing
+	   to compare against, which is not the same as being comfortable. */
+	uint32_t stackAlertFreePercent = 20;
+
 	RtosTaskColumn sortColumn = RtosTaskColumn::Name;
 	bool descending = false;
 };
@@ -109,6 +114,21 @@ struct RtosTaskRow
 
 		return static_cast<uint32_t>((static_cast<uint64_t>(stackUsedBytes()) * 100u) / stackWatermarkStackBytes);
 	}
+
+	/* The share of the stack still holding the fill pattern, which is the
+	   share the alert is about: a stack that is nearly full is the finding,
+	   and it reads the same way round as the mark that flags it. */
+	uint32_t stackFreePercent() const
+	{
+		if (stackWatermarkStackBytes == 0)
+			return 0;
+
+		return static_cast<uint32_t>((static_cast<uint64_t>(stackFreeBytes) * 100u) / stackWatermarkStackBytes);
+	}
+
+	/* Whether this row crossed the threshold the query carried. Decided here
+	   rather than in the panel, so that the rule is one the tests can hold. */
+	bool stackIsLow = false;
 
 	/* This task's share of the time the kernel counted, and whether there is
 	   one. A share needs two rounds, so on the first round of a session no row

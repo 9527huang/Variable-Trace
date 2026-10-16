@@ -348,7 +348,8 @@ void Gui::mainThread(std::string externalPath)
 			   shares that side's start button and settings. What it does not
 			   share is the plots: its rounds run inside the sampling loop that
 			   draws them. */
-			GuiRtosPanel::draw(viewerDataHandler->getRtosModel(), viewerDataHandler->getRtosPrepareError());
+			GuiRtosPanel::draw(viewerDataHandler->getRtosModel(), viewerDataHandler->getRtosPrepareError(),
+			                   globalConfig->getSettings().rtosStackAlertFreePercent);
 		}
 		ImGui::End();
 

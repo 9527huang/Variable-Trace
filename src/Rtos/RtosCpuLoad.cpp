@@ -164,6 +164,48 @@ void RtosCpuLoad::step(std::vector<RtosTask>& tasks, RtosCpuLoadSummary& summary
 
 	summary.tasksMeasured = static_cast<uint32_t>(shares.size());
 
+	/*
+	 * The tasks this round could not read go into the whole at what they were
+	 * last seen to use.
+	 *
+	 * They cannot be measured - there is no counter for a task the round did
+	 * not find - but a share of a set that is missing them is too large, and
+	 * missing them is not rare: on the fixture target the delayed list is
+	 * caught mid-change often enough that a round comes back with eight of its
+	 * fourteen tasks, and the busiest task then read 92 per cent against a
+	 * ceiling of about 40. Counting them at their last rate keeps the whole
+	 * close to what was really used; the two counts beside it say how much of
+	 * it was estimated rather than measured.
+	 */
+	std::set<uint32_t> measured;
+
+	for (const Share& share : shares)
+		measured.insert(tasks[share.index].tcbAddress);
+
+	summary.tasksEstimated = 0;
+
+	for (const uint32_t address : known)
+	{
+		if (measured.count(address) != 0)
+			continue;
+
+		const auto rate = lastRate.find(address);
+
+		if (rate == lastRate.end())
+			continue;
+
+		total += rate->second;
+		summary.tasksEstimated++;
+	}
+
+	/* Remembered for the rounds that come back without some of these tasks,
+	   and pruned so that a control block handed out again does not carry the
+	   rate of whatever ran there before. */
+	lastRate.clear();
+
+	for (const Share& share : shares)
+		lastRate[tasks[share.index].tcbAddress] = share.rate;
+
 	/* Nothing moved across the window. Either the counter's timer is not
 	   running, or the whole window fell inside one tick of it. A column of
 	   zeroes would claim there was time to divide and that it went nowhere. */
@@ -182,4 +224,5 @@ void RtosCpuLoad::step(std::vector<RtosTask>& tasks, RtosCpuLoadSummary& summary
 void RtosCpuLoad::forget()
 {
 	rounds.clear();
+	lastRate.clear();
 }
