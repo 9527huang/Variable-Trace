@@ -158,6 +158,8 @@ namespace mcp
 									 {"rounds_rejected", 0},
 									 {"last_rejection", ""},
 									 {"problems", Json::array()},
+								 {"history_samples", 0},
+								 {"history_oldest_s", 0.0},
 								 {"stack_scan", Json::object({{"enabled", false}, {"fill_seen", false}, {"tasks_scanned", 0}, {"oldest_age_s", 0.0}})},
 								 {"cpu_load", Json::object({{"supported", false}, {"counting", false}, {"tasks_measured", 0}, {"tasks_known", 0}, {"window_s", 0.0}})}});
 			}
@@ -199,6 +201,12 @@ namespace mcp
 								 {"inconsistencies", inconsistencies},
 								 {"lists_walked", snapshot != nullptr ? Json(snapshot->listsWalked) : Json()},
 								 {"lists_failed", snapshot != nullptr ? Json(snapshot->listsFailed) : Json()},
+								 /* How far back the timeline reaches: how many rounds were kept
+								    and the time of the oldest. A view can draw only what is
+								    here, and a session that has run for hours has dropped the
+								    beginning of itself. */
+								 {"history_samples", static_cast<uint32_t>(model->history().size())},
+								 {"history_oldest_s", model->history().oldestSeconds()},
 								 /* The stack water marks are read a few tasks a round, so the
 								    snapshot carries readings of several ages and covers part of
 								    the set. `fill_seen` false while readings exist means the
@@ -349,7 +357,7 @@ namespace mcp
 		registry.add({.name = "get_rtos_info",
 					  .description = "Return the state of the task view as JSON: {enabled, session_id, sequence, consistency, capture_started_at_s, "
 									 "capture_finished_at_s, capture_span_s, task_count, sync_object_count, lists_walked, lists_failed, rounds_published, "
-									 "rounds_rejected, last_rejection, stack_scan, cpu_load, problems, inconsistencies}. "
+									 "rounds_rejected, last_rejection, stack_scan, cpu_load, history_samples, history_oldest_s, problems, inconsistencies}. "
 									 "cpu_load carries {supported, counting, tasks_measured, tasks_known, window_s}. "
 									 "stack_scan carries {enabled, fill_seen, tasks_scanned, oldest_age_s}. "
 									 "Reads the last published snapshot; it does not touch the target.",

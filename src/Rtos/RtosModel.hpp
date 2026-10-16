@@ -8,6 +8,7 @@
 #include <string>
 
 #include "RtosSnapshot.hpp"
+#include "RtosTimeline.hpp"
 
 /*
  * The one place a snapshot is published and the one place it is read.
@@ -60,6 +61,20 @@ class RtosModel
 	std::shared_ptr<const RtosSnapshot> current() const;
 
 	/*
+	 * Every round that was published, for the timeline.
+	 *
+	 * It lives here rather than with the sampling loop because this is the
+	 * place that already knows a round was published: one that was refused
+	 * never reaches the interface, so a timeline built anywhere else would
+	 * have to work out which rounds count. The timeline keeps its own lock,
+	 * because the interface reads it while the sampling thread writes it.
+	 */
+	const RtosTimeline& history() const
+	{
+		return timeline;
+	}
+
+	/*
 	 * Records a round that failed its checks and was therefore not published.
 	 *
 	 * The previous snapshot is left alone, so what the interface shows stays a
@@ -91,6 +106,8 @@ class RtosModel
 
    private:
 	std::atomic<std::shared_ptr<const RtosSnapshot>> published{nullptr};
+
+	RtosTimeline timeline;
 
 	mutable std::mutex modelMutex;
 	Stats counters;

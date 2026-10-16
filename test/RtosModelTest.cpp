@@ -297,3 +297,45 @@ TEST(RtosSnapshot, ARoundThatWalkedNothingStillHasALimit)
 	EXPECT_EQ(snapshot.inconsistentPlaceLimit(), 3u);
 	EXPECT_FALSE(snapshot.consistencyIsShaky());
 }
+
+TEST(RtosModel, EveryPublishedRoundReachesTheTimeline)
+{
+	RtosModel model;
+	const std::string session = "session-1";
+
+	model.beginSession(session);
+
+	EXPECT_EQ(model.history().size(), 0u);
+
+	RtosSnapshot first;
+	first.captureStartedAt = 1.0;
+	first.tasks = enumerationOf(2).tasks;
+
+	model.publish(std::make_shared<RtosSnapshot>(first));
+
+	RtosSnapshot second;
+	second.captureStartedAt = 1.5;
+	second.tasks = enumerationOf(3).tasks;
+
+	model.publish(std::make_shared<RtosSnapshot>(second));
+
+	/* The timeline is what was published, in order, and only that: a round the
+	   model refused never reaches the interface and so is not in it. */
+	EXPECT_EQ(model.history().size(), 2u);
+	EXPECT_DOUBLE_EQ(model.history().oldestSeconds(), 1.0);
+	EXPECT_DOUBLE_EQ(model.history().newestSeconds(), 1.5);
+
+	std::vector<RtosTimeline::Sample> samples;
+	model.history().copyRange(0.0, 10.0, samples);
+
+	ASSERT_EQ(samples.size(), 2u);
+	EXPECT_EQ(samples[0].entries.size(), 2u);
+	EXPECT_EQ(samples[1].entries.size(), 3u);
+
+	model.publish(nullptr);
+	EXPECT_EQ(model.history().size(), 2u);
+
+	/* A new session is a new history. */
+	model.beginSession("session-2");
+	EXPECT_EQ(model.history().size(), 0u);
+}

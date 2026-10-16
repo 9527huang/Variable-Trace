@@ -21,6 +21,10 @@ void RtosModel::publish(std::shared_ptr<RtosSnapshot> snapshot)
 		counters.lastPublishedAt = snapshot->captureFinishedAt;
 	}
 
+	/* Kept before the snapshot is handed to the interface, so that a reader
+	   which has the new round can also see it in the timeline. */
+	timeline.add(*snapshot);
+
 	published.store(std::move(snapshot));
 }
 
@@ -58,6 +62,10 @@ void RtosModel::beginSession(const std::string& sessionId)
 
 	session = sessionId;
 	nextSequence = 0;
+
+	/* A new session is a new history: two runs drawn on one axis would be a
+	   picture of neither. */
+	timeline.clear();
 }
 
 std::shared_ptr<RtosSnapshot> RtosModel::fromEnumeration(const RtosTaskEnumeration& enumeration,
