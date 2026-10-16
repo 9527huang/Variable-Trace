@@ -50,7 +50,29 @@ namespace
 				buf[i] = it->second;
 			}
 
+			/* Written over what is really there, so that a broken word wins
+			   for as many reads as were asked for and no more. */
+			if (brokenTimes > 0 && brokenAddress >= address && brokenAddress + 4u <= address + size)
+			{
+				for (uint32_t i = 0; i < 4u; i++)
+					buf[brokenAddress - address + i] = static_cast<uint8_t>((brokenValue >> (8u * i)) & 0xFFu);
+
+				brokenTimes--;
+			}
+
 			return true;
+		}
+
+		/* Serves one word wrong a given number of times.
+		 *
+		 * A list being edited while it is walked looks exactly like this: a
+		 * pointer comes back carrying the value the kernel had a moment ago,
+		 * which the walk sees as a chain that disagrees with itself. */
+		void breakWord(uint32_t address, uint32_t value, uint32_t times)
+		{
+			brokenAddress = address;
+			brokenValue = value;
+			brokenTimes = times;
 		}
 
 		void writeWord(uint32_t address, uint32_t value)
@@ -67,6 +89,10 @@ namespace
 
 		uint32_t reads = 0;
 		std::map<uint32_t, uint8_t> bytes;
+
+		uint32_t brokenAddress = 0;
+		uint32_t brokenValue = 0;
+		uint32_t brokenTimes = 0;
 	};
 
 	/* Builds a FreeRTOS shaped circular list: the sentinel lives in the head,
@@ -533,4 +559,57 @@ TEST(RtosTaskEnumerator, NamesEveryStateItCanReport)
 	EXPECT_STREQ(toString(RtosTaskState::PendingReady), "pending ready");
 	EXPECT_STREQ(toString(RtosTaskState::Deleted), "deleted");
 	EXPECT_STREQ(toString(RtosTaskState::Unknown), "unknown");
+}
+
+TEST(RtosTaskEnumerator, AListCaughtMidChangeIsReadAgain)
+{
+	MemoryImage memory;
+	ListBuilder ready(memory, listA);
+
+	ready.append(ready.itemAddressAt(0), 1, 0x20008000u);
+
+	const std::vector<RtosTaskEnumerator::ListSource> sources = {
+		{"ready.1", listA, RtosTaskState::Ready, true, false},
+	};
+
+	/* One pointer comes back as it was a moment ago - the shape of a list
+	   being edited while it is walked. Giving up on the first attempt would
+	   leave every task on that list out of the table, and the kernel rewrites
+	   some of these lists every tick. */
+	memory.breakWord(ready.itemAddressAt(0) + layout::itemPrevious, 0xDEADBEEFu, 1);
+
+	const RtosTaskEnumeration result = RtosTaskEnumerator::enumerate(memory, layoutRef(), sources, 0u, true);
+
+	EXPECT_EQ(result.listsFailed, 0u);
+
+	/* Counted once: the list is one list however many times it was read. */
+	EXPECT_EQ(result.listsWalked, 1u);
+	EXPECT_TRUE(result.inconsistencies.empty());
+	ASSERT_EQ(result.tasks.size(), 1u);
+	EXPECT_EQ(result.tasks.front().tcbAddress, 0x20008000u);
+}
+
+TEST(RtosTaskEnumerator, AListThatKeepsMovingIsGivenUpOnAndReported)
+{
+	MemoryImage memory;
+	ListBuilder ready(memory, listA);
+
+	ready.append(ready.itemAddressAt(0), 1, 0x20008000u);
+
+	const std::vector<RtosTaskEnumerator::ListSource> sources = {
+		{"ready.1", listA, RtosTaskState::Ready, true, false},
+	};
+
+	/* The same disagreement on both attempts. The round gives up on this list,
+	   says which one it was, and carries on with the others - and it stays a
+	   round worth publishing, because what it did read is real. */
+	memory.breakWord(ready.itemAddressAt(0) + layout::itemPrevious, 0xDEADBEEFu, 2);
+
+	const RtosTaskEnumeration result = RtosTaskEnumerator::enumerate(memory, layoutRef(), sources, 0u, true);
+
+	EXPECT_EQ(result.listsFailed, 1u);
+	EXPECT_TRUE(result.complete);
+	ASSERT_EQ(result.inconsistencies.size(), 1u);
+	EXPECT_NE(result.inconsistencies.front().find("ready.1"), std::string::npos);
+	EXPECT_TRUE(result.tasks.empty());
 }

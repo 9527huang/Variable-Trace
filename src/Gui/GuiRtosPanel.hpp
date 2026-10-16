@@ -189,8 +189,9 @@ class GuiRtosPanel
 			return;
 
 		ImGui::BeginTooltip();
-		ImGui::Text(I18n::tr("Share of the time the kernel counted across all tasks over the last %.2f s."), snapshot.cpuLoad.windowSeconds);
-		ImGui::TextDisabled("%s", I18n::tr("Time the kernel attributes to no task, the interrupts mostly, is not part of the whole."));
+		ImGui::Text(I18n::tr("%d of the %d tasks the window knows about could be measured, over the last %.2f s."),
+		            static_cast<int>(snapshot.cpuLoad.tasksMeasured), static_cast<int>(snapshot.cpuLoad.tasksKnown), snapshot.cpuLoad.windowSeconds);
+		ImGui::TextDisabled("%s", I18n::tr("The shares are of the time those tasks used. A task the round could not read has no counter to add to the whole, and time the kernel attributes to no task - the interrupts mostly - was never in it."));
 		ImGui::EndTooltip();
 	}
 

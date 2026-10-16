@@ -372,6 +372,7 @@ class ViewerDataHandler : public DataHandlerBase
 	   rather than in a single round. Nothing extra is read for them: the
 	   counter comes with the control block. */
 	RtosCpuLoad rtosCpuLoad;
+	RtosCpuLoad::Settings rtosCpuLoadSettings{};
 	std::atomic<bool> rtosEnabled{false};
 
 	/* Set by the sampling loop on the pass where it prepared the sampler.

@@ -76,7 +76,27 @@ RtosTaskEnumeration RtosTaskEnumerator::enumerate(IRtosMemory& memory,
 
 	for (const ListSource& source : sources)
 	{
-		const RtosListWalker::Walk walk = RtosListWalker::walk(memory, layout, source.address, limits);
+		RtosListWalker::Walk walk = RtosListWalker::walk(memory, layout, source.address, limits);
+
+		/*
+		 * A list caught while it was being changed is read again.
+		 *
+		 * The kernel rewrites some of these lists every tick - the delayed
+		 * list gains and loses an entry whenever a task starts or stops
+		 * waiting - so a single attempt lands in the middle of an edit often
+		 * enough to matter. Measured on the fixture target, one attempt left
+		 * the delayed list unreadable in eight rounds out of ten, and the
+		 * table then showed nine of its fourteen tasks; a second attempt is
+		 * enough to make that rare, and the cost is one more pass over a list
+		 * the round was going to walk anyway.
+		 *
+		 * Only these two outcomes are retried. A chain that folded back on
+		 * itself, or whose backward pointers disagreed, moved while it was
+		 * being read; a failed read or a missing offset will not fix itself,
+		 * and reading it again would only spend the round's budget twice.
+		 */
+		if (walk.result == RtosListWalker::Result::Loop || walk.result == RtosListWalker::Result::LinksDisagree)
+			walk = RtosListWalker::walk(memory, layout, source.address, limits);
 
 		result.listsWalked++;
 

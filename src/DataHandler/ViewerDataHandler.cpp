@@ -670,9 +670,10 @@ void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start
 	rtosStackSweep.applyTo(*round.snapshot, startedAt);
 
 	/* The share of the time each task used, from the counters the round read
-	   with the control blocks. Two rounds are needed, so the first round after
-	   the view starts leaves every row without a share. */
-	rtosCpuLoad.step(round.snapshot->tasks, round.snapshot->cpuLoad, startedAt);
+	   with the control blocks. The window is several rounds long, so the first
+	   round after the view starts leaves every row without a share, and the
+	   window grows to its full length over the rounds that follow. */
+	rtosCpuLoad.step(round.snapshot->tasks, round.snapshot->cpuLoad, rtosCpuLoadSettings, startedAt);
 
 	/* The end of the round is only known now, which is why the sampler leaves
 	   the capture times to this side. It is the end of everything the snapshot

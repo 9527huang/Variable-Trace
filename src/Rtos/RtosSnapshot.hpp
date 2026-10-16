@@ -113,11 +113,22 @@ struct RtosCpuLoadSummary
 	/* Counters were read two rounds in a row and something moved. */
 	bool counting = false;
 
-	/* How many tasks this snapshot carries a share for, and the length of the
-	   window every share was worked out over. The window is one number for all
-	   of them by construction: a share is a fraction of what the tasks used
-	   between the same two moments. */
+	/* How many tasks carry a share, against how many the window knows about.
+	 *
+	 * The whole a share is a fraction of is what the tasks used, and a task the
+	 * round did not read has no counter to put into it: the delayed list is
+	 * rewritten every tick, so a round regularly comes back without a few of
+	 * the tasks that were on it. Counting against this round would say nothing
+	 * - every task in it is measured - so the count is against every address
+	 * the window has seen, which is the best estimate of what the kernel is
+	 * running. The two together are what the shares cover.
+	 */
 	uint32_t tasksMeasured = 0;
+	uint32_t tasksKnown = 0;
+
+	/* The shortest span any share was measured over. A task the window had to
+	   reach further back for is smoothed over more of it, and this is the
+	   number the summary can claim for all of them. */
 	double windowSeconds = 0.0;
 };
 

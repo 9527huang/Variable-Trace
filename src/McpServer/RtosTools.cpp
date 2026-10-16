@@ -151,7 +151,7 @@ namespace mcp
 									 {"last_rejection", ""},
 									 {"problems", Json::array()},
 								 {"stack_scan", Json::object({{"enabled", false}, {"fill_seen", false}, {"tasks_scanned", 0}, {"oldest_age_s", 0.0}})},
-								 {"cpu_load", Json::object({{"supported", false}, {"counting", false}, {"tasks_measured", 0}, {"window_s", 0.0}})}});
+								 {"cpu_load", Json::object({{"supported", false}, {"counting", false}, {"tasks_measured", 0}, {"tasks_known", 0}, {"window_s", 0.0}})}});
 			}
 
 			const std::shared_ptr<const RtosSnapshot> snapshot = model->current();
@@ -204,7 +204,7 @@ namespace mcp
 								    mean different things to whoever is reading: one is about
 								    the firmware, the other about the target's timer. */
 								 {"cpu_load",
-								  snapshot == nullptr ? Json() : Json(Json::object({{"supported", snapshot->cpuLoad.supported}, {"counting", snapshot->cpuLoad.counting}, {"tasks_measured", static_cast<uint32_t>(snapshot->cpuLoad.tasksMeasured)}, {"window_s", snapshot->cpuLoad.windowSeconds}}))}});
+								  snapshot == nullptr ? Json() : Json(Json::object({{"supported", snapshot->cpuLoad.supported}, {"counting", snapshot->cpuLoad.counting}, {"tasks_measured", static_cast<uint32_t>(snapshot->cpuLoad.tasksMeasured)}, {"tasks_known", static_cast<uint32_t>(snapshot->cpuLoad.tasksKnown)}, {"window_s", snapshot->cpuLoad.windowSeconds}}))}});
 		}
 
 		Json listTasks(McpContext& context, const Json& args)
@@ -342,7 +342,7 @@ namespace mcp
 					  .description = "Return the state of the task view as JSON: {enabled, session_id, sequence, consistency, capture_started_at_s, "
 									 "capture_finished_at_s, capture_span_s, task_count, sync_object_count, lists_walked, lists_failed, rounds_published, "
 									 "rounds_rejected, last_rejection, stack_scan, cpu_load, problems, inconsistencies}. "
-									 "cpu_load carries {supported, counting, tasks_measured, window_s}. "
+									 "cpu_load carries {supported, counting, tasks_measured, tasks_known, window_s}. "
 									 "stack_scan carries {enabled, fill_seen, tasks_scanned, oldest_age_s}. "
 									 "Reads the last published snapshot; it does not touch the target.",
 					  .inputSchema = objectSchema(Json::object({})),

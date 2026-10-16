@@ -637,6 +637,8 @@ EXTRA = {
     "The target was not built with run time statistics (configGENERATE_RUN_TIME_STATS), so how much of the time each task used cannot be worked out.": "目标没有启用运行时间统计(configGENERATE_RUN_TIME_STATS),因此算不出每个任务占用了多少时间。",
     "The run time counter did not move over the last window, so the shares cannot be worked out. The timer behind it is probably not running.": "运行时间计数器在上一个窗口里没有变化,因此算不出占比。它背后的定时器很可能没有运行。",
     "Share of the time the kernel counted across all tasks over the last %.2f s.": "在所有任务被计到的时间里的占比,窗口为最近 %.2f 秒。",
+    "%d of the %d tasks the window knows about could be measured, over the last %.2f s.": "窗口见过的 %d 个任务里有 %d 个测得到,窗口长度为最近 %.2f 秒。",
+    "The shares are of the time those tasks used. A task the round could not read has no counter to add to the whole, and time the kernel attributes to no task - the interrupts mostly - was never in it.": "占比是这些任务用掉的时间里的份额。本轮读不到的任务没有计数器可以加进总数,而内核不计到任何任务上的时间(主要是中断)本来就不在里面。",
     "Time the kernel attributes to no task, the interrupts mostly, is not part of the whole.": "内核不计到任何任务上的时间(主要是中断)不在这个总数里。",
 
     # The line above the table that says how the round was read. It is drawn

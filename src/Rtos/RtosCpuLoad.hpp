@@ -2,6 +2,7 @@
 #define _RTOSCPULOAD_HPP
 
 #include <cstdint>
+#include <deque>
 #include <map>
 #include <vector>
 
@@ -15,18 +16,27 @@
  * used. An absolute value says nothing on its own - a share needs the
  * difference between two moments, and a moment to compare against.
  *
- * So this keeps the counters of the previous round and answers with each
- * task's part of what all the tasks used in between. The whole is the sum of
+ * So this keeps the counters of the last few rounds and answers with each
+ * task's part of what all the tasks used across them. The whole is the sum of
  * the tasks rather than the kernel's wall clock counter, which is a variable
  * of the target's own choosing and not something to go looking for by name.
  * The two differ by the time the kernel attributes to no task, interrupts
  * mostly, so what comes out is a share of the time counted for tasks and is
  * named that way rather than as a share of the wall clock.
  *
- * Two rounds have to be read before there is an answer, and both have to hold
- * the same task. A task missing from either round goes without a share that
- * round: a fraction whose numerator and denominator cover different windows
- * is not a fraction of anything.
+ * The difference is taken across several rounds rather than the last one
+ * because one round is a noisy place to measure a duty cycle: a task that
+ * spins for twenty milliseconds every thirty will read anywhere between a
+ * tenth and half of the time depending on whether it happened to be preempted
+ * inside that one window. Several rounds average that out, and the number
+ * stops moving about under the reader's eyes.
+ *
+ * The reference is one round for every task together, the oldest one still
+ * held rather than the oldest that has each task: a share is a fraction of one
+ * window, and a fraction whose numerator and denominator cover different
+ * windows is not a fraction of anything. A task that was not listed in the
+ * reference round goes without a share until the reference slides past the
+ * round it was missing from.
  *
  * No clock is read here. The caller passes the time each round in the units
  * the snapshot uses, which keeps this testable against a made up clock.
@@ -34,24 +44,32 @@
 class RtosCpuLoad
 {
    public:
+	struct Settings
+	{
+		/* How many rounds a share is measured over. The window in seconds is
+		   this times the round interval, and is reported beside the shares
+		   rather than assumed. */
+		uint32_t windowRounds = 4;
+	};
+
 	/*
-	 * Works out each task's share of what the tasks used since the previous
+	 * Works out each task's share of what the tasks used since the reference
 	 * round, writes it into the tasks, fills in the summary, and keeps this
-	 * round's counters to answer the next one from.
+	 * round's counters to be the reference for later ones.
 	 *
 	 * `summary.supported` is left alone: whether the target keeps such a
 	 * counter at all is a fact about the build, known to whoever read the
-	 * control block, and not something two rounds of samples can tell.
+	 * control block, and not something samples can tell.
 	 */
-	void step(std::vector<RtosTask>& tasks, RtosCpuLoadSummary& summary, double nowSeconds);
+	void step(std::vector<RtosTask>& tasks, RtosCpuLoadSummary& summary, const Settings& settings, double nowSeconds);
 
 	/* Drops the reference counters: used when the target under the view
 	   changes, so that a difference is never taken across two kernels. */
 	void forget();
 
-	size_t rememberedCount() const
+	size_t rememberedRounds() const
 	{
-		return previous.size();
+		return rounds.size();
 	}
 
    private:
@@ -64,11 +82,16 @@ class RtosCpuLoad
 		   the one thing the address cannot tell apart. */
 		uint32_t kernelTaskNumber = 0;
 		bool hasKernelTaskNumber = false;
+	};
 
+	/* One round's counters, and when it was taken. */
+	struct RoundCounters
+	{
+		std::map<uint32_t, Sample> counters;
 		double takenAtSeconds = 0.0;
 	};
 
-	std::map<uint32_t, Sample> previous;
+	std::deque<RoundCounters> rounds;
 };
 
 #endif
