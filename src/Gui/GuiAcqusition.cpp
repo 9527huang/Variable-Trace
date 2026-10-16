@@ -93,14 +93,18 @@ static void drawJlinkTargetName(std::string& targetName, bool& modified)
 
 void Gui::drawAcqusitionSettingsScope(ActiveViewType type)
 {
-	const bool isVariableViewer = (type == ActiveViewType::VarViewer);
+	/* The task view reads through the variable side's probe, so its settings
+	   are that side's. Asking which probe the view reads through answers both
+	   the colour and the wording, and keeps the answer in one place. */
+	const bool isViewerSide = readsThroughViewer(type);
 
 	ImGui::Dummy(ImVec2(-1, 5));
 
-	ImGui::PushStyleColor(ImGuiCol_Text, isVariableViewer ? GuiHelper::greenLight() : GuiHelper::orangeLight());
-	GuiHelper::drawCenteredText(isVariableViewer ? "These settings belong to the VARIABLE VIEWER" : "These settings belong to the TRACE VIEWER");
-	GuiHelper::drawCenteredText(isVariableViewer ? "Debug probe, SWD speed and Target name here drive the RAM variable acquisition."
-	                                            : "Debug probe, SWD speed and Target name here drive the SWO trace acquisition only.");
+	ImGui::PushStyleColor(ImGuiCol_Text, isViewerSide ? GuiHelper::greenLight() : GuiHelper::orangeLight());
+	GuiHelper::drawCenteredText(isViewerSide ? "These settings belong to the VARIABLE VIEWER and the TASK VIEWER"
+	                                        : "These settings belong to the TRACE VIEWER");
+	GuiHelper::drawCenteredText(isViewerSide ? "Debug probe, SWD speed and Target name here drive the RAM variable acquisition."
+	                                        : "Debug probe, SWD speed and Target name here drive the SWO trace acquisition only.");
 	ImGui::PopStyleColor();
 
 	ImGui::Dummy(ImVec2(-1, 5));

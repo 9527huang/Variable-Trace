@@ -36,6 +36,7 @@ include_directories(${EXECUTABLE}
     ${CMAKE_SOURCE_DIR}/src/TraceReader
     ${CMAKE_SOURCE_DIR}/src/Statistics
     ${CMAKE_SOURCE_DIR}/src/ElfParser
+    ${CMAKE_SOURCE_DIR}/src/Rtos
     ${CMAKE_SOURCE_DIR}/src/Variable
     ${CMAKE_SOURCE_DIR}/src/VariableHandler
     ${CMAKE_SOURCE_DIR}/src/McpServer
@@ -97,6 +98,19 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/ElfParser/LibDwarfParser.cpp
     ${CMAKE_SOURCE_DIR}/src/ElfParser/OfdDwarfXml.cpp
     ${CMAKE_SOURCE_DIR}/src/ElfParser/TiOfdParser.cpp
+    # The kernel table is a data structure and four lookups, so it is built here
+    # whole: what it decides about a missing symbol cannot be tested against the
+    # application's own copy without dragging the application in.
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosProfileBase.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/FreeRtosProfile.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosFactory.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosListWalker.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosTaskEnumerator.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosSampler.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/GdbRtosLayout.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosSyncEnumerator.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosTableModel.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpTypes.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpProtocol.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpToolRegistry.cpp
@@ -114,6 +128,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/McpServer/AcquisitionTools.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/DataTools.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/FlashingTools.cpp
+    ${CMAKE_SOURCE_DIR}/src/McpServer/RtosTools.cpp
     ${CMAKE_SOURCE_DIR}/src/MemoryReader/SerialProtocol.cpp
     # The probe builds an operating system port in its one argument constructor,
     # and the recorder test takes the other one, so the port has to be linkable
@@ -168,6 +183,14 @@ add_executable(${EXECUTABLE} main.cpp
     DebugProbeTypesTest.cpp
     RecorderHandlerTest.cpp
     RecorderToolsTest.cpp
+    FreeRtosProfileTest.cpp
+    RtosTaskEnumerationTest.cpp
+    RtosModelTest.cpp
+    RtosSamplerTest.cpp
+    GdbRtosLayoutTest.cpp
+    PlotDerivedSeriesTest.cpp
+    RtosTableModelTest.cpp
+    RtosSyncEnumerationTest.cpp
     ${SOURCES})
 
 add_compile_options(-Wall -Wextra -Wpedantic)

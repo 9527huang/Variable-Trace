@@ -298,6 +298,7 @@ void mcp::Server::registerTools()
 	AcquisitionTools::registerAll(registry);
 	DataTools::registerAll(registry);
 	FlashingTools::registerAll(registry);
+	RtosTools::registerAll(registry);
 
 	/* Identity of the server itself rather than of one of its domains. */
 	registry.add({.name = "get_instance_info",

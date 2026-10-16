@@ -16,14 +16,33 @@
 extern uint32_t SystemCoreClock;
 
 #define configUSE_PREEMPTION                     1
-#define configUSE_PORT_OPTIMISED_TASK_SELECTION  0
+
+/* 「优化任务选择」：0 = uxTopReadyPriority 存优先级编号，1 = 存位图。
+ *
+ * 打开之后移植层的两个宏跟着变（见 portable/GCC/ARM_CM3/portmacro.h）：
+ *   portRECORD_READY_PRIORITY  从「赋编号」变成「置位」
+ *   portGET_HIGHEST_PRIORITY   从「取编号」变成「用 clz 求最高位」
+ * 于是同一个全局符号的值域从 0..31 变成 0x1..0x80000000。按位图当编号读，
+ * 得到的是一个合法但错误的数字 —— 这正是任务视图 18.3 要绕开的语义陷阱。
+ *
+ * 默认 0，与既有产物保持一致；要测变体由 Makefile 传 -DPROBE_OPTIMISED_SELECTION=1：
+ *     make BOARD=f103 OPT=1
+ */
+#ifndef PROBE_OPTIMISED_SELECTION
+    #define PROBE_OPTIMISED_SELECTION 0
+#endif
+#define configUSE_PORT_OPTIMISED_TASK_SELECTION  ( PROBE_OPTIMISED_SELECTION )
 #define configUSE_TICKLESS_IDLE                  0
-/* 板上参数：默认值对应 STM32F401（复位后 HSI 16 MHz、96K RAM）。
+/* 板上参数：默认值对应 STM32F4 系列（复位后 HSI 16 MHz）—— F401 与
+ * STM32F407ZGT6 都落在这一档。
  * 构建 STM32F103C8（复位后 HSI 8 MHz、20K RAM）时由 Makefile 传
- * -DPROBE_CPU_HZ=8000000 与 -DPROBE_HEAP_KB=12 覆盖。
+ * -DPROBE_CPU_HZ=8000000 与 -DPROBE_HEAP_KB=14 覆盖；f407 由 Makefile 传
+ * -DPROBE_HEAP_KB=48 覆盖。
  *
  * 为什么堆必须在 F103 上调小：24 KB 的堆光 bss 就超过 F103C8 的 20K 内存，
- * 不改连不上也烧不进。F103 上任务栈加起来约 4.4 KB，12 KB 够用。 */
+ * 不改连不上也烧不进。F103 上任务栈加起来约 4.4 KB，14 KB 够用。
+ * F407 有 128K RAM，堆放到 48 KB 是为「五十个任务」那一档快照场景留空间
+ * （每个任务约 96 字节控制块加栈，五十个任务约 35 KB）。 */
 #ifndef PROBE_CPU_HZ
     #define PROBE_CPU_HZ             16000000UL
 #endif

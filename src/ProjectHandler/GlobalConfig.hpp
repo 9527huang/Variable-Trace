@@ -55,6 +55,18 @@ class GlobalConfig
 		bool commandChannelEnabled = false;
 		uint16_t commandChannelPreferredPort = 7808;
 
+		/*
+		 * The task view. Off until someone asks for it.
+		 *
+		 * The plan's final default is on, but the feature is still being built
+		 * and there is no window to open it from yet, so a build that turned
+		 * it on would spend probe time on rounds nobody can look at. This is
+		 * the switch the plan requires to be read once at startup and never
+		 * during a run, because turning it off has to leave the program
+		 * exactly as it was before the feature existed.
+		 */
+		bool rtosEnabled = false;
+
 		/* Flashing. The programmer and the arguments it needs belong to the
 		   machine rather than to the project being debugged, so the command
 		   template lives here and not in the project file. */

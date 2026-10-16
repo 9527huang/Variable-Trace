@@ -152,3 +152,44 @@ TEST_F(PlotCsvExportTest, aPlotWithNoSamplesStillWritesItsHeader)
 	ASSERT_EQ(lines.size(), 1);
 	EXPECT_EQ(lines[0], "time [s],idle,");
 }
+
+/*
+ * The second half of the second milestone's criteria: a queue depth curve can
+ * be exported, and what comes out is the depth.
+ *
+ * The drawing half was checked on a real target. This half is about the file.
+ * A derived series has no address on the target, and an export that built its
+ * columns out of addresses rather than out of series would leave it out
+ * without saying so - the table would look complete and be missing the one
+ * column the milestone was about.
+ */
+TEST_F(PlotCsvExportTest, aDerivedSeriesIsExportedLikeAnyOther)
+{
+	auto plot = std::make_shared<Plot>("p");
+	Variable fromTarget("g_led_ticks");
+	Variable workedOutHere("q_sensor[depth]");
+
+	workedOutHere.setDerived(true);
+
+	plot->addSeries(&fromTarget);
+	plot->addSeries(&workedOutHere);
+
+	plot->addPoint("g_led_ticks", 100.0);
+	plot->addPoint("q_sensor[depth]", 0.0);
+	plot->addTimePoint(0.1);
+
+	plot->addPoint("g_led_ticks", 101.0);
+	plot->addPoint("q_sensor[depth]", 1.0);
+	plot->addTimePoint(0.2);
+
+	AcceptingFileHandler fileHandler(path.string());
+	exportPlotToCSV(plot, &fileHandler, logger.get());
+
+	const std::vector<std::string> lines = linesOf();
+
+	ASSERT_EQ(lines.size(), 3);
+
+	EXPECT_EQ(lines[0], "time [s],g_led_ticks,q_sensor[depth],");
+	EXPECT_EQ(lines[1], "0.1,100,0,");
+	EXPECT_EQ(lines[2], "0.2,101,1,");
+}

@@ -1,5 +1,11 @@
 #include "ViewerDataHandler.hpp"
 
+#include "GdbRtosLayout.hpp"
+#include "RtosFactory.hpp"
+#include "RtosProbeMemory.hpp"
+
+#include <memory>
+
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -297,8 +303,363 @@ bool ViewerDataHandler::readNormalSample(std::vector<double>& rawValues, std::ve
 
 void ViewerDataHandler::requestRestart()
 {
+	/* A restart rebuilds the address table, and that is asked for when the
+	   symbol file changed or the set of variables did. The task view prepared
+	   against that same file, so its preparation is dropped here and the loop
+	   makes a new one on its next pass. */
+	forgetRtosPreparation();
+
 	restartRequested.store(true);
 	stateChangeCondition.notify_all();
+}
+
+bool ViewerDataHandler::prepareRtos()
+{
+	rtosSampler.reset();
+
+	auto note = [this](const std::string& reason)
+	{
+		std::lock_guard<std::mutex> guard(rtosPrepareErrorMutex);
+		rtosPrepareError = reason;
+	};
+
+	auto report = [this, &note](const std::string& reason)
+	{
+		note(reason);
+
+		return false;
+	};
+
+	if (!rtosEnabled.load(std::memory_order_relaxed))
+		return report("the task view is switched off");
+
+	/* Every way out of here says what it was, here and in the log.
+	   Preparation happens once, on a pass of the sampling loop, and the log
+	   is only written when the program exits - so a reason that lives only
+	   there is a reason nobody sees while the empty panel is on screen. */
+	if (rtosSymbolProvider == nullptr)
+	{
+		logger->warn("The task view is switched on but no symbol provider was set, so it stays off for this run.");
+
+		return report("no symbol provider was set");
+	}
+
+	IElfParser::SymbolMap symbols;
+	std::string elfPath;
+
+	/* The provider may run a symbol file parser here, which takes seconds on
+	   a large file. That is why this is called before acquisition rather than
+	   from inside the sampling loop. */
+	if (!rtosSymbolProvider(symbols, elfPath))
+	{
+		/* Debug rather than a warning: the usual reason is that no project is
+		   open yet, and the loop tries again in a few seconds. The reason is
+		   recorded either way, so that a genuine failure - a symbol file with
+		   no kernel in it - can still be read off the interface. */
+		logger->debug("The task view could not read the symbol file yet; it will try again.");
+
+		return report("the symbol file could not be read, or holds none of the kernel's symbols");
+	}
+
+	if (rtosModel == nullptr)
+		rtosModel = std::make_shared<RtosModel>();
+
+	const std::shared_ptr<RtosProfileBase> profile = RtosFactory::create(RtosProfileBase::Type::FreeRtos);
+
+	auto sampler = std::make_shared<RtosSampler>(profile);
+
+	/*
+	 * The offsets belong to the build rather than to the kernel version:
+	 * turning on the list integrity checks moves every offset behind the first
+	 * item, and a table of written down numbers would then read the wrong
+	 * bytes and report them as data. They come out of the same symbol file the
+	 * addresses did, over a gdb session opened with the command this handler
+	 * already keeps for the variable side.
+	 *
+	 * Whatever the debug information does not describe keeps the profile's own
+	 * number, which the resolution marks as a fallback so that the interface
+	 * can say which of the two answered.
+	 */
+	const RtosLayoutTable measured = GdbRtosLayout::read(getSettings().gdbCommand, elfPath, *profile, logger);
+
+	logger->info("The kernel layout: {} structures and {} fields read from debug information.", measured.structCount(), measured.fieldCount());
+
+	if (!sampler->prepare(symbols, measured, rtosSettings))
+	{
+		const std::string reason = sampler->lastError();
+
+		logger->warn("The task view could not prepare against {} symbols: {}", symbols.size(), reason);
+
+		return report("the sampler could not be prepared: " + reason);
+	}
+
+	logger->info("The task view is ready: {} symbols resolved, {} lists to walk.", symbols.size(), sampler->listSources().size());
+
+	/* Every snapshot carries the identity of the run it came from, so a saved
+	   record can be told apart from the next one. The wall clock is the only
+	   thing at hand that is unique to this run. */
+	const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+	rtosSessionId = "session-" + std::to_string(seconds);
+
+	rtosModel->beginSession(rtosSessionId);
+	rtosLastRoundAt = -1.0;
+	rtosSampler = std::move(sampler);
+
+	/* Cleared, so that a reason left over from a failed attempt does not sit
+	   beside a sampler that is working. */
+	note("");
+
+	return true;
+}
+
+void ViewerDataHandler::publishSyncDepths(const RtosSnapshot& snapshot)
+{
+	/*
+	 * The name a depth is carried under.
+	 *
+	 * Written in the bracket form a variable uses for an array element, so
+	 * that a depth can never collide with a structure member or with something
+	 * imported: `q_sensor[depth]` is not a name a target could have, while
+	 * `q_sensor.depth` is the shape of a member and could be.
+	 */
+	auto nameOf = [](const RtosSyncObject& object) { return object.name + "[depth]"; };
+
+	std::vector<std::pair<std::shared_ptr<Variable>, uint32_t>> toWrite;
+	std::vector<std::pair<std::string, uint32_t>> toCreate;
+
+	/*
+	 * Step one: decide what has to be written and what has to be made.
+	 *
+	 * No lock is needed for the snapshot itself, because a published snapshot
+	 * never changes again. The model's lock is taken only to look things up,
+	 * and it is released before anything is created: `addVariable` takes that
+	 * same lock itself, and calling it while holding one is a deadlock rather
+	 * than a slow path.
+	 */
+	{
+		auto modelLock = variableHandler->lockModel();
+
+		for (const RtosSyncObject& object : snapshot.syncObjects)
+		{
+			/* An object with no name cannot be told apart from the next
+			   unnamed one, and one whose depth was not read has no value to
+			   draw. Both are left alone rather than given a made up name. */
+			if (object.name.empty() || !object.hasCounts)
+				continue;
+
+			const std::string name = nameOf(object);
+
+			std::shared_ptr<Variable> variable;
+
+			{
+				std::lock_guard<std::mutex> guard(syncDepthVariablesMutex);
+
+				const auto it = syncDepthVariables.find(name);
+
+				if (it != syncDepthVariables.end())
+					variable = it->second;
+			}
+
+			if (variable != nullptr)
+			{
+				toWrite.push_back({variable, object.items});
+
+				continue;
+			}
+
+			/* A variable of that name already in the model did not come from
+			   here, so it belongs to someone else and is left untouched. */
+			if (variableHandler->contains(name))
+				continue;
+
+			toCreate.push_back({name, object.items});
+		}
+	}
+
+	/* Step two: make the new ones. `addVariable` takes the model's lock on its
+	   own, so nothing may be held while this runs. */
+	for (const auto& [name, depth] : toCreate)
+	{
+		auto variable = std::make_shared<Variable>(name, Variable::Type::U32, 0.0);
+
+		/* Marked before it goes into the model, so that every path which adds
+		   a series over it - the interface, a project file, a tool call - will
+		   see it for what it is and keep it out of the read plan. */
+		variable->setDerived(true);
+
+		/*
+		 * And told not to take its address from a symbol file.
+		 *
+		 * That flag is what `getIsFound` answers with, and everything that
+		 * asks - the variable table, the write path, the interface's Ctrl
+		 * click - is really asking whether the variable can be used. A
+		 * derived variable can be used; it simply has no address to look up.
+		 * Leaving the flag on had the table report `NOT FOUND!` in red for a
+		 * value that was there all along, and had Ctrl click refuse to select
+		 * it, which is the one gesture that puts it on a plot.
+		 */
+		variable->setShouldUpdateFromElf(false);
+
+		variableHandler->addVariable(variable);
+
+		{
+			std::lock_guard<std::mutex> guard(syncDepthVariablesMutex);
+			syncDepthVariables[name] = variable;
+		}
+
+		/* Written on the same pass that made it, so that the first round a
+		   depth exists it already shows the value it was read with rather than
+		   a zero that means nothing. */
+		toWrite.push_back({variable, depth});
+	}
+
+	if (toCreate.empty() && toWrite.empty())
+		return;
+
+	/* Step three: write, under the model's lock and touching nothing else. */
+	auto modelLock = variableHandler->lockModel();
+
+	for (const auto& [variable, value] : toWrite)
+	{
+		/*
+		 * Both flags are set every round rather than only when the variable is
+		 * made. One made before these rules existed would otherwise keep the
+		 * old answers, and the table would go on colouring it as an address
+		 * that was not found - which is what a reader sees first.
+		 */
+		variable->setDerived(true);
+		variable->setShouldUpdateFromElf(false);
+
+		/*
+		 * Both of them, and the reason is worth writing down.
+		 *
+		 * A variable carries a raw value and a displayed one, and the sampling
+		 * loop is what turns the first into the second for every variable it
+		 * reads. A derived variable is not one of those, so nothing would ever
+		 * make that turn for it: setting only the raw value would leave the
+		 * number the interface shows - and the statistics measure, and the
+		 * export writes - at its initial zero for good.
+		 */
+		variable->setRawValue(value);
+		variable->setValue(static_cast<double>(value));
+	}
+}
+
+bool ViewerDataHandler::setRtosEnabled(bool enabled)
+{
+	const bool wasEnabled = rtosEnabled.load(std::memory_order_relaxed);
+
+	rtosEnabled.store(enabled, std::memory_order_relaxed);
+
+	/*
+	 * Setting it to what it already is does nothing.
+	 *
+	 * The interface calls this every time the start button is pressed, and
+	 * the value almost never changes. Dropping what was prepared on every
+	 * press would have the loop read the symbol file and open two gdb
+	 * sessions again on each one - a fifth of a second of work, and a new
+	 * sampler and session behind a view that is being looked at, for a
+	 * setting that did not move.
+	 */
+	if (wasEnabled == enabled)
+		return enabled;
+
+	/* Whatever was prepared belongs to the previous switch setting. Clearing
+	   this makes the loop prepare again on its next pass, which is the only
+	   place it can be done: the loop is where the project is known to be
+	   loaded. */
+	rtosPrepared.store(false, std::memory_order_relaxed);
+
+	if (!enabled)
+	{
+		/* Off means the sampler goes away, and with it every read the task
+		   view would have made. The model stays, so the last snapshot is
+		   still there to look at. */
+		rtosSampler.reset();
+
+		return false;
+	}
+
+	return true;
+}
+
+void ViewerDataHandler::forgetRtosPreparation()
+{
+	/* Called when the project changes underneath: what was prepared came from
+	   another symbol file. The next pass of the loop prepares again. */
+	rtosPrepared.store(false, std::memory_order_relaxed);
+	rtosSampler.reset();
+}
+
+bool ViewerDataHandler::rtosRoundIsDue(double now, std::chrono::steady_clock::time_point nextDeadline, std::chrono::steady_clock::duration interval) const
+{
+	if (rtosSampler == nullptr || !rtosEnabled.load(std::memory_order_relaxed))
+		return false;
+
+	if (rtosLastRoundAt >= 0.0 && (now - rtosLastRoundAt) < rtosIntervalSeconds)
+		return false;
+
+	/* Not past the next sample as well, or the round gives way.
+
+	   The loop wakes on the deadline, so by the time a sample has been read
+	   and written the current one is already behind it. Comparing against the
+	   deadline would refuse every round; comparing against the one after it
+	   asks the question that matters, which is whether this pass still fits
+	   inside the period it belongs to. */
+	return std::chrono::steady_clock::now() < nextDeadline + interval;
+}
+
+void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start)
+{
+	if (rtosSampler == nullptr || rtosModel == nullptr || debugProbe == nullptr)
+		return;
+
+	const auto secondsSinceStart = [&start]()
+	{
+		return std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - start).count();
+	};
+
+	const double startedAt = secondsSinceStart();
+
+	/* The probe lock is held by the sampling loop, so the memory reader is
+	   built on a reference to the open probe rather than looking it up and
+	   taking the lock a second time. */
+	RtosProbeMemory memory(*debugProbe);
+
+	RtosSampler::Round round = rtosSampler->collect(memory, rtosSessionId, rtosSettings);
+
+	rtosLastRoundAt = secondsSinceStart();
+
+	if (round.usable())
+	{
+		/* The end of the round is only known now, which is why the sampler
+		   leaves the capture times to this side. A round that had to be split
+		   over the budget shows the span rather than pretending its pieces
+		   came from one moment. */
+		round.snapshot->captureStartedAt = startedAt;
+		round.snapshot->captureFinishedAt = rtosLastRoundAt;
+		round.snapshot->captureSpanSeconds = round.snapshot->captureFinishedAt - round.snapshot->captureStartedAt;
+
+		/* The depths go into their variables before the round is published, on
+		   this thread and outside the sampling loop's own bookkeeping: the
+		   values come from the snapshot, which cannot change, and they are
+		   written into the variable model, which has its own lock. */
+		publishSyncDepths(*round.snapshot);
+
+		rtosModel->publish(std::move(round.snapshot));
+
+		return;
+	}
+
+	/* A round that did not hold together is not published. The previous one
+	   stays, and the reason is kept so the interface can say a round went
+	   missing instead of showing half of one. */
+	std::string reason;
+
+	for (const std::string& problem : round.problems)
+		reason += (reason.empty() ? "" : "; ") + problem;
+
+	rtosModel->recordRejectedRound(reason.empty() ? "the round did not hold together" : reason, startedAt);
 }
 
 void ViewerDataHandler::updateVariables(double timestamp, const std::unordered_map<uint32_t, double>& values)
@@ -430,6 +791,26 @@ void ViewerDataHandler::dataHandler()
 
 	while (!done)
 	{
+		/* Preparing the task view reads a symbol file, which takes seconds on
+		   a large one, so it happens here rather than at the moment the switch
+		   went on: this is the first point at which the project is known to be
+		   loaded and its file path means anything.
+
+		   The first pass normally fails, because the loop starts before any
+		   project is open, and the next one succeeds. A failed attempt is
+		   therefore not reported as a fault: it is logged at debug level, and
+		   the next try is put off so that a symbol file that is genuinely
+		   missing cannot fill the log at the sampling rate. */
+		if (rtosEnabled.load(std::memory_order_relaxed) && !rtosPrepared.load(std::memory_order_relaxed) && Clock::now() >= rtosNextPrepareAttempt)
+		{
+			const bool prepared = prepareRtos();
+
+			rtosPrepared.store(prepared, std::memory_order_relaxed);
+
+			if (!prepared)
+				rtosNextPrepareAttempt = Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(rtosPrepareRetrySeconds));
+		}
+
 		/* setState publishes the requested state before this thread has opened the
 		   probe and initialized the schedule. Do not sample during that transition. */
 		if (viewerState == State::RUN && !stateChangeOrdered.load())
@@ -536,6 +917,12 @@ void ViewerDataHandler::dataHandler()
 					}
 					else
 						metricsFailedSamples.fetch_add(1, std::memory_order_relaxed);
+
+					/* The task view goes after the variables. Both of them
+					   would rather lose a round than push the other out of the
+					   way, and the snapshot loses one more cheaply. */
+					if (rtosRoundIsDue(period, nextDeadline, sampleInterval))
+						runRtosRound(start);
 
 					metricsElapsedNs.store(nanosecondsBetween(start, Clock::now()), std::memory_order_relaxed);
 
@@ -690,6 +1077,14 @@ bool ViewerDataHandler::createSampleList()
 		for (auto& [name, ser] : plot->getSeriesMap())
 		{
 			if (!ser->visible)
+				continue;
+
+			/* A derived series holds a value worked out on this side, so its
+			   variable has no address on the target. Adding it to the read
+			   plan would have the loop read whatever lives at that address
+			   and record it as the series' value, which is worse than leaving
+			   the series out: a wrong number looks like a right one. */
+			if (ser->derived)
 				continue;
 
 			std::pair<uint32_t, uint8_t> newElement = {ser->var->getAddress(), ser->var->getSize()};

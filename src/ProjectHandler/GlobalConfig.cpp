@@ -105,6 +105,12 @@ bool GlobalConfig::load()
 		}
 	}
 
+	if (root.contains("rtos"))
+	{
+		const auto& rtos = root.at("rtos");
+		settings.rtosEnabled = rtos.value("enabled", settings.rtosEnabled);
+	}
+
 	if (root.contains("plotExport"))
 	{
 		const auto& plotExport = root.at("plotExport");
@@ -160,6 +166,7 @@ bool GlobalConfig::save()
 	root["formatVersion"] = formatVersion;
 	root["autoSave"] = {{"enabled", settings.autoSaveEnabled}, {"intervalSeconds", settings.autoSaveIntervalSeconds}};
 	root["interface"] = {{"fontScale", settings.fontScale}, {"theme", settings.theme}, {"language", settings.language}};
+	root["rtos"] = {{"enabled", settings.rtosEnabled}};
 	root["api"] = {{"enabled", settings.mcpEnabled},
 				   {"preferredPort", settings.mcpPreferredPort},
 				   {"writesEnabled", settings.apiWritesEnabled},

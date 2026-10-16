@@ -127,6 +127,12 @@ namespace mcp
 	   public:
 		static void registerAll(ToolRegistry& registry);
 	};
+
+	class RtosTools
+	{
+	   public:
+		static void registerAll(ToolRegistry& registry);
+	};
 }  // namespace mcp
 
 #endif

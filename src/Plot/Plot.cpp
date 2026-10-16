@@ -52,6 +52,7 @@ bool Plot::addSeries(Variable* var)
 	seriesMap[name] = std::make_shared<Series>();
 	seriesMap[name]->buffer = std::make_unique<ScrollingBuffer<double>>();
 	seriesMap[name]->var = var;
+	seriesMap[name]->derived = var != nullptr && var->isDerived();
 	return true;
 }
 

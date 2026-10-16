@@ -77,17 +77,19 @@ void SystemInit( void )
 }
 #endif
 
-/* SysTick 配成 1 kHz，与 configTICK_RATE_HZ 一致 */
-static void systick_init_1khz(void)
-{
-    volatile uint32_t *const syst_csr = (volatile uint32_t *)0xE000E010u;
-    volatile uint32_t *const syst_rvr = (volatile uint32_t *)0xE000E014u;
-    volatile uint32_t *const syst_cvr = (volatile uint32_t *)0xE000E018u;
-
-    *syst_rvr = (PROBE_CPU_HZ / 1000u) - 1u;
-    *syst_cvr = 0u;
-    *syst_csr = 0x7u;
-}
+/* SysTick 由 FreeRTOS 自己配：xPortStartScheduler() 里的 vPortSetupTimerInterrupt()
+ * 用 configCPU_CLOCK_HZ 与 configTICK_RATE_HZ 算出重载值并打开中断、使能计数。
+ *
+ * **不要在 main 里提前使能 SysTick 中断。** 调度器启动之前 PSP 从未被设置过
+ * （复位后是个未定义值），而这个窗口里到来的 tick 会让 xTaskIncrementTick
+ * 返回「需要切换」，进而把 PendSV 拉起来；xPortPendSVHandler 的第一句就是
+ * `mrs r0, psp`，随后往 PSP 指向的地址压 R4-R11 —— 于是往一个垃圾地址写寄存器，
+ * HardFault，PC 停在 startup.c 的 Default_Handler 里死循环。
+ *
+ * 2026-10-15 在 F103 上首次真跑时踩到，现场：xTickCount 停在 2、PSP = AB14A558、
+ * 出错 PC 在 xPortPendSVHandler、压栈帧的 xPSR 显示 IPSR = 14（PendSV）。
+ * F401 跑 16 MHz，从 main 入口到 vTaskStartScheduler() 的窗口短于一 tick，
+ * 所以这个缺陷一直没暴露；F103 是 8 MHz，窗口约 2 毫秒，够发生两次 tick。 */
 
 static void busy_spin(volatile uint32_t n)
 {
@@ -267,8 +269,6 @@ void vApplicationMallocFailedHook(void)
 
 int main(void)
 {
-    systick_init_1khz();
-
     /* 引用一次主频，别让它被链接期回收掉 */
     g_sysclk_hz = SystemCoreClock;
 

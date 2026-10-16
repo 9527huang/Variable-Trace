@@ -72,6 +72,28 @@ class Variable
 
 	void setRawValue(uint32_t value);
 	void setValue(double val);
+
+	/*
+	 * True when the value is worked out on this side rather than read from the
+	 * target.
+	 *
+	 * A derived variable has an address like any other, and it is zero, which
+	 * is a real address on many targets. The sampling loop builds its read
+	 * plan out of every visible series, so anything that cannot tell a derived
+	 * variable from a real one will read whatever lives at that address and
+	 * present it as a value. The flag lives here so that every path which adds
+	 * a series - the interface, a project file, a tool call - gets the answer
+	 * without each having to remember to pass it along.
+	 */
+	bool isDerived() const
+	{
+		return derived;
+	}
+
+	void setDerived(bool value)
+	{
+		derived = value;
+	}
 	double getValue() const;
 
 	void setAddress(uint32_t addr);
@@ -153,6 +175,10 @@ class Variable
 
 	double value = 0.0;
 	uint32_t rawValue = 0;
+
+	/* Worked out on this side rather than read from the target. See the note
+	   on `isDerived`. */
+	bool derived = false;
 
 	uint32_t address = 0x20000000;
 	Fractional fractional{};

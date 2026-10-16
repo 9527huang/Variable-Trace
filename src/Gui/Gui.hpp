@@ -20,6 +20,7 @@
 #include "GuiPerformance.hpp"
 #include "GuiPlotEdit.hpp"
 #include "GuiPlotsTree.hpp"
+#include "GuiRtosPanel.hpp"
 #include "GuiVarTable.hpp"
 #include "GuiVariablesEdit.hpp"
 #include "GuiWritePlanner.hpp"
@@ -135,13 +136,25 @@ class Gui
 	Popup popup;
 	Popup acqusitionErrorPopup;
 
+	/* The three top level views. They sit side by side rather than one inside
+	   another: the task view is a view of the same run the variable view
+	   shows, not a dialog belonging to it. */
 	enum class ActiveViewType : uint8_t
 	{
 		VarViewer = 0,
 		TraceViewer = 1,
+		RtosViewer = 2,
 	};
 
 	ActiveViewType activeView = ActiveViewType::VarViewer;
+
+	/* True for the views that read through the variable side's probe. The
+	   task view is one of them: its rounds run on that side's sampling loop,
+	   so its acquisition settings are the variable side's. */
+	static bool readsThroughViewer(ActiveViewType type)
+	{
+		return type == ActiveViewType::VarViewer || type == ActiveViewType::RtosViewer;
+	}
 
 	std::mutex* mtx;
 

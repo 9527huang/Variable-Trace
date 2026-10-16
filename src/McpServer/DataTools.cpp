@@ -304,6 +304,15 @@ namespace mcp
 
 			const std::shared_ptr<Variable> variable = requireVariable(context, name);
 
+			/* A derived variable passes the check below, because it can be
+			   used - it is drawn, measured and exported. Writing one is a
+			   different matter: it has no address, and whatever was written
+			   would be replaced by the next round anyway. The caller is told
+			   which of the two it hit rather than being sent to look at its
+			   address. */
+			if (variable->isDerived())
+				throw ToolError("Variable '" + name + "' is worked out on this side and cannot be written to.");
+
 			if (!variable->getIsFound())
 				throw ToolError("Variable '" + name + "' has no address because it was not found in the ELF file. Call refresh_variable_addresses first.");
 

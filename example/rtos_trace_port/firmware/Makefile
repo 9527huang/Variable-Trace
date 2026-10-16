@@ -4,10 +4,20 @@
 # rtos_objects 三个工具在真机上的解析是否正确（对照见 main.c 里内核自报的
 # g_kernel_hwm[]）。
 #
-# 支持两块板子，用 BOARD 选：
-#     make            -> f401（默认，Cortex-M4F，512K Flash / 96K RAM）
-#     make BOARD=f103 -> f103（Cortex-M3，64K Flash / 20K RAM）
-# 产物分别在 build_f401/ 与 build_f103/ 下，互不干扰。
+# 支持三块板子，用 BOARD 选：
+#     make              -> f401（默认，Cortex-M4F，512K Flash / 96K RAM）
+#     make BOARD=f103   -> f103（Cortex-M3，64K Flash / 20K RAM）
+#     make BOARD=f407   -> f407（Cortex-M4F，1024K Flash / 128K RAM，STM32F407ZGT6）
+# 产物分别在 build_f401/、build_f103/、build_f407/ 下，互不干扰。
+#
+# 另有一个可选变体，叠加在上面：
+#     make BOARD=f103 OPT=1  -> build_f103_opt/，打开「优化任务选择」
+# 这一档会把 uxTopReadyPriority 的含义从优先级编号改成位图，见 FreeRTOSConfig.h。
+#
+# 关于三块板子共用一份源码：CPU 标志上 f401 与 f407 完全相同（都是
+# Cortex-M4F + FPv4-SP-D16，移植层都是 ARM_CM4F），差别只在链接脚本的容量
+# 与堆大小。三块板子都跑复位后的 HSI（F4 系列 16 MHz、F1 系列 8 MHz），
+# main.c 不做任何时钟初始化，所以换板子不需要写 PLL 代码。
 #
 # FreeRTOS 内核随仓库放在 third_party/FreeRTOS-Kernel，Makefile 的默认
 # 内核路径指向它，所以直接 make 就能构建。要换内核用：
@@ -40,11 +50,12 @@ SZ        := $(if $(TOOLCHAIN),$(TOOLCHAIN)/arm-none-eabi-size,arm-none-eabi-siz
 
 KERNEL    := $(FREERTOS_KERNEL)
 
-# 两块板子：
-#   f401  验证固件原本的目标，Cortex-M4F，512K Flash / 96K RAM（默认）
+# 三块板子：
+#   f401  Cortex-M4F，512K Flash / 96K RAM（默认）
 #   f103  本机测试板，Cortex-M3，64K Flash / 20K RAM
-# 差别只在 CPU 标志、移植层目录、链接脚本与两个板级宏；main.c 与
-# FreeRTOSConfig.h 两块板共用，源码不复制。
+#   f407  STM32F407ZGT6，Cortex-M4F，1024K Flash / 128K RAM
+# 差别只在 CPU 标志、移植层目录、链接脚本与板级宏；main.c 与
+# FreeRTOSConfig.h 三块板共用，源码不复制。
 BOARD ?= f401
 
 ifeq ($(BOARD),f103)
@@ -52,6 +63,14 @@ ifeq ($(BOARD),f103)
   PORT_DIR   := $(KERNEL)/portable/GCC/ARM_CM3
   LDSCRIPT   := linker/f103.ld
   BOARD_DEFS := -DPROBE_CPU_HZ=8000000 -DPROBE_HEAP_KB=14
+else ifeq ($(BOARD),f407)
+  # CPU 标志与 f401 逐字相同：同为核心、同一份移植层，只有容量与堆不同。
+  # 堆放到 48 KB，为「五十个任务」那一档快照场景留出空间（每个任务约
+  # 96 字节控制块加栈，五十个任务约 35 KB）。
+  CPUFLAGS   := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+  PORT_DIR   := $(KERNEL)/portable/GCC/ARM_CM4F
+  LDSCRIPT   := linker/f407.ld
+  BOARD_DEFS := -DPROBE_HEAP_KB=48
 else
   CPUFLAGS   := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
   PORT_DIR   := $(KERNEL)/portable/GCC/ARM_CM4F
@@ -59,7 +78,20 @@ else
   BOARD_DEFS :=
 endif
 
-BUILD_DIR := build_$(BOARD)
+# 可选构建变体：打开「优化任务选择」。
+#     make BOARD=f103 OPT=1   -> 产物在 build_f103_opt/ 下
+# 这个变体只改一个全局符号的语义（uxTopReadyPriority 从优先级编号变位图），
+# 不动任何结构布局。任务视图的描述表要按这两种取值分开，见计划 18.3、18.4。
+OPT ?= 0
+ifeq ($(OPT),1)
+  OPT_DEFS     := -DPROBE_OPTIMISED_SELECTION=1
+  BUILD_SUFFIX := _opt
+else
+  OPT_DEFS     :=
+  BUILD_SUFFIX :=
+endif
+
+BUILD_DIR := build_$(BOARD)$(BUILD_SUFFIX)
 TARGET    := $(BUILD_DIR)/freertos_probe
 
 C_SOURCES  := main.c startup.c \
@@ -68,7 +100,7 @@ C_SOURCES  := main.c startup.c \
               $(KERNEL)/portable/MemMang/heap_4.c
 C_INCLUDES := -I. -I$(KERNEL)/include -I$(PORT_DIR)
 
-CFLAGS   := $(CPUFLAGS) $(BOARD_DEFS) -O1 -g3 -Wall -ffunction-sections -fdata-sections -std=c99
+CFLAGS   := $(CPUFLAGS) $(BOARD_DEFS) $(OPT_DEFS) -O1 -g3 -Wall -ffunction-sections -fdata-sections -std=c99
 LDFLAGS  := $(CPUFLAGS) -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections -Wl,-Map=$(TARGET).map
 
 # 去掉 -p：本机这份 SysGCC 的 GNU Make 3.82（mingw32 构建）在调用 shell 时会把

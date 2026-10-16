@@ -24,7 +24,32 @@ class Plot
 	};
 	struct Series
 	{
+		/*
+		 * The variable this series draws.
+		 *
+		 * A series that comes from the target's memory points at a variable
+		 * that was read from it. A derived series - a queue depth, a CPU
+		 * load - points at a variable that holds a value worked out on this
+		 * side and never read from the target.
+		 *
+		 * The variable is used either way, and that is the point: cursor
+		 * readings, statistics and export all work off it, so a derived
+		 * series gets those abilities without a second implementation of any
+		 * of them.
+		 */
 		Variable* var = nullptr;
+
+		/*
+		 * True when the value did not come from the target's memory.
+		 *
+		 * This has to be known here and not guessed from the address: the
+		 * sampling loop builds its read plan out of every visible series, and
+		 * a derived series has no address that means anything. Letting one
+		 * through would put a made up address into that plan, and the loop
+		 * would read whatever happens to be there and record it as a value.
+		 */
+		bool derived = false;
+
 		displayFormat format = displayFormat::DEC;
 		std::unique_ptr<ScrollingBuffer<double>> buffer;
 		bool visible = true;
@@ -162,6 +187,14 @@ class Plot
 	std::string& getNameVar();
 	void setAlias(const std::string& newAlias);
 	std::string getAlias() const;
+	/*
+	 * Adds a series over a variable.
+	 *
+	 * Whether the series is derived is read off the variable rather than taken
+	 * as an argument. Every path that adds a series would otherwise have to
+	 * remember to say so, and the one that forgot would put a derived
+	 * variable's made up address into the sampling loop's read plan.
+	 */
 	bool addSeries(Variable* var);
 	std::shared_ptr<Plot::Series> getSeries(const std::string& name);
 	std::map<std::string, std::shared_ptr<Plot::Series>>& getSeriesMap();

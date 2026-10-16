@@ -173,7 +173,13 @@ class VariableTableWindow
 				}
 				ImGui::TableSetColumnIndex(1);
 
-				if (var->getIsFound())
+				/* A derived variable has no address, so the column says which
+				   it is rather than a zero. A zero there reads as an address
+				   that happens to be invalid, and this one is not an address
+				   at all. */
+				if (var->isDerived())
+					ImGui::TextDisabled("%s", I18n::tr("(derived)"));
+				else if (var->getIsFound())
 					ImGui::Text("%s", ("0x" + std::string(GuiHelper::intToHexString(var->getAddress()))).c_str());
 				else
 					ImGui::TextColored(GuiHelper::redLight(), I18n::tr("NOT FOUND!"));

@@ -197,6 +197,16 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/LibDwarfParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/OfdDwarfXml.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser/TiOfdParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosProfileBase.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/FreeRtosProfile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosFactory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosListWalker.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosTaskEnumerator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosSampler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/GdbRtosLayout.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosSyncEnumerator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosTableModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer/CSVStreamer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/I18n/I18n.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/VariableHandler/VariableHandler.cpp
@@ -216,7 +226,8 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/RecorderTools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/AcquisitionTools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/DataTools.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/FlashingTools.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/FlashingTools.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/McpServer/RtosTools.cpp)
 
 set(IMGUI_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui/imgui.cpp
@@ -326,6 +337,7 @@ target_include_directories(${EXECUTABLE} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RingBuffer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Statistics
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos
     ${CMAKE_CURRENT_SOURCE_DIR}/src/PlotGroupHandler
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/I18n

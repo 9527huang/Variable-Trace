@@ -12,6 +12,12 @@
 
 #include "DataHandlerBase.hpp"
 #include "IDebugProbe.hpp"
+
+#include <chrono>
+#include <functional>
+
+#include "RtosModel.hpp"
+#include "RtosSampler.hpp"
 #include "MovingAverage.hpp"
 #include "PerformanceDiagnosis.hpp"
 #include "VariableHandler.hpp"
@@ -148,6 +154,94 @@ class ViewerDataHandler : public DataHandlerBase
 		return debugProbe;
 	}
 
+	/*
+	 * The task view.
+	 *
+	 * The symbol table and the symbol file's path come from the interface
+	 * side. Reading an ELF file is that side's job, and this handler has no
+	 * business owning a parser of its own just to reach the kernel's globals.
+	 *
+	 * The path is an output because the offsets need it as well: they are read
+	 * from the same debug information the symbols are, over a gdb session this
+	 * side opens with the command from its own settings.
+	 */
+	using RtosSymbolProvider = std::function<bool(IElfParser::SymbolMap& symbols, std::string& elfPath)>;
+
+	void setRtosSymbolProvider(RtosSymbolProvider provider)
+	{
+		rtosSymbolProvider = std::move(provider);
+	}
+
+	/*
+	 * Resolves the kernel's symbols and its field offsets.
+	 *
+	 * Called before acquisition starts, because the first call may run a
+	 * symbol file parser and that is not something to do inside the sampling
+	 * loop. Answers false when there is no provider, no profile, or the symbol
+	 * file does not carry what the profile needs; a false answer costs the
+	 * task view and nothing else, since the loop does no work without a
+	 * prepared sampler.
+	 */
+	bool prepareRtos();
+
+	/* The published snapshot and what it took to get there. The interface and
+	   the API read this; neither reaches into the sampler. */
+	std::shared_ptr<RtosModel> getRtosModel() const
+	{
+		return rtosModel;
+	}
+
+	/*
+	 * The switch. Off means no sampler is built and the sampling loop does
+	 * nothing beyond one atomic read per round.
+	 *
+	 * Turning it on does not prepare anything by itself. Preparation reads a
+	 * symbol file, which can take seconds, and it needs the project to be
+	 * loaded for the file path to mean anything; so the loop does it once, on
+	 * its first pass after the switch went on. Answers whether the task view
+	 * is switched on after the call.
+	 */
+	/* Switches the task view on or off. Returns whether it is on after the
+	   call. */
+	bool setRtosEnabled(bool enabled);
+
+	/* Drops what the task view prepared, so that the loop prepares again on
+	   its next pass. Called when what it prepared against has changed - the
+	   project, or the symbol file behind it - and not when the switch is set
+	   to the value it already has. */
+	void forgetRtosPreparation();
+
+	/* Whether the task view is switched on, and why it has nothing to show.
+	 *
+	 * The reason is kept rather than only logged. A task view that is enabled
+	 * and silent looks the same from the outside whether the symbol file has
+	 * no kernel in it, the probe is not open, or the application was built
+	 * without the offsets this kernel needs - and the person looking at an
+	 * empty panel cannot tell which one to go and fix. */
+	bool isRtosEnabled() const
+	{
+		return rtosEnabled.load(std::memory_order_relaxed);
+	}
+
+	bool isRtosPrepared() const
+	{
+		return rtosPrepared.load(std::memory_order_relaxed);
+	}
+
+	std::string getRtosPrepareError() const
+	{
+		std::lock_guard<std::mutex> guard(rtosPrepareErrorMutex);
+
+		return rtosPrepareError;
+	}
+
+	std::string getRtosLastRejection() const
+	{
+		std::lock_guard<std::mutex> guard(rtosPrepareErrorMutex);
+
+		return rtosLastRejection;
+	}
+
 	/* Guards the probe object. The sampling loop holds it around every call into
 	   the probe, and a caller that moves memory outside the loop holds it for the
 	   duration of its own transactions. Without it two threads would interleave
@@ -219,6 +313,21 @@ class ViewerDataHandler : public DataHandlerBase
 	   draws - costs nothing. */
 	bool createSampleList();
 
+	/* True when a round of the task view is due and there is room for it
+	   before the next variable sample falls due.
+
+	   The ordering rule comes from what a missed round costs. A variable
+	   sample that is missed leaves a gap in a curve that the next round fills
+	   in; a task snapshot that is missed shows a state a little later than it
+	   could have. Neither is worth pushing the other out of the way, so the
+	   snapshot goes last and gives way. */
+	bool rtosRoundIsDue(double now, std::chrono::steady_clock::time_point nextDeadline, std::chrono::steady_clock::duration interval) const;
+
+	/* Runs one round and hands the result to the model. The probe lock is held
+	   by the caller, which is why this takes the time base rather than
+	   reaching for the probe itself. */
+	void runRtosRound(std::chrono::steady_clock::time_point start);
+
    private:
 	static constexpr size_t maxVariablesOnSinglePlot = 100;
 	std::shared_ptr<IDebugProbe> debugProbe;
@@ -242,6 +351,78 @@ class ViewerDataHandler : public DataHandlerBase
 	std::vector<CsvColumn> csvColumns;
 	std::vector<double> csvValues;
 	std::atomic<bool> mergeContiguousReadsEnabled{true};
+
+	/* The task view. Both objects are built by prepareRtos() and torn down by
+	   setRtosEnabled(false), so the sampling loop only has to test the sampler
+	   for emptiness. */
+	std::shared_ptr<RtosModel> rtosModel;
+	std::shared_ptr<RtosSampler> rtosSampler;
+	RtosSymbolProvider rtosSymbolProvider;
+	RtosSampler::Settings rtosSettings{};
+	std::atomic<bool> rtosEnabled{false};
+
+	/* Set by the sampling loop on the pass where it prepared the sampler.
+	   Cleared whenever the switch changes, so a project opened afterwards gets
+	   its own symbol file read rather than the previous one reused. */
+	std::atomic<bool> rtosPrepared{false};
+
+	/* When to try preparing again after a failed attempt.
+	 *
+	 * The first pass usually fails: the loop starts before a project is open,
+	 * so there is no file path yet, and it succeeds a moment later once one
+	 * is. Retrying on every pass would be fine for that and ruinous for a
+	 * genuine failure - a symbol file that is not there would be retried at
+	 * the sampling rate, and the log would fill with the same line. A pause
+	 * between attempts costs nothing when the next one succeeds and keeps the
+	 * log readable when none of them do. */
+	std::chrono::steady_clock::time_point rtosNextPrepareAttempt{};
+
+	/*
+	 * The variables that carry synchronisation depths into the plot area.
+	 *
+	 * A derived series needs somewhere for its value to live that cursor
+	 * readings, statistics and export can all read, and a variable is that
+	 * place - which is why they are variables at all rather than a second kind
+	 * of series. They are not addresses on the target: they are created here,
+	 * written here, and the sampling loop is told to leave them out of its
+	 * read plan.
+	 *
+	 * Kept under a mutex of this object's own rather than the model's. This is
+	 * the handler's bookkeeping about which variables it made; the model's
+	 * lock is for the variables themselves. Holding one while taking the other
+	 * is how two locks end up nested, and the plan forbids that outright.
+	 */
+	std::map<std::string, std::shared_ptr<Variable>> syncDepthVariables;
+	std::mutex syncDepthVariablesMutex;
+
+	/* The last reason preparation did not produce a sampler, and the last
+	   reason a round was refused. Empty means there is nothing to report. */
+	std::string rtosPrepareError;
+	std::string rtosLastRejection;
+	mutable std::mutex rtosPrepareErrorMutex;
+
+	/* Writes the depths of the round's synchronisation objects into those
+	   variables, making the ones that are new. Called after a round is
+	   published, on the sampling thread. */
+	void publishSyncDepths(const RtosSnapshot& snapshot);
+
+	/* Seconds on the sampling loop's own clock, which is what the snapshot's
+	   capture times are measured against. */
+	double rtosLastRoundAt = -1.0;
+	std::string rtosSessionId;
+
+	/*
+	 * How much wall clock to leave between two rounds.
+	 *
+	 * Half a second is the plan's default for a scan that reads whole control
+	 * blocks. It lives here rather than in the sampler's settings because it
+	 * is not a property of the kernel: the sampler is asked for one round and
+	 * does not know how often it gets asked.
+	 */
+	double rtosIntervalSeconds = 0.5;
+
+	/* How long to wait after a failed preparation before trying again. */
+	static constexpr double rtosPrepareRetrySeconds = 5.0;
 
 		std::atomic<uint64_t> metricsRunId{0};
 		std::atomic<uint64_t> metricsRequestedSamples{0};

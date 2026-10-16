@@ -38,6 +38,48 @@ Gui::Gui(PlotHandler* plotHandler, VariableHandler* variableHandler, ConfigHandl
 {
 	lastAutoSaveTime = std::chrono::steady_clock::now();
 
+	/*
+	 * The task view.
+	 *
+	 * The switch is settled once, from the installation settings, because the
+	 * plan requires it to be unchangeable during a run: turning it off has to
+	 * leave the program exactly as it was before the feature existed.
+	 *
+	 * The symbols are handed over as a callback rather than resolved here. The
+	 * project has not been loaded yet, so the file path means nothing at this
+	 * point; resolving it is what the sampling loop does on its first pass.
+	 */
+	viewerDataHandler->setRtosSymbolProvider(
+		[this, logger](IElfParser::SymbolMap& symbols, std::string& elfPath) -> bool
+		{
+			if (mcpElfParser == nullptr)
+				return false;
+
+			std::string reason;
+
+			if (!mcpElfParser->checkAvailability(reason))
+			{
+				/* A real problem - no gdb, or one that will not start - and
+				   not the usual "no project is open yet", which is silent
+				   here and retried by the sampling loop. */
+				logger->warn("The task view cannot read the symbol file: {}", reason);
+				return false;
+			}
+
+			/* Handed back as well as used: the offsets are read out of the
+			   same file, by the handler, over its own gdb session. */
+			elfPath = GuiHelper::convertProjectPathToAbsolute(&projectElfPath, &projectConfigPath);
+
+			if (elfPath.empty() || !mcpElfParser->parse(elfPath))
+				return false;
+
+			symbols = mcpElfParser->getParsedData();
+
+			return !symbols.empty();
+		});
+
+	viewerDataHandler->setRtosEnabled(globalConfig->getSettings().rtosEnabled);
+
 	/* The recorder reads and writes whichever probe the viewer acquired, so it
 	   needs nothing beyond the logger to exist. It is built before the plots
 	   tree because that tree offers the entries that make a recorder group, and
@@ -278,6 +320,38 @@ void Gui::mainThread(std::string externalPath)
 		drawWritePlannerWindow();
 		drawC2000ParserSuggestion();
 
+		/*
+		 * A pane the layout file has never seen is docked beside the variable
+		 * view rather than left to come up loose behind it.
+		 *
+		 * The check above is all or nothing: it asks whether any pane is
+		 * docked and, if one is, leaves the layout alone. That is right for
+		 * the panes a first run has to place, and wrong for one added later -
+		 * a reader who already has a layout file keeps it, and the new pane
+		 * gets no dock at all. Adding a view is exactly when that happens.
+		 */
+		if (ImGui::FindWindowSettings(ImHashStr(I18n::windowTitle("Task Viewer").c_str())) == nullptr)
+		{
+			const ImGuiWindowSettings* beside = ImGui::FindWindowSettings(ImHashStr(I18n::windowTitle("Var Viewer").c_str()));
+
+			if (beside != nullptr && beside->DockId != 0)
+				ImGui::SetNextWindowDockID(beside->DockId, ImGuiCond_Always);
+		}
+
+		if (ImGui::Begin(I18n::windowTitle("Task Viewer").c_str()))
+		{
+			activeView = ActiveViewType::RtosViewer;
+			drawAcqusitionSettingsWindow(activeView);
+			drawStartButton(viewerDataHandler);
+
+			/* The task view reads through the variable side's probe, so it
+			   shares that side's start button and settings. What it does not
+			   share is the plots: its rounds run inside the sampling loop that
+			   draws them. */
+			GuiRtosPanel::draw(viewerDataHandler->getRtosModel(), viewerDataHandler->getRtosPrepareError());
+		}
+		ImGui::End();
+
 		if (ImGui::Begin(I18n::windowTitle("Trace Viewer").c_str()))
 		{
 			activeView = ActiveViewType::TraceViewer;
@@ -499,7 +573,7 @@ static std::string percentageText(double ratio)
 
 void Gui::drawConnectionIndicator()
 {
-	const bool isVariableView = (activeView == ActiveViewType::VarViewer);
+	const bool isVariableView = readsThroughViewer(activeView);
 
 	/* The two tabs drive two separate probes, so the indicator follows the tab
 	   that is showing rather than reporting a single global state. */
@@ -1036,6 +1110,13 @@ void Gui::drawStartButton(DataHandlerBase* activeDataHandler)
 			logger->info("Start clicked!");
 			plotHandler->eraseAllPlotData();
 			tracePlotHandler->eraseAllPlotData();
+
+			/* A run started after a different project was opened has to read
+			   that project's symbol file, so the switch is restated here. It
+			   only clears what was prepared; the sampling loop does the work
+			   on its first pass. */
+			viewerDataHandler->setRtosEnabled(globalConfig->getSettings().rtosEnabled);
+
 			activeDataHandler->setState(DataHandlerBase::State::RUN);
 		}
 		else
@@ -1070,7 +1151,7 @@ void Gui::drawAcqusitionSettingsWindow(ActiveViewType type)
 
 		drawAcqusitionSettingsScope(type);
 
-		if (type == ActiveViewType::VarViewer)
+		if (readsThroughViewer(type))
 			acqusitionSettingsViewer();
 		else if (type == ActiveViewType::TraceViewer)
 			acqusitionSettingsTrace();
@@ -1197,10 +1278,14 @@ void Gui::ensureDockLayout(ImGuiID dockspaceId)
 	ImGuiID plotsSide = 0;
 	ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.27f, &settingsSide, &plotsSide);
 
-	/* The variable side and the trace side live in the same node and are
-	   switched between with the tabs above it, and so do their plots. */
+	/* The three views live in the same node and are switched between with the
+	   tabs above it, and so do the plots. A view that is not here comes up as
+	   a floating window, which is not what "the same level as the others"
+	   means - the reader would have to dock it by hand before seeing the
+	   layout anyone else has. */
 	ImGui::DockBuilderDockWindow(I18n::windowTitle("Var Viewer").c_str(), settingsSide);
 	ImGui::DockBuilderDockWindow(I18n::windowTitle("Trace Viewer").c_str(), settingsSide);
+	ImGui::DockBuilderDockWindow(I18n::windowTitle("Task Viewer").c_str(), settingsSide);
 	ImGui::DockBuilderDockWindow(I18n::windowTitle("Plots").c_str(), plotsSide);
 	ImGui::DockBuilderDockWindow(I18n::windowTitle("Trace Plots").c_str(), plotsSide);
 

@@ -209,8 +209,11 @@ bool GdbParser::parse(const std::string& elfPath)
 
 		/* account for tylda and " */
 		start += 2;
-		/* find the end of filepath */
-		end = out.find(":", start);
+		/* find the end of filepath. It ends with `:\n"`, and the colon right
+		   before that is the one that closes it. Looking for the first colon
+		   instead stops at the drive letter of a Windows path and yields a
+		   file called "D", which is where the path parsing used to end up. */
+		end = out.find(":\\n\"", start);
 
 		if (end == std::string::npos)
 			break;
@@ -253,6 +256,16 @@ void GdbParser::parseVariableChunk(const std::string& chunk)
 
 		std::string variableName = chunk.substr(spacePos + 1, semicolonPos - spacePos - 1);
 
+		/* An array declaration ends with its extent, so the last word of
+		   `static List_t pxReadyTasksLists[5];` is the name followed by
+		   `[5]`. That is not a name any symbol file answers to, and asking for
+		   it fails, which is how a kernel's ready lists went missing from a
+		   file that plainly contained them. */
+		const auto bracket = variableName.find('[');
+
+		if (bracket != std::string::npos)
+			variableName.erase(bracket);
+
 		checkVariableType(variableName);
 		start = semicolonPos + 1;
 	}
@@ -287,7 +300,19 @@ void GdbParser::checkVariableType(const std::string& name)
 	}
 
 	/* The name holds a structure rather than a number. Its fields are what the
-	   debug link can read, so each of them is asked about in turn. */
+	   debug link can read, so each of them is asked about in turn.
+
+	   The name itself is kept as well. It has an address even when its type is
+	   not one the viewer can draw a curve from, and a reader that wants the
+	   object rather than its fields has nothing else to go on. The task view
+	   reaches the kernel's ready lists and delay lists through exactly these
+	   names, and leaving them out is why a symbol file full of them yielded a
+	   table with nothing in it. */
+	{
+		std::lock_guard<std::mutex> lock(mtx);
+		parsedData[name] = Symbol{maybeAddress.value(), Variable::Type::UNKNOWN};
+	}
+
 	auto subStart = 0;
 
 	while (1)
