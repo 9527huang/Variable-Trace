@@ -216,6 +216,39 @@ struct RtosSnapshot
 		return tasks.empty();
 	}
 
+	/*
+	 * How many places a round may catch the target moving before it is worth
+	 * saying so in a warning colour.
+	 *
+	 * The lists are walked one after another while the target moves tasks
+	 * between them, so a few places where the reading caught it in the act are
+	 * the normal state of a running target rather than a fault. A warning that
+	 * is on every round is a warning nobody reads, which is worse than none:
+	 * it costs the reader the one round where something really did go wrong.
+	 *
+	 * The limit grows with the round - a kernel with more lists can expect
+	 * more of them to move - and has a floor, because a small round catching
+	 * two or three things moving is worth a look on its own.
+	 */
+	uint32_t inconsistentPlaceLimit() const
+	{
+		const uint32_t share = listsWalked / placesPerList;
+
+		return share > minimumInconsistentPlaces ? share : minimumInconsistentPlaces;
+	}
+
+	/* Whether this round moved in enough places that its parts should not be
+	   read as one moment. */
+	bool consistencyIsShaky() const
+	{
+		return inconsistencies.size() > inconsistentPlaceLimit();
+	}
+
+	/* One place per this many walked lists is still an ordinary round. */
+	static constexpr uint32_t placesPerList = 4;
+
+	static constexpr uint32_t minimumInconsistentPlaces = 3;
+
 	/* True when every task in the round was found on a list. A task on no list
 	   is reported as unknown rather than left out, so one of those means the
 	   round cannot claim to have accounted for the whole kernel. */

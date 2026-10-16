@@ -67,7 +67,7 @@ class GuiRtosPanel
 			return;
 		}
 
-		drawInconsistencyNotice(*snapshot);
+		drawConsistencyLine(*snapshot);
 		drawStackScanNotice(*snapshot);
 		drawCpuLoadNotice(*snapshot);
 		drawFilters(snapshot);
@@ -78,22 +78,39 @@ class GuiRtosPanel
 	/*
 	 * What the snapshot is and is not.
 	 *
-	 * The round walks eight kernel lists one after another while the target
-	 * moves tasks between them, so the parts of it were not all taken at the
-	 * same instant. That is not a defect to hide - it is the honest answer to
-	 * "when was this true", and it belongs on screen rather than in a log.
+	 * The round walks the kernel's lists one after another while the target
+	 * moves tasks between them, so its parts were not all taken at the same
+	 * instant. That is not a defect to hide - it is the honest answer to "when
+	 * was this true", and it belongs on screen rather than in a log.
+	 *
+	 * It is drawn plainly, though, while the count is within what a round can
+	 * expect of itself. A running target moves a few tasks between lists every
+	 * time, so a warning that is on in every round is a warning nobody reads -
+	 * and the round that really did go wrong is then the one nobody notices.
+	 * The colour comes out only above the limit the snapshot states, and the
+	 * sentence says the same thing in words beside it, because colour is not
+	 * something every reader has.
 	 */
-	static void drawInconsistencyNotice(const RtosSnapshot& snapshot)
+	static void drawConsistencyLine(const RtosSnapshot& snapshot)
 	{
-		if (snapshot.inconsistencies.empty())
-			return;
+		const int places = static_cast<int>(snapshot.inconsistencies.size());
+		const double spanMs = snapshot.captureSpanSeconds * 1000.0;
+		const bool shaky = snapshot.consistencyIsShaky();
 
-		ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::orangeLight());
-		ImGui::Text(I18n::tr("Parts of this table were not read at one instant: %d place(s) caught the target moving."),
-		            static_cast<int>(snapshot.inconsistencies.size()));
-		ImGui::PopStyleColor();
+		if (shaky)
+			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::orangeLight());
 
-		if (ImGui::IsItemHovered())
+		if (places == 0)
+			ImGui::Text(I18n::tr("Read over %.1f ms; every kernel list held together."), spanMs);
+		else if (shaky)
+			ImGui::Text(I18n::tr("Read over %.1f ms; %d place(s) caught the target moving, so the parts of this table are not all from one moment."), spanMs, places);
+		else
+			ImGui::Text(I18n::tr("Read over %.1f ms; %d place(s) caught the target moving."), spanMs, places);
+
+		if (shaky)
+			ImGui::PopStyleColor();
+
+		if (places > 0 && ImGui::IsItemHovered())
 		{
 			ImGui::BeginTooltip();
 

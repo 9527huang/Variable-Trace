@@ -243,3 +243,57 @@ TEST(RtosSnapshot, NamesEveryConsistencyItCanReport)
 	EXPECT_STREQ(toString(RtosConsistency::Consistent), "consistent");
 	EXPECT_STREQ(toString(RtosConsistency::BestEffort), "read while running");
 }
+
+TEST(RtosSnapshot, WarnsOnlyWhenTheRoundMovedInMorePlacesThanItCanExpect)
+{
+	RtosSnapshot snapshot;
+
+	/* A round that walks eighteen lists can expect a few of them to have moved
+	   while it was reading the others: that is what a running target looks
+	   like, and saying so in a colour every round would leave the warning on
+	   permanently, which is the same as having none. */
+	snapshot.listsWalked = 18;
+
+	EXPECT_EQ(snapshot.inconsistentPlaceLimit(), 4u);
+
+	for (uint32_t places = 0; places <= 4; places++)
+	{
+		snapshot.inconsistencies.assign(places, "a place that moved");
+
+		EXPECT_FALSE(snapshot.consistencyIsShaky()) << places;
+	}
+
+	snapshot.inconsistencies.assign(5, "a place that moved");
+
+	EXPECT_TRUE(snapshot.consistencyIsShaky());
+}
+
+TEST(RtosSnapshot, ASmallRoundStillWarnsAboveItsFloor)
+{
+	RtosSnapshot snapshot;
+
+	/* Five lists walked: the share is one, and one place moving would be an
+	   ordinary round on a bigger kernel. The floor is what keeps a small round
+	   from being quiet about something worth looking at. */
+	snapshot.listsWalked = 5;
+
+	EXPECT_EQ(snapshot.inconsistentPlaceLimit(), 3u);
+
+	snapshot.inconsistencies.assign(3, "a place that moved");
+	EXPECT_FALSE(snapshot.consistencyIsShaky());
+
+	snapshot.inconsistencies.assign(4, "a place that moved");
+	EXPECT_TRUE(snapshot.consistencyIsShaky());
+}
+
+TEST(RtosSnapshot, ARoundThatWalkedNothingStillHasALimit)
+{
+	RtosSnapshot snapshot;
+
+	/* A round that walked no lists cannot have caught anything moving, and it
+	   must not divide by a share of zero either. */
+	snapshot.listsWalked = 0;
+
+	EXPECT_EQ(snapshot.inconsistentPlaceLimit(), 3u);
+	EXPECT_FALSE(snapshot.consistencyIsShaky());
+}
