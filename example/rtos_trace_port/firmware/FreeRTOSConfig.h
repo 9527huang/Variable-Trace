@@ -1,7 +1,8 @@
 /* FreeRTOS 配置：为 mdkdebug 的 rtos_* 工具做真机验证固件。
  *
  * 这里故意把几个「会改变 TCB_t / Queue_t 布局」的选项都打开：
- *   configUSE_TRACE_FACILITY        -> TCB 里多出 uxTCBNumber / uxTaskNumber / ulRunTimeCounter
+ *   configUSE_TRACE_FACILITY        -> TCB 里多出 uxTCBNumber / uxTaskNumber
+ *   configGENERATE_RUN_TIME_STATS   -> TCB 里多出 ulRunTimeCounter（要配一个自由运行的计数器）
  *   configUSE_MUTEXES               -> 多出 uxBasePriority / uxMutexesHeld
  *   configRECORD_STACK_HIGH_ADDRESS -> 多出 pxEndOfStack
  *   configQUEUE_REGISTRY_SIZE > 0   -> 内核维护 xQueueRegistry，主机侧才可能枚举队列
@@ -76,7 +77,22 @@ extern uint32_t SystemCoreClock;
 #define configUSE_TRACE_FACILITY                 1
 #define configUSE_STATS_FORMATTING_FUNCTIONS     0
 #define configRECORD_STACK_HIGH_ADDRESS          1
-#define configGENERATE_RUN_TIME_STATS            0
+#define configGENERATE_RUN_TIME_STATS            1
+#define configRUN_TIME_COUNTER_TYPE              uint32_t
+
+/* 运行时间统计用的计数器：Cortex-M3 自己的 DWT 周期计数器。
+ *
+ * 选它是因为它什么都不占：一个 32 位自由运行的周期计数器，打开两位就够
+ * （DEMCR 的 TRCENA 与 DWT_CTRL 的 CYCCNTENA），不需要配时钟、不需要外设、
+ * 不需要中断，main.c 里那份「不做时钟初始化、不碰外设」的约定得以保持。
+ * 8 MHz 下 32 位约 537 秒绕回一次，远长于主机侧的观察窗口。
+ *
+ * 主机侧要的是两次读数之差占全部任务之差的比例，所以单位是周期还是微秒
+ * 都不影响占比；要换算成时间才需要 CPU 频率。 */
+void probe_start_run_time_counter( void );
+
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() ( probe_start_run_time_counter() )
+#define portGET_RUN_TIME_COUNTER_VALUE()         ( *( volatile uint32_t * ) 0xE0001004u )
 
 #define configSUPPORT_STATIC_ALLOCATION          0
 #define configSUPPORT_DYNAMIC_ALLOCATION         1

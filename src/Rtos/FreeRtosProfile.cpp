@@ -107,6 +107,14 @@ const std::vector<RtosProfileBase::FieldSpec>& FreeRtosProfile::getFields() cons
 		{"tcb.tcbNumber", "TCB_t", {"uxTCBNumber"}, Need::Optional, "needs configUSE_TRACE_FACILITY; usable as a generation"},
 		{"tcb.taskNumber", "TCB_t", {"uxTaskNumber"}, Need::Optional, "needs configUSE_TRACE_FACILITY"},
 		{"tcb.mutexesHeld", "TCB_t", {"uxMutexesHeld"}, Need::Optional, "needs configUSE_MUTEXES"},
+
+		/* The one field that is deliberately left without a fallback offset.
+		   Where it sits depends on which optional fields the build left out,
+		   and a counter read from a neighbouring word is a plausible
+		   percentage about nothing. It is found when debug information
+		   describes it, and when it is not, the column is simply not there -
+		   see the note in `getFallbackLayout`. */
+		{"tcb.runTimeCounter", "TCB_t", {"ulRunTimeCounter"}, Need::Optional, "how much of the kernel's run time counter this task has used; needs configGENERATE_RUN_TIME_STATS"},
 	};
 
 	return table;
@@ -180,5 +188,22 @@ RtosLayoutTable FreeRtosProfile::getFallbackLayout() const
 	layout.addField("TCB_t", "uxBasePriority", 80, fallback);
 	layout.addField("TCB_t", "uxMutexesHeld", 84, fallback);
 
+	/* `ulRunTimeCounter` is deliberately absent.
+	 *
+	 * Every other offset here is a number measured on one build that a
+	 * different configuration may move, and a wrong offset for a stack range
+	 * or a priority gives a plausible looking wrong answer too - but those
+	 * fields are at least always present, so the guess is only ever about
+	 * where. This one is present only when the build asked for run time
+	 * statistics, and where it sits when it is present depends on which other
+	 * optional fields went in. A written down number would then read the word
+	 * beside the counter and turn it into a percentage of nothing.
+	 *
+	 * Leaving it out means the field resolves only when debug information
+	 * describes it, which is exactly the case where reading it means
+	 * something. What is lost is a column on a build whose symbol file has no
+	 * debug information at all, and that is a fair trade for not showing a
+	 * number that is not one.
+	 */
 	return layout;
 }

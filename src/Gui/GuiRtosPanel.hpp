@@ -27,11 +27,9 @@
  * decision nothing checks.
  *
  * The columns the plan asks for and this table does not show are missing for a
- * reason worth writing down. CPU load needs the target built with
- * `configGENERATE_RUN_TIME_STATS`, and the kernel keeps no per task switch
- * count at all. Neither can be filled in from what a round reads today, and a
- * column filled with zeroes would be a claim about the target rather than a
- * gap in the reading.
+ * reason worth writing down. The kernel keeps no per task switch count at all,
+ * and a column filled with zeroes would be a claim about the target rather
+ * than a gap in the reading.
  *
  * The stack columns are here because they ask nothing of the target beyond
  * what makes them measurable anywhere: the range comes out of the control
@@ -71,6 +69,7 @@ class GuiRtosPanel
 
 		drawInconsistencyNotice(*snapshot);
 		drawStackScanNotice(*snapshot);
+		drawCpuLoadNotice(*snapshot);
 		drawFilters(snapshot);
 		drawTable(snapshot);
 		drawSyncObjects(*snapshot);
@@ -126,6 +125,56 @@ class GuiRtosPanel
 		ImGui::TextDisabled("%s", I18n::tr("The target does not fill its stacks, so how much of one is used cannot be worked out. FreeRTOS fills them when configCHECK_FOR_STACK_OVERFLOW is above 1, or configUSE_TRACE_FACILITY, or INCLUDE_uxTaskGetStackHighWaterMark, or INCLUDE_uxTaskGetStackHighWaterMark2 is set."));
 
 		ImGui::Separator();
+	}
+
+	/*
+	 * Why the CPU column is empty, when it is empty because of the target.
+	 *
+	 * A kernel counts per task run time only when it was built to, and a counter
+	 * that never moves gives a column of zeroes - which reads as a system with
+	 * nothing to do rather than as a reading that could not be taken. Both are
+	 * said here instead of being left to be guessed at from a column of dashes.
+	 *
+	 * A round with no share for anyone and no movement is the first round, where
+	 * there is nothing to compare against yet. That fixes itself in one round,
+	 * so nothing is said about it.
+	 */
+	static void drawCpuLoadNotice(const RtosSnapshot& snapshot)
+	{
+		if (!snapshot.cpuLoad.supported)
+		{
+			ImGui::TextDisabled("%s", I18n::tr("The target was not built with run time statistics (configGENERATE_RUN_TIME_STATS), so how much of the time each task used cannot be worked out."));
+
+			ImGui::Separator();
+
+			return;
+		}
+
+		if (snapshot.cpuLoad.tasksMeasured > 0 && !snapshot.cpuLoad.counting)
+		{
+			ImGui::TextDisabled("%s", I18n::tr("The run time counter did not move over the last window, so the shares cannot be worked out. The timer behind it is probably not running."));
+
+			ImGui::Separator();
+		}
+	}
+
+	/*
+	 * What the CPU column's numbers are a share of.
+	 *
+	 * They are not a share of the wall clock: the whole is what the tasks
+	 * themselves used, and the time the kernel attributes to no task - the
+	 * interrupts, mostly - is not in it. A reader who took the column for a
+	 * percentage of real time would be wrong by however much time went there.
+	 */
+	static void drawCpuColumnTooltip(const RtosSnapshot& snapshot)
+	{
+		if (!snapshot.cpuLoad.counting)
+			return;
+
+		ImGui::BeginTooltip();
+		ImGui::Text(I18n::tr("Share of the time the kernel counted across all tasks over the last %.2f s."), snapshot.cpuLoad.windowSeconds);
+		ImGui::TextDisabled("%s", I18n::tr("Time the kernel attributes to no task, the interrupts mostly, is not part of the whole."));
+		ImGui::EndTooltip();
 	}
 
 	/*
@@ -231,7 +280,7 @@ class GuiRtosPanel
 		 */
 		const ImVec2 size(0.0f, ImGui::GetContentRegionAvail().y * 0.6f);
 
-		if (!ImGui::BeginTable("rtosTasks", 7, flags, size))
+		if (!ImGui::BeginTable("rtosTasks", 8, flags, size))
 			return;
 
 		ImGui::TableSetupScrollFreeze(0, 1);
@@ -252,6 +301,7 @@ class GuiRtosPanel
 		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::State));
 		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackSize));
 		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackWatermark));
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::CpuLoad));
 		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::WaitingOn));
 
 			drawHeaderRow(snapshot);
@@ -309,6 +359,19 @@ class GuiRtosPanel
 				            static_cast<unsigned>(row.stackUsedPercent()));
 
 
+			/*
+			 * The share of the time this task used, worked out against what
+			 * every task used over the same window. Its place in the column
+			 * beside the stack pair is the plan's order: how big the task is,
+			 * how much of its stack it uses, and how much of the time.
+			 */
+			ImGui::TableNextColumn();
+
+			if (!row.hasCpuShare)
+				ImGui::TextUnformatted(unknown());
+			else
+				ImGui::Text("%.1f%%", row.cpuSharePercent);
+
 			/* Empty means it is not waiting on an object, which is a real
 			   answer rather than a missing one, so it is left blank. */
 			ImGui::TableNextColumn();
@@ -345,6 +408,9 @@ class GuiRtosPanel
 				return I18n::tr("Stack used");
 
 
+			case RtosTaskColumn::CpuLoad:
+				return I18n::tr("CPU");
+
 			case RtosTaskColumn::WaitingOn:
 				return I18n::tr("Waiting on");
 
@@ -357,7 +423,7 @@ class GuiRtosPanel
 	{
 		ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
 
-		for (int index = 0; index < 7; ++index)
+		for (int index = 0; index < 8; ++index)
 		{
 			ImGui::TableSetColumnIndex(index);
 
@@ -384,6 +450,9 @@ class GuiRtosPanel
 
 			if (column == RtosTaskColumn::StackWatermark && ImGui::IsItemHovered())
 				drawStackColumnTooltip(*snapshot);
+
+			if (column == RtosTaskColumn::CpuLoad && ImGui::IsItemHovered())
+				drawCpuColumnTooltip(*snapshot);
 		}
 	}
 

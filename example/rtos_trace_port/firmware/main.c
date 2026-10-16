@@ -24,8 +24,17 @@
  *
  *   seq_a / seq_b / seq_c —— 已知的固定切换序列，周期分别是 2、4、8 毫秒，
  *             同优先级。三个任务各自累加自己的计数器（g_seq_a/b/c），主机侧
- *             读出来就能核对比例是不是 4 : 2 : 1。用计数而不是精确顺序来核对，
- *             是为了不依赖调度器在同等优先级下的链表顺序。
+ *             读出来就能核对比例。用计数而不是精确顺序来核对，是为了不依赖调度
+ *             器在同等优先级下的链表顺序。
+ *
+ *             **注意：比例不是 4 : 2 : 1。** 2026-10-16 实测，三个任务的迭代
+ *             速率是 59 / 37 / 26 次每秒（同一个 4 秒窗口）。原因是它们都是优先级 1，
+ *             而节拍是 1 毫秒、开了时间片轮转，同优先级有七个任务：一个任务醒来
+ *             之后要排队等轮转，真正决定周期的是一次轮转那么长，2 毫秒与 8 毫秒
+ *             的差别被淹掉了。要拿到接近 4 : 2 : 1 的比例，得让这三个任务比别的高
+ *             一个优先级，或者把节拍调细、同优先级任务数压下来。
+ *
+ *             这一条对「用计数反推切换次数」那类判据同样成立：先量速率，再谈比例。
  *
  * 另外 `rep` 任务每秒把**内核自己算的** uxTaskGetStackHighWaterMark 写进
  * g_kernel_hwm[]，主机侧读出来就能和 rtos_tasks 报的水位逐项对照——
@@ -90,6 +99,18 @@ void SystemInit( void )
  * 出错 PC 在 xPortPendSVHandler、压栈帧的 xPSR 显示 IPSR = 14（PendSV）。
  * F401 跑 16 MHz，从 main 入口到 vTaskStartScheduler() 的窗口短于一 tick，
  * 所以这个缺陷一直没暴露；F103 是 8 MHz，窗口约 2 毫秒，够发生两次 tick。 */
+
+/* 打开 DWT 周期计数器，给内核的运行时间统计当时间基准。
+ *
+ * 地址直接写，不引 CMSIS 头：这份固件只包含 FreeRTOS 自己的头文件，为三个
+ * 寄存器引一套器件头文件不划算，而这几个地址在所有 Cortex-M3/M4 上一样。
+ * 不产生中断，也不碰任何外设，只在内核启动前打开一次。 */
+void probe_start_run_time_counter(void)
+{
+    *(volatile uint32_t *)0xE000EDFCu |= (1u << 24); /* DEMCR: TRCENA */
+    *(volatile uint32_t *)0xE0001004u = 0u;          /* DWT_CYCCNT */
+    *(volatile uint32_t *)0xE0001000u |= 1u;         /* DWT_CTRL: CYCCNTENA */
+}
 
 static void busy_spin(volatile uint32_t n)
 {
@@ -310,6 +331,7 @@ int main(void)
     (void)xTaskCreate(seq_b_task, "seq_b", 128, NULL, 1, &g_probe_handles[10]);
     (void)xTaskCreate(seq_c_task, "seq_c", 128, NULL, 1, &g_probe_handles[11]);
 
+    /* 内核会在启动调度器前调用它，这里只是把函数放得离 main 近一点。 */
     vTaskStartScheduler();
 
     /* 走到这里只可能是堆不够 */

@@ -111,7 +111,13 @@ namespace mcp
 								  task.hasStackWatermark ? Json(task.stackWatermarkStackBytes > task.stackFreeBytes ? task.stackWatermarkStackBytes - task.stackFreeBytes : 0u)
 								                        : Json()},
 								 {"stack_watermark_age_s", task.hasStackWatermark ? Json(task.stackWatermarkAgeSeconds) : Json()},
-								 {"stack_watermark_reached_cap", task.hasStackWatermark ? Json(task.stackWatermarkReachedCap) : Json()}});
+								 {"stack_watermark_reached_cap", task.hasStackWatermark ? Json(task.stackWatermarkReachedCap) : Json()},
+								 /* This task's share of the time the kernel counted across all
+								    tasks, and the window the snapshot reports. It is not a
+								    share of the wall clock: the time the kernel attributes to
+								    no task is not in the whole. Null means no share, which
+								    includes the first round of a session. */
+								 {"cpu_share_percent", task.hasCpuShare ? Json(task.cpuSharePercent) : Json()}});
 		}
 
 		Json rtosInfo(McpContext& context, const Json& args)
@@ -144,7 +150,8 @@ namespace mcp
 									 {"rounds_rejected", 0},
 									 {"last_rejection", ""},
 									 {"problems", Json::array()},
-								 {"stack_scan", Json::object({{"enabled", false}, {"fill_seen", false}, {"tasks_scanned", 0}, {"oldest_age_s", 0.0}})}});
+								 {"stack_scan", Json::object({{"enabled", false}, {"fill_seen", false}, {"tasks_scanned", 0}, {"oldest_age_s", 0.0}})},
+								 {"cpu_load", Json::object({{"supported", false}, {"counting", false}, {"tasks_measured", 0}, {"window_s", 0.0}})}});
 			}
 
 			const std::shared_ptr<const RtosSnapshot> snapshot = model->current();
@@ -190,7 +197,14 @@ namespace mcp
 								    target does not fill its stacks, which is a build option
 								    rather than a fault: the column claims nothing then. */
 								 {"stack_scan",
-								  snapshot == nullptr ? Json() : Json(Json::object({{"enabled", snapshot->stackScan.enabled}, {"fill_seen", snapshot->stackScan.fillSeen}, {"tasks_scanned", static_cast<uint32_t>(snapshot->stackScan.tasksScanned)}, {"oldest_age_s", snapshot->stackScan.oldestReadingAgeSeconds}}))}});
+								  snapshot == nullptr ? Json() : Json(Json::object({{"enabled", snapshot->stackScan.enabled}, {"fill_seen", snapshot->stackScan.fillSeen}, {"tasks_scanned", static_cast<uint32_t>(snapshot->stackScan.tasksScanned)}, {"oldest_age_s", snapshot->stackScan.oldestReadingAgeSeconds}}))},
+								 /* `supported` says the target keeps a run time counter at all,
+								    which is a build option; `counting` says the counter moved
+								    between the last two rounds. They are apart because the two
+								    mean different things to whoever is reading: one is about
+								    the firmware, the other about the target's timer. */
+								 {"cpu_load",
+								  snapshot == nullptr ? Json() : Json(Json::object({{"supported", snapshot->cpuLoad.supported}, {"counting", snapshot->cpuLoad.counting}, {"tasks_measured", static_cast<uint32_t>(snapshot->cpuLoad.tasksMeasured)}, {"window_s", snapshot->cpuLoad.windowSeconds}}))}});
 		}
 
 		Json listTasks(McpContext& context, const Json& args)
@@ -327,7 +341,8 @@ namespace mcp
 		registry.add({.name = "get_rtos_info",
 					  .description = "Return the state of the task view as JSON: {enabled, session_id, sequence, consistency, capture_started_at_s, "
 									 "capture_finished_at_s, capture_span_s, task_count, sync_object_count, lists_walked, lists_failed, rounds_published, "
-									 "rounds_rejected, last_rejection, stack_scan, problems, inconsistencies}. "
+									 "rounds_rejected, last_rejection, stack_scan, cpu_load, problems, inconsistencies}. "
+									 "cpu_load carries {supported, counting, tasks_measured, window_s}. "
 									 "stack_scan carries {enabled, fill_seen, tasks_scanned, oldest_age_s}. "
 									 "Reads the last published snapshot; it does not touch the target.",
 					  .inputSchema = objectSchema(Json::object({})),
@@ -337,7 +352,7 @@ namespace mcp
 					  .description = "Return the tasks of the most recent snapshot as JSON: {session_id, sequence, consistency, capture_span_s, "
 									 "task_count, returned, limit, max_limit, problems, tasks}. Each task carries {address, name, state, list, "
 									 "priority, base_priority, kernel_task_number, stack_base, stack_top, stack_bytes, waiting_on, event_list, "
-									 "stack_free_bytes, stack_used_bytes, stack_watermark_age_s, stack_watermark_reached_cap}. A field the round did not "
+									 "stack_free_bytes, stack_used_bytes, stack_watermark_age_s, stack_watermark_reached_cap, cpu_share_percent}. A field the round did not "
 									 "read is null rather than zero.",
 					  .inputSchema = objectSchema(Json::object({{"limit", integerProperty("Most tasks to return (default 100, at most 1000)")}})),
 					  .handler = listTasks});

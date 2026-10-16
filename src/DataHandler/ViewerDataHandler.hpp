@@ -17,6 +17,7 @@
 #include <functional>
 
 #include "RtosModel.hpp"
+#include "RtosCpuLoad.hpp"
 #include "RtosSampler.hpp"
 #include "RtosStackSweep.hpp"
 #include "MovingAverage.hpp"
@@ -366,6 +367,11 @@ class ViewerDataHandler : public DataHandlerBase
 	   across several rounds. The sweep owns the turn and the readings. */
 	RtosStackSweep rtosStackSweep;
 	RtosStackSweep::Settings rtosStackSweepSettings{};
+
+	/* The shares need two rounds of counters, so they are worked out here
+	   rather than in a single round. Nothing extra is read for them: the
+	   counter comes with the control block. */
+	RtosCpuLoad rtosCpuLoad;
 	std::atomic<bool> rtosEnabled{false};
 
 	/* Set by the sampling loop on the pass where it prepared the sampler.

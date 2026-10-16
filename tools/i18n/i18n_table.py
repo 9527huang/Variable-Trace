@@ -630,6 +630,14 @@ EXTRA = {
     # reading is - the sweep takes a few tasks a round.
     "Stack used": "栈占用",
     "Task Viewer": "任务查看器",
+
+    # The CPU column. The numbers are a share of what the tasks used, not of
+    # the wall clock, so the tooltip says what the whole is.
+    "CPU": "CPU 占用",
+    "The target was not built with run time statistics (configGENERATE_RUN_TIME_STATS), so how much of the time each task used cannot be worked out.": "目标没有启用运行时间统计(configGENERATE_RUN_TIME_STATS),因此算不出每个任务占用了多少时间。",
+    "The run time counter did not move over the last window, so the shares cannot be worked out. The timer behind it is probably not running.": "运行时间计数器在上一个窗口里没有变化,因此算不出占比。它背后的定时器很可能没有运行。",
+    "Share of the time the kernel counted across all tasks over the last %.2f s.": "在所有任务被计到的时间里的占比,窗口为最近 %.2f 秒。",
+    "Time the kernel attributes to no task, the interrupts mostly, is not part of the whole.": "内核不计到任何任务上的时间(主要是中断)不在这个总数里。",
     "The target does not fill its stacks, so how much of one is used cannot be worked out. FreeRTOS fills them when configCHECK_FOR_STACK_OVERFLOW is above 1, or configUSE_TRACE_FACILITY, or INCLUDE_uxTaskGetStackHighWaterMark, or INCLUDE_uxTaskGetStackHighWaterMark2 is set.": "目标没有填充栈,因此算不出每个栈用了多少。FreeRTOS 在下面任一条件成立时会填充:configCHECK_FOR_STACK_OVERFLOW 大于 1、configUSE_TRACE_FACILITY、INCLUDE_uxTaskGetStackHighWaterMark、INCLUDE_uxTaskGetStackHighWaterMark2。",
     "Scanned on this side over %d task(s); the oldest reading is %.1f s old.": "本机侧扫描,覆盖 %d 个任务;最旧的读数已过 %.1f 秒。",
     "A few tasks are scanned per round, so the readings are not all from the same moment. A reading marked with a leading <= stopped at the scan limit, so the used part is at most what it says.": "每轮只扫几个任务,所以这些读数并非取自同一时刻。前面带 <= 的读数在扫描上限处停下,因此已用部分至多为该值。",

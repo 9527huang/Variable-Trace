@@ -39,6 +39,10 @@ namespace
 		constexpr uint32_t tcbNumber = 72;
 		constexpr uint32_t tcbEventItem = 24;
 
+		/* Where the run time counter sits on a build with run time statistics
+		   on, read off the fixture firmware's own debug information. */
+		constexpr uint32_t tcbRunTimeCounter = 88;
+
 		/* Queue_t, as the fallback layout describes it. */
 		constexpr uint32_t queueSize = 72;
 		constexpr uint32_t queueHead = 0;
@@ -280,17 +284,24 @@ namespace
 		MemoryImage memory;
 	};
 
-	std::shared_ptr<RtosSampler> preparedSampler(const IElfParser::SymbolMap& symbols)
+	std::shared_ptr<RtosSampler> preparedSamplerWith(const IElfParser::SymbolMap& symbols, const RtosLayoutTable& layout)
 	{
 		auto profile = std::make_shared<FreeRtosProfile>();
 		auto sampler = std::make_shared<RtosSampler>(profile);
 
+		sampler->prepare(symbols, layout, RtosSampler::Settings{});
+
+		return sampler;
+	}
+
+	std::shared_ptr<RtosSampler> preparedSampler(const IElfParser::SymbolMap& symbols)
+	{
+		auto profile = std::make_shared<FreeRtosProfile>();
+
 		/* The layout is handed in, so the test states which one it means to
 		   exercise. Nothing measured this target, so the profile's own table
 		   answers and every offset it supplies is a fallback. */
-		sampler->prepare(symbols, profile->getFallbackLayout(), RtosSampler::Settings{});
-
-		return sampler;
+		return preparedSamplerWith(symbols, profile->getFallbackLayout());
 	}
 }  // namespace
 
@@ -509,4 +520,58 @@ TEST(RtosSampler, ATaskThatBlocksWithNoTimeoutIsNotCalledSuspended)
 	EXPECT_EQ(running->eventList, 0u);
 	EXPECT_EQ(running->state, RtosTaskState::Running);
 	EXPECT_TRUE(running->waitingOn.empty());
+}
+
+TEST(RtosSampler, ATargetBuiltWithoutRunTimeStatisticsSaysSo)
+{
+	FakeTarget target;
+	const std::shared_ptr<RtosSampler> sampler = preparedSampler(kernelSymbols());
+
+	const RtosSampler::Round round = sampler->collect(target.memory, "s1", target.settings());
+
+	ASSERT_TRUE(round.usable());
+
+	/* This firmware has no run time statistics, so no counter is in the control
+	   block and there is nothing to read. That is a build option rather than a
+	   fault, and the round says which it is instead of reading the word beside
+	   where the field would have sat. */
+	EXPECT_FALSE(round.snapshot->cpuLoad.supported);
+
+	const RtosTask* task = round.snapshot->find(addressTcbA);
+
+	ASSERT_NE(task, nullptr);
+	EXPECT_FALSE(task->hasRunTimeCounter);
+}
+
+TEST(RtosSampler, ReadsTheRunTimeCounterWhenTheBuildKeepsOne)
+{
+	FakeTarget target;
+
+	/* A build with run time statistics: the control block is one word longer,
+	   and the debug information describes the field. Describing it is what
+	   makes the offset trustworthy, and the profile deliberately offers no
+	   written down one. */
+	/* The counter sits inside the control block the fixture already mapped, so
+	   nothing has to be mapped again - and mapping it again would clear the
+	   state item's chain, which is written into the same block. */
+	target.memory.writeWord(addressTcbA + layout::tcbRunTimeCounter, 12345);
+	target.memory.writeWord(addressTcbB + layout::tcbRunTimeCounter, 42);
+
+	auto profile = std::make_shared<FreeRtosProfile>();
+
+	RtosLayoutTable measured = profile->getFallbackLayout();
+	measured.addStruct("TCB_t", layout::tcbSize, RtosLayoutTable::Origin::Measured);
+	measured.addField("TCB_t", "ulRunTimeCounter", layout::tcbRunTimeCounter, RtosLayoutTable::Origin::Measured);
+
+	const std::shared_ptr<RtosSampler> sampler = preparedSamplerWith(kernelSymbols(), measured);
+	const RtosSampler::Round round = sampler->collect(target.memory, "s1", target.settings());
+
+	ASSERT_TRUE(round.usable()) << (round.problems.empty() ? "" : round.problems.front());
+	EXPECT_TRUE(round.snapshot->cpuLoad.supported);
+
+	const RtosTask* task = round.snapshot->find(addressTcbA);
+
+	ASSERT_NE(task, nullptr);
+	ASSERT_TRUE(task->hasRunTimeCounter);
+	EXPECT_EQ(task->runTimeCounter, 12345u);
 }

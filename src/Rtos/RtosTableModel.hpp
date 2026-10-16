@@ -29,6 +29,9 @@ enum class RtosTaskColumn
 	/* Free bytes out of the stack's size, scanned on this side. */
 	StackWatermark,
 
+	/* Share of the time counted across all tasks. */
+	CpuLoad,
+
 
 	/* Last, because the panel draws its headers by casting the column index
 	   to this type: the order here is the order on screen. */
@@ -106,6 +109,12 @@ struct RtosTaskRow
 
 		return static_cast<uint32_t>((static_cast<uint64_t>(stackUsedBytes()) * 100u) / stackWatermarkStackBytes);
 	}
+
+	/* This task's share of the time the kernel counted, and whether there is
+	   one. A share needs two rounds, so on the first round of a session no row
+	   has one - which is a gap rather than a task that used no time. */
+	bool hasCpuShare = false;
+	double cpuSharePercent = 0.0;
 
 	/* The name of the object it is waiting on, and empty when it is waiting on
 	   none. Unlike the fields above, an empty one here is not missing data -

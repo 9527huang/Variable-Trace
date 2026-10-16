@@ -96,6 +96,31 @@ struct RtosStackScanSummary
 };
 
 
+/*
+ * What can be said about where the time went.
+ *
+ * A kernel only counts per task run time when it was built to. That is a
+ * build option rather than a fault, so the three states are kept apart and
+ * said plainly: no counter in the control block at all, a counter that is
+ * there but not moving, and a working one. The middle state is worth naming
+ * because a column of zeroes would read as "nothing is running".
+ */
+struct RtosCpuLoadSummary
+{
+	/* The target keeps a per task run time counter in its control block. */
+	bool supported = false;
+
+	/* Counters were read two rounds in a row and something moved. */
+	bool counting = false;
+
+	/* How many tasks this snapshot carries a share for, and the length of the
+	   window every share was worked out over. The window is one number for all
+	   of them by construction: a share is a fraction of what the tasks used
+	   between the same two moments. */
+	uint32_t tasksMeasured = 0;
+	double windowSeconds = 0.0;
+};
+
 struct RtosSnapshot
 {
 	std::vector<RtosTask> tasks;
@@ -119,6 +144,9 @@ struct RtosSnapshot
 	/* The stack water marks: how much of each stack is free, and how much of
 	   the set this round managed to cover. */
 	RtosStackScanSummary stackScan;
+
+	/* Where the time went, when the target counts it. */
+	RtosCpuLoadSummary cpuLoad;
 
 	/* One sentence per thing that went wrong while the round was collected.
 	   A round can be usable and still have something worth saying: a list that

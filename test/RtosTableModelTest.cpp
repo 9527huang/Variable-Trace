@@ -286,3 +286,34 @@ TEST(RtosTableModel, AReadingThatStoppedAtTheCapIsMarked)
 	EXPECT_TRUE(work->stackWatermarkReachedCap);
 	EXPECT_EQ(work->stackUsedPercent(), 74u);
 }
+
+TEST(RtosTableModel, TheCpuColumnKeepsRowsWithoutAShareLast)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+
+	snapshot.tasks[0].hasCpuShare = true;
+	snapshot.tasks[0].cpuSharePercent = 4.5;
+	snapshot.tasks[4].hasCpuShare = true;
+	snapshot.tasks[4].cpuSharePercent = 62.5;
+
+	RtosTaskTableQuery query;
+	query.sortColumn = RtosTaskColumn::CpuLoad;
+	query.descending = true;
+
+	const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(snapshot, query);
+
+	ASSERT_EQ(rows.size(), 5u);
+
+	/* Busiest first, which is the question this column gets asked. */
+	EXPECT_EQ(rows[0].name, "deep");
+	EXPECT_DOUBLE_EQ(rows[0].cpuSharePercent, 62.5);
+
+	EXPECT_EQ(rows[1].name, "IDLE");
+	EXPECT_DOUBLE_EQ(rows[1].cpuSharePercent, 4.5);
+
+	/* The rest have no share: the first round of a session has none for anyone.
+	   They go to the end rather than to the top, where a zero would have put
+	   them. */
+	for (size_t index = 2; index < rows.size(); ++index)
+		EXPECT_FALSE(rows[index].hasCpuShare);
+}

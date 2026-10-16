@@ -179,6 +179,11 @@ class RtosSampler
 	   means the layout described neither, which costs a round the waiting column
 	   and nothing else. */
 	uint32_t eventListContainerOffset = 0xFFFFFFFFu;
+
+	/* Where the run time counter sits, when the build has one. Absent on a
+	   target built without run time statistics, which is a build option rather
+	   than a failure: the column is simply not there. */
+	uint32_t runTimeCounterOffset = 0xFFFFFFFFu;
 	uint32_t basePriorityOffset = 0;
 	uint32_t kernelNumberOffset = 0;
 	uint32_t nameCapacity = 0;

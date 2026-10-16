@@ -118,6 +118,16 @@ bool RtosSampler::prepare(const IElfParser::SymbolMap& symbols, const RtosLayout
 
 		if (resolved.offsetOf("tcb.eventListItem", eventItemOffset) && resolved.offsetOf("listItem.container", containerOffset))
 			eventListContainerOffset = eventItemOffset + containerOffset;
+
+		/* The run time counter, which the profile leaves without a fallback
+		   offset on purpose: on a build that has no such field, a written down
+		   offset would read whatever sits beside it and turn that into a
+		   percentage. Requiring debug information to describe it is what keeps
+		   the column from being invented. */
+		runTimeCounterOffset = absentOffset;
+
+		if (layout.fieldOffset("TCB_t", "ulRunTimeCounter", offset))
+			runTimeCounterOffset = offset;
 	}
 
 	/* The ready array, one list per priority. Its length is stated rather than
@@ -255,6 +265,16 @@ bool RtosSampler::readTaskDetail(IRtosMemory& memory, uint32_t tcbAddress, uint3
 		task.hasEventList = true;
 	}
 
+	/* The run time counter, which comes with the control block and so costs no
+	   extra read. It is only there when the build asked for run time
+	   statistics, and the span check is what keeps a field whose offset falls
+	   outside the block from being read anyway. */
+	if (runTimeCounterOffset != absentOffset && runTimeCounterOffset + sizeof(uint32_t) <= span)
+	{
+		task.runTimeCounter = wordAt(buffer, runTimeCounterOffset);
+		task.hasRunTimeCounter = true;
+	}
+
 
 	if (kernelNumberOffset != absentOffset && kernelNumberOffset + sizeof(uint32_t) <= span)
 	{
@@ -365,6 +385,11 @@ RtosSampler::Round RtosSampler::collect(IRtosMemory& memory, const std::string& 
 	/* Reading a running target is all this can claim. The other level needs
 	   the target stopped, which is a switch of its own and not built yet. */
 	snapshot->consistency = RtosConsistency::BestEffort;
+
+	/* Whether the target counts per task run time at all. The rest of the
+	   summary is filled in by whoever works the shares out, which needs two
+	   rounds and so cannot happen in here. */
+	snapshot->cpuLoad.supported = (runTimeCounterOffset != absentOffset);
 
 	if (settings.readControlBlocks)
 	{

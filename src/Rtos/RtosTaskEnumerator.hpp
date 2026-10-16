@@ -131,6 +131,21 @@ struct RtosTask
 	   reading is a lower bound: at least this much of the stack is free. */
 	bool stackWatermarkReachedCap = false;
 
+	/* What the kernel's free running run time counter held for this task.
+
+	   An absolute value says nothing on its own: what a task used is the
+	   difference between two moments, and the counter is shared by the whole
+	   system. So this is the raw material for the share below and not a
+	   reading anyone is shown. Only present on a target built with
+	   configGENERATE_RUN_TIME_STATS, which is what `hasRunTimeCounter` says. */
+	uint32_t runTimeCounter = 0;
+	bool hasRunTimeCounter = false;
+
+	/* This task's share of the time the kernel counted across all tasks, over
+	   the window the snapshot reports beside it. */
+	bool hasCpuShare = false;
+	double cpuSharePercent = 0.0;
+
 	/* The priority the task was created with. Under priority inheritance this
 	   differs from `rawPriority`, and that difference is the diagnostic. */
 	uint32_t basePriority = 0;

@@ -36,6 +36,11 @@ namespace
 		return left < right ? -1 : (left > right ? 1 : 0);
 	}
 
+	int compareFractions(double left, double right)
+	{
+		return left < right ? -1 : (left > right ? 1 : 0);
+	}
+
 	/*
 	 * Whether the column's value was read for this row.
 	 *
@@ -61,6 +66,9 @@ namespace
 			case RtosTaskColumn::StackWatermark:
 				return row.hasStackWatermark;
 
+			case RtosTaskColumn::CpuLoad:
+				return row.hasCpuShare;
+
 			case RtosTaskColumn::Address:
 			case RtosTaskColumn::State:
 			case RtosTaskColumn::WaitingOn:
@@ -78,6 +86,12 @@ namespace
 		{
 			case RtosTaskColumn::Address:
 				return signOf(left.tcbAddress, right.tcbAddress);
+
+			case RtosTaskColumn::CpuLoad:
+				/* Busiest first when the column is sorted downwards, which is the
+				   question it gets asked. A row with no share never reaches this:
+				   it is put in the group that trails either way. */
+				return compareFractions(left.cpuSharePercent, right.cpuSharePercent);
 
 			case RtosTaskColumn::Priority:
 				/* The rank, not the raw number: two kernels number their
@@ -140,6 +154,8 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 		row.priorityRank = task.priorityRank;
 		row.hasStack = task.hasStack;
 		row.stackBytes = (task.hasStack && task.stackTop > task.stackBase) ? task.stackTop - task.stackBase : 0;
+		row.hasCpuShare = task.hasCpuShare;
+		row.cpuSharePercent = task.cpuSharePercent;
 		row.hasStackWatermark = task.hasStackWatermark;
 		row.stackFreeBytes = task.stackFreeBytes;
 		row.stackWatermarkStackBytes = task.stackWatermarkStackBytes;

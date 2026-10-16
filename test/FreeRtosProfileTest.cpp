@@ -119,10 +119,29 @@ TEST(FreeRtosProfile, MarksWhatCanBeAbsent)
 	EXPECT_EQ(waiting->need, Need::Optional);
 }
 
+/*
+ * The fallback table plus the one field it deliberately leaves out of itself.
+ *
+ * The run time counter has no written down offset on purpose: where it sits
+ * depends on which optional fields the build left out, and a counter read from
+ * a neighbouring word would be a share of nothing. A test that means "the
+ * layout describes everything" has to add it, the way a target built with run
+ * time statistics describes it.
+ */
+RtosLayoutTable layoutWithRunTimeCounter(const FreeRtosProfile& profile)
+{
+	RtosLayoutTable layout = profile.getFallbackLayout();
+
+	layout.addStruct("TCB_t", 100, Origin::Measured);
+	layout.addField("TCB_t", "ulRunTimeCounter", 88, Origin::Measured);
+
+	return layout;
+}
+
 TEST(FreeRtosProfile, ResolvesEverythingWhenTheSymbolFileHasItAll)
 {
 	FreeRtosProfile profile;
-	RtosLayoutTable layout = profile.getFallbackLayout();
+	RtosLayoutTable layout = layoutWithRunTimeCounter(profile);
 
 	RtosProfileBase::Resolution result = profile.resolve(allSymbols(), layout);
 
@@ -157,7 +176,7 @@ TEST(FreeRtosProfile, StopsAndNamesWhatIsMissing)
 TEST(FreeRtosProfile, KeepsGoingWhenAnOptionalSymbolIsMissing)
 {
 	FreeRtosProfile profile;
-	RtosLayoutTable layout = profile.getFallbackLayout();
+	RtosLayoutTable layout = layoutWithRunTimeCounter(profile);
 
 	RtosProfileBase::Resolution result = profile.resolve(symbolsWithout("uxTopReadyPriority"), layout);
 
@@ -217,9 +236,16 @@ TEST(FreeRtosProfile, MarksOffsetsThatCameFromTheBuiltInTable)
 	EXPECT_FALSE(result.fallbackFields.empty());
 
 	/* Every field the table answered for is marked, because every number in it
-	   was written down rather than read. */
-	EXPECT_EQ(result.fallbackFields.size(), profile.getFields().size());
+	   was written down rather than read. The run time counter is the one field
+	   it does not answer for, so this is one short of the whole table. */
+	EXPECT_EQ(result.fallbackFields.size(), profile.getFields().size() - 1);
 	EXPECT_TRUE(layout.isAllFallback());
+
+	/* And it is left unresolved rather than resolved to a guess, which is the
+	   point of leaving it out: no column is better than a column of words read
+	   from beside the field that should have been there. */
+	uint32_t offset = 0;
+	EXPECT_FALSE(result.offsetOf("tcb.runTimeCounter", offset));
 }
 
 TEST(FreeRtosProfile, DoesNotMarkOffsetsThatWereMeasured)
