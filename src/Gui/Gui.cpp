@@ -70,12 +70,33 @@ Gui::Gui(PlotHandler* plotHandler, VariableHandler* variableHandler, ConfigHandl
 			   same file, by the handler, over its own gdb session. */
 			elfPath = GuiHelper::convertProjectPathToAbsolute(&projectElfPath, &projectConfigPath);
 
-			if (elfPath.empty() || !mcpElfParser->parse(elfPath))
+			/* Every way this fails now says which way it was. It used to return
+			   false in silence, and the panel could only report that the file
+			   could not be read - which is true and tells nobody why. */
+			if (elfPath.empty())
+			{
+				logger->warn("The task view has no symbol file: elfPath empty, project names '{}', project file '{}', resolved '{}'", projectElfPath, projectConfigPath, elfPath);
+
 				return false;
+			}
+
+			if (!mcpElfParser->parse(elfPath))
+			{
+				logger->warn("The task view could not parse '{}': {}", elfPath, mcpElfParser->getLastErrorMsg());
+
+				return false;
+			}
 
 			symbols = mcpElfParser->getParsedData();
 
-			return !symbols.empty();
+			if (symbols.empty())
+			{
+				logger->warn("The symbol file '{}' parsed to no symbols.", elfPath);
+
+				return false;
+			}
+
+			return true;
 		});
 
 	viewerDataHandler->setRtosEnabled(globalConfig->getSettings().rtosEnabled);
