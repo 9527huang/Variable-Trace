@@ -7,6 +7,41 @@
    the list the DLL gave is the one thing the header leaves out. */
 extern "C" int32_t JLINKARM_EMU_SelectByIndex(int32_t index);
 
+/*
+ * The DLL would rather show a message box than return an error.
+ *
+ * "CPU is halted", "CPU is not halted", "Could not connect" - each arrives as a
+ * modal window owned by the DLL, and a modal window owns the thread that opened
+ * it. That thread is this application's interface thread, so the whole program
+ * stops: the panels stop drawing, the API stops answering, and the only way out
+ * is for someone to click OK on a window that says nothing about what the
+ * program was doing. A probe that is busy, or a target that is running when the
+ * DLL wants it stopped, is a normal thing to meet; a dialog is not the way to
+ * report it.
+ *
+ * The hook below is the documented way to take the messages over. It is not in
+ * the SDK header this build bundles, which is a subset, so it is declared here
+ * next to the one above and for the same reason - and under the name the DLL
+ * actually exports, which `objdump -p` on the DLL confirms.
+ */
+extern "C" void JLINKARM_SetErrorOutHandler(void (*errorOut)(const char* message));
+
+namespace
+{
+	/* The DLL calls these from whichever thread it is running on, so the logger
+	   has to be reached without an object: the probe that installed it may be
+	   gone by the time a late message arrives. */
+	spdlog::logger* dllLogger = nullptr;
+
+	void errorFromDll(const char* message)
+	{
+		if (dllLogger == nullptr || message == nullptr)
+			return;
+
+		dllLogger->warn("J-Link refused: {}", message);
+	}
+}  // namespace
+
 /* The host interfaces as the connection info describes them: 1 is USB, 2 is a
    probe reached over the network. The header names them in a comment only. */
 constexpr int32_t jlinkHostInterfaceIp = 2;
@@ -107,6 +142,12 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 
 		if (error != 0)
 			logger->error(error);
+
+		/* Before anything is asked of the target: a failure from here on goes to
+		   the log rather than to a window nobody asked for. */
+		dllLogger = logger;
+
+		JLINKARM_SetErrorOutHandler(&errorFromDll);
 
 		linkOpen = true;
 		openedLink = linkWanted;
