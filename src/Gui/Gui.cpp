@@ -365,9 +365,19 @@ void Gui::mainThread(std::string externalPath)
 			{
 				for (const auto& [name, element] : *group)
 				{
-					if (!element.visibility || element.plot == nullptr || !element.plot->drawsXCursors())
+					if (!element.visibility || element.plot == nullptr)
 						continue;
 
+					/*
+					 * Where the cursors are, not whether they are being drawn.
+					 *
+					 * The plot puts its cursors away while samples are still
+					 * arriving - a measurement of data that is still coming in
+					 * measures nothing - but that is a rule about the readouts,
+					 * and a cursor's position still marks the moment the reader
+					 * put it on. So the position is followed whenever the
+					 * cursor has been placed at all.
+					 */
 					if (element.plot->markerX0.getState())
 						plotCursors.push_back(element.plot->markerX0.getValue());
 
