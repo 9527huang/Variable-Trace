@@ -335,6 +335,12 @@ class ViewerDataHandler : public DataHandlerBase
 	/* One batch of switch records, when the target keeps them. */
 	void readEventRing(RtosProbeMemory& memory, double nowSeconds);
 
+	/* The stream the probe pushes, when the target keeps an RTT buffer. Read on
+	   the sampling tick rather than on the task view's own: a stream has to be
+	   drained at the rate it is written, and the task view's round is far too
+	   slow for that. */
+	void pollEventStream(double nowSeconds);
+
    private:
 	static constexpr size_t maxVariablesOnSinglePlot = 100;
 	std::shared_ptr<IDebugProbe> debugProbe;
@@ -404,6 +410,17 @@ class ViewerDataHandler : public DataHandlerBase
 	 * enough to be worth printing rather than a number that stops meaning
 	 * anything.
 	 */
+	/* Set once the probe has found the target's RTT buffer. The ring is not
+	   read while this is true: the same records would arrive twice. */
+	bool rttActive = false;
+
+	/* Bytes of a record the target was still writing when the read came back. */
+	std::vector<uint8_t> rttCarry;
+
+	/* The same anchor the ring path keeps, for the same reason. */
+	uint32_t rttAnchorUs = 0;
+	double rttAnchorSeconds = 0.0;
+
 	static constexpr uint32_t rtosEventsPerRound = 192;
 	static constexpr double rtosEventsKeepSeconds = 600.0;
 	std::atomic<bool> rtosEnabled{false};

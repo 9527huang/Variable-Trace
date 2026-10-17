@@ -648,6 +648,84 @@ bool ViewerDataHandler::rtosRoundIsDue(double now, std::chrono::steady_clock::ti
  * over is counted, so the strip can say its picture has a hole instead of
  * drawing one task's run across another's turn.
  */
+/*
+ * The stream, drained on the sampling tick.
+ *
+ * RTT is not a ring: the target appends to a buffer and the probe empties it.
+ * What matters is draining it at the rate it fills, which the task view's own
+ * round - twice a second - is nowhere near. So this runs on the sampling tick,
+ * where the variable side already has the probe open, and hands the records to
+ * the same history the ring path fills.
+ *
+ * A record the target was in the middle of writing is carried to the next read
+ * rather than dropped: the read boundary can fall anywhere, and eight bytes of
+ * a record is not something to throw away for want of the other two.
+ */
+void ViewerDataHandler::pollEventStream(double nowSeconds)
+{
+	if (!rtosEnabled.load(std::memory_order_relaxed) || rtosModel == nullptr || debugProbe == nullptr)
+		return;
+
+	if (!rttActive)
+	{
+		if (!debugProbe->startRtt())
+			return;
+
+		rttActive = true;
+	}
+
+	std::array<uint8_t, 4096> buffer{};
+	const uint32_t bytes = debugProbe->readRtt(buffer.data(), static_cast<uint32_t>(buffer.size()));
+
+	if (bytes == 0 && rttCarry.empty())
+		return;
+
+	rttCarry.insert(rttCarry.end(), buffer.begin(), buffer.begin() + std::min<uint32_t>(bytes, static_cast<uint32_t>(buffer.size())));
+
+	const size_t whole = rttCarry.size() / sizeof(RtosEventRing::Record);
+
+	if (whole == 0)
+		return;
+
+	std::vector<RtosEventRing::Record> batch;
+	batch.reserve(whole);
+
+	for (size_t entry = 0; entry < whole; entry++)
+	{
+		RtosEventRing::Record record;
+
+		std::memcpy(&record.tcbAddress, rttCarry.data() + entry * sizeof(RtosEventRing::Record), 4);
+		std::memcpy(&record.timeUs, rttCarry.data() + entry * sizeof(RtosEventRing::Record) + 4, 4);
+
+		batch.push_back(record);
+	}
+
+	rttCarry.erase(rttCarry.begin(), rttCarry.begin() + static_cast<long>(whole * sizeof(RtosEventRing::Record)));
+
+	/* The same anchor rule the ring path uses, and for the same reason. */
+	if (rttAnchorSeconds == 0.0)
+	{
+		rttAnchorUs = batch.front().timeUs;
+		rttAnchorSeconds = nowSeconds - static_cast<double>(static_cast<uint32_t>(batch.back().timeUs - rttAnchorUs)) / 1000000.0;
+	}
+	else
+	{
+		const double targetElapsed = static_cast<double>(static_cast<uint32_t>(batch.back().timeUs - rttAnchorUs)) / 1000000.0;
+		const double error = (nowSeconds - rttAnchorSeconds) - targetElapsed;
+
+		if (std::abs(error) < 5.0)
+			rttAnchorSeconds += error * 0.1;
+		else
+		{
+			rttAnchorUs = batch.front().timeUs;
+			rttAnchorSeconds = nowSeconds;
+		}
+	}
+
+	rtosModel->appendEventIntervals(RtosEventRing::intervalsFrom(batch, rttAnchorUs, rttAnchorSeconds, nowSeconds), rtosEventsKeepSeconds);
+}
+
+
 void ViewerDataHandler::readEventRing(RtosProbeMemory& memory, double nowSeconds)
 {
 	if (rtosEventRingAddress == 0 || rtosModel == nullptr)
@@ -1094,6 +1172,10 @@ void ViewerDataHandler::dataHandler()
 						updateVariables(timestamp, normalRawValues, normalRawValid);
 						metricsModelUpdateNs.fetch_add(nanosecondsBetween(modelUpdateBegan, std::chrono::steady_clock::now()), std::memory_order_relaxed);
 						metricsCompletedSamples.fetch_add(1, std::memory_order_relaxed);
+
+						/* Path B's stream, drained here because this is the
+						   tick that runs often enough for it. */
+						pollEventStream(timestamp);
 					}
 					else
 						metricsFailedSamples.fetch_add(1, std::memory_order_relaxed);

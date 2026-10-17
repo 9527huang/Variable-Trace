@@ -17,6 +17,9 @@ class JlinkDebugProbe : public IDebugProbe
 	bool startAcqusition(const DebugProbeSettings& probeSettings, std::vector<std::pair<uint32_t, uint8_t>>& addressSizeVector, uint32_t samplingFreqency) override;
 	bool stopAcqusition() override;
 	bool isValid() const override;
+
+	bool startRtt() override;
+	uint32_t readRtt(uint8_t* buffer, uint32_t size) override;
 	std::string getTargetName() override;
 
 	std::optional<IDebugProbe::varEntryType> readSingleEntry() override;
@@ -54,6 +57,10 @@ class JlinkDebugProbe : public IDebugProbe
 	   connection leaves it open for the next one, which then has nothing to
 	   open as long as that string still matches. */
 	bool linkOpen = false;
+
+	/* Set once the target's control block has been found. A refusal is not
+	   remembered: the target may configure the block after the first try. */
+	bool rttStarted = false;
 	std::string openedLink;
 
 	std::unordered_map<uint32_t, uint8_t> addressSizeMap;

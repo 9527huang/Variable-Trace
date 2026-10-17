@@ -26,6 +26,18 @@ extern "C" int32_t JLINKARM_EMU_SelectByIndex(int32_t index);
  */
 extern "C" void JLINKARM_SetErrorOutHandler(void (*errorOut)(const char* message));
 
+/*
+ * RTT, as the DLL spells it. Not in the SDK header this build bundles, so it is
+ * declared here next to the other two, under the names `objdump -p` shows.
+ *
+ * The command numbers are SEGGER's: 1 starts the terminal and looks for the
+ * control block, 2 stops it.
+ */
+extern "C" int32_t JLINK_RTTERMINAL_Control(uint32_t command, void* configuration);
+extern "C" uint32_t JLINK_RTTERMINAL_Read(uint32_t channel, uint8_t* buffer, uint32_t size);
+
+constexpr uint32_t jlinkRttStart = 1;
+
 namespace
 {
 	/* The DLL calls these from whichever thread it is running on, so the logger
@@ -366,6 +378,45 @@ bool JlinkDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size)
 
 	invalidateLink("writing target memory");
 	return false;
+}
+
+bool JlinkDebugProbe::startRtt()
+{
+	if (rttStarted)
+		return true;
+
+	std::lock_guard<std::mutex> lock(mtx);
+
+	if (!isRunning)
+		return false;
+
+	/* Finding the control block means searching the target's RAM, which is why
+	   the answer is remembered: the search costs milliseconds and gives the same
+	   answer every round. A refusal is not remembered, because the target may
+	   set the block up after this first try. */
+	if (JLINK_RTTERMINAL_Control(jlinkRttStart, nullptr) < 0)
+		return false;
+
+	rttStarted = true;
+
+	logger->info("The target keeps an RTT buffer, and the probe is reading it.");
+
+	return true;
+}
+
+uint32_t JlinkDebugProbe::readRtt(uint8_t* buffer, uint32_t size)
+{
+	if (!rttStarted)
+		return 0;
+
+	std::lock_guard<std::mutex> lock(mtx);
+
+	if (!isRunning)
+		return 0;
+
+	/* What the target wrote, and nothing waiting for it: an empty read is the
+	   usual answer between two switches. */
+	return JLINK_RTTERMINAL_Read(0, buffer, size);
 }
 
 bool JlinkDebugProbe::readBlock(uint32_t address, uint8_t* buf, uint32_t size)

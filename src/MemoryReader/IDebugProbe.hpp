@@ -135,6 +135,31 @@ class IDebugProbe
 
 	virtual std::string getLastErrorMsg() const = 0;
 
+	/*
+	 * The target's own channel for switch records, when the probe has one.
+	 *
+	 * Not every probe can: this is a J-Link feature. The default answer is the
+	 * refusal, so a probe that has no such channel needs no code to say so, and
+	 * the caller falls back to reading the ring the target keeps in its memory.
+	 *
+	 * `startRtt` looks for the control block once and remembers having found
+	 * it; a refusal is not remembered, because the target may load the block
+	 * after the first attempt.
+	 */
+	virtual bool startRtt()
+	{
+		return false;
+	}
+
+	/* What has arrived since the last read, up to `size` bytes. */
+	virtual uint32_t readRtt(uint8_t* buffer, uint32_t size)
+	{
+		(void)buffer;
+		(void)size;
+
+		return 0;
+	}
+
 	virtual std::vector<std::string> getConnectedDevices() = 0;
 
    protected:
