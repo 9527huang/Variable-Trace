@@ -5,11 +5,34 @@
 #include <string>
 
 #include "McpTools.hpp"
+#include "RtosDiagnostics.hpp"
 #include "RtosModel.hpp"
 #include "ViewerDataHandler.hpp"
 
 namespace mcp
 {
+	/*
+	 * The findings as the panel draws them: the chain in the order the waiting
+	 * goes, with the same task addresses the task list carries so that a caller
+	 * can join the two.
+	 */
+	Json findingsJson(const RtosSnapshot* snapshot)
+	{
+		Json findings = Json::array();
+
+		if (snapshot == nullptr)
+			return findings;
+
+		for (const RtosDiagnostics::Finding& finding : RtosDiagnostics::diagnose(*snapshot))
+		{
+			findings.push_back(Json::object({{"kind", finding.kind == RtosDiagnostics::Kind::SuspectedDeadlock ? "suspected deadlock" : "priority inheritance"},
+			                                 {"chain", finding.chain},
+			                                 {"tasks", finding.tasks}}));
+		}
+
+		return findings;
+	}
+
 	/*
 	 * The task view.
 	 *
@@ -158,6 +181,7 @@ namespace mcp
 									 {"rounds_rejected", 0},
 									 {"last_rejection", ""},
 									 {"problems", Json::array()},
+								 {"findings", Json::array()},
 								 {"history_samples", 0},
 								 {"history_oldest_s", 0.0},
 								 {"stack_scan", Json::object({{"enabled", false}, {"fill_seen", false}, {"tasks_scanned", 0}, {"oldest_age_s", 0.0}})},
@@ -205,6 +229,7 @@ namespace mcp
 								    and the time of the oldest. A view can draw only what is
 								    here, and a session that has run for hours has dropped the
 								    beginning of itself. */
+								 {"findings", findingsJson(snapshot.get())},
 								 {"history_samples", static_cast<uint32_t>(model->history().size())},
 								 {"history_oldest_s", model->history().oldestSeconds()},
 								 /* The stack water marks are read a few tasks a round, so the

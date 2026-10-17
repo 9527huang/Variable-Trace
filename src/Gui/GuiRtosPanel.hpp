@@ -9,6 +9,7 @@
 
 #include "GuiHelper.hpp"
 #include "GuiRtosPanelTimeline.hpp"
+#include "RtosDiagnostics.hpp"
 #include "I18n.hpp"
 #include "RtosModel.hpp"
 #include "RtosSyncEnumerator.hpp"
@@ -103,6 +104,15 @@ class GuiRtosPanel
 		drawStackScanNotice(*snapshot);
 		drawCpuLoadNotice(*snapshot);
 		drawSummary(*snapshot);
+
+		/* Findings, and only when there are any: a section that says "nothing
+		   is wrong" every round trains the reader to skip the place where the
+		   answer appears. */
+		const std::vector<RtosDiagnostics::Finding> findings = RtosDiagnostics::diagnose(*snapshot);
+
+		if (!findings.empty())
+			drawDiagnostics(findings);
+
 		drawFilters(snapshot);
 
 		/* The table keeps the larger share and the strip takes a fixed slice of
@@ -285,6 +295,76 @@ class GuiRtosPanel
 	 */
 	inline static char searchBuffer[64] = {};
 	inline static bool searchBufferPrimed = false;
+
+	/*
+	 * The findings, drawn as the chains they are.
+	 *
+	 * A finding is a shape - one task waiting for an object another task holds -
+	 * and words alone make the reader rebuild that shape in their head. The
+	 * boxes are the shape; a task box is a button, so clicking the task the
+	 * finding is about selects its row, and the strip and the objects table
+	 * follow.
+	 */
+	static void drawDiagnostics(const std::vector<RtosDiagnostics::Finding>& findings)
+	{
+		const float scale = GuiHelper::contentScale;
+
+		for (const RtosDiagnostics::Finding& finding : findings)
+		{
+			ImGui::PushID(&finding);
+
+			const bool deadlock = finding.kind == RtosDiagnostics::Kind::SuspectedDeadlock;
+
+			ImGui::TextColored(deadlock ? ImVec4(0.90f, 0.40f, 0.35f, 1.0f) : ImVec4(0.85f, 0.55f, 0.15f, 1.0f),
+			                   "%s", I18n::tr(deadlock ? "suspected deadlock" : "priority inheritance"));
+
+			if (ImGui::IsItemHovered())
+			{
+				ImGui::BeginTooltip();
+				ImGui::TextUnformatted(I18n::tr(deadlock ? "Two or more tasks are each waiting for a lock the next one holds. A round is a sample: if the ring clears between two of them it leaves no trace, which is why this is suspected rather than proven."
+				                                         : "The task on the right is running above the priority it was created with, which the kernel only does while a higher priority task waits for a lock it holds. The lock is how long it has been held."));
+				ImGui::EndTooltip();
+			}
+
+			for (size_t node = 0; node < finding.chain.size(); node++)
+			{
+				const bool isTask = finding.tasks.size() > node && finding.tasks[node] != 0;
+
+				ImGui::SameLine(0.0f, 4.0f * scale);
+
+				/* One arrow between each pair: the chain alternates between a
+				   task and the object it waits for, and words on each node
+				   would have to change with the position to stay true. */
+				if (node > 0)
+				{
+					ImGui::TextDisabled("%s", "->");
+					ImGui::SameLine(0.0f, 4.0f * scale);
+				}
+
+				if (!isTask)
+				{
+					ImGui::TextDisabled("%s", finding.chain[node].c_str());
+
+					continue;
+				}
+
+				const bool selected = finding.tasks[node] == selectedTask;
+
+				if (selected)
+					ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+
+				if (ImGui::SmallButton(finding.chain[node].c_str()))
+					selectedTask = selected ? 0u : finding.tasks[node];
+
+				if (selected)
+					ImGui::PopStyleColor();
+			}
+
+			ImGui::PopID();
+		}
+
+		ImGui::Separator();
+	}
 
 	/* Puts the next widget on this line only when it fits there.
 	 *

@@ -114,6 +114,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosStackScanner.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosStackSweep.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosCpuLoad.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosDiagnostics.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosTimeline.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpTypes.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpProtocol.cpp
@@ -198,6 +199,7 @@ add_executable(${EXECUTABLE} main.cpp
     RtosStackScannerTest.cpp
     RtosStackSweepTest.cpp
     RtosCpuLoadTest.cpp
+    RtosDiagnosticsTest.cpp
     RtosTimelineTest.cpp
     ${SOURCES})
 

@@ -210,6 +210,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosStackScanner.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosStackSweep.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosCpuLoad.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosDiagnostics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosTimeline.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer/CSVStreamer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/I18n/I18n.cpp
