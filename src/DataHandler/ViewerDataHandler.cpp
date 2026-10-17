@@ -666,19 +666,24 @@ void ViewerDataHandler::pollEventStream(double nowSeconds)
 	if (!rtosEnabled.load(std::memory_order_relaxed) || rtosModel == nullptr || debugProbe == nullptr)
 		return;
 
-	if (!rttActive)
-	{
-		if (!debugProbe->startRtt())
-			return;
-
-		rttActive = true;
-	}
+	if (!rttActive && !debugProbe->startRtt())
+		return;
 
 	std::array<uint8_t, 4096> buffer{};
 	const uint32_t bytes = debugProbe->readRtt(buffer.data(), static_cast<uint32_t>(buffer.size()));
 
 	if (bytes == 0 && rttCarry.empty())
 		return;
+
+	/*
+	 * The stream only takes over once it has handed something over.
+	 *
+	 * The probe finding a control block is not the same as the block yielding
+	 * records: a target whose buffer is never drained, or one the DLL can see
+	 * but cannot read, would otherwise switch the ring off and leave the strip
+	 * empty. Until a record arrives, the ring stays the source.
+	 */
+	rttActive = true;
 
 	rttCarry.insert(rttCarry.end(), buffer.begin(), buffer.begin() + std::min<uint32_t>(bytes, static_cast<uint32_t>(buffer.size())));
 
@@ -856,8 +861,14 @@ void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start
 	RtosProbeMemory memory(*debugProbe);
 
 	/* Path B, read before the round's verdict: a round that did not hold
-	   together says nothing about whether switches happened. */
-	readEventRing(memory, startedAt);
+	   together says nothing about whether switches happened.
+	 *
+	   The ring only. When the target has an RTT buffer the probe has been
+	   draining it on the sampling tick, and reading the ring as well would put
+	   every record in twice - and would keep reporting the ring's own losses,
+	   which the stream has none of. */
+	if (!rttActive)
+		readEventRing(memory, startedAt);
 
 	RtosSampler::Round round = rtosSampler->collect(memory, rtosSessionId, rtosSettings);
 
