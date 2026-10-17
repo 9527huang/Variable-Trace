@@ -734,8 +734,14 @@ void ViewerDataHandler::readEventRing(RtosProbeMemory& memory, double nowSeconds
 	 */
 	if (rtosEventAnchorSeconds == 0.0)
 	{
-		rtosEventAnchorUs = records.back().timeUs;
-		rtosEventAnchorSeconds = nowSeconds;
+		/* The oldest record of the batch, not the newest. `intervalsFrom` starts
+		   its running total from this one, and every record in the batch is at
+		   or after it - whereas the newest is *older* than the ones before it in
+		   the next batch, and an unsigned step backwards is seventy-one minutes
+		   forwards. That is where the runs went: into the future, off the end of
+		   the window. */
+		rtosEventAnchorUs = records.front().timeUs;
+		rtosEventAnchorSeconds = nowSeconds - static_cast<double>(static_cast<uint32_t>(records.back().timeUs - records.front().timeUs)) / 1000000.0;
 	}
 	else
 	{

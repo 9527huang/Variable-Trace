@@ -38,6 +38,11 @@ TEST(RtosEventHistory, KeepsTheRunsInOrderAndAnswersByRange)
 
 	history.copyRange(5.0, 6.0, copied);
 	EXPECT_TRUE(copied.empty());
+
+	/* The range the runs cover, which is how a mapping from the target's clock
+	   that is off is seen as a number rather than as an empty strip. */
+	EXPECT_DOUBLE_EQ(history.oldestSeconds(), 1.0);
+	EXPECT_DOUBLE_EQ(history.newestSeconds(), 1.8);
 }
 
 TEST(RtosEventHistory, TheRunThatWasStillGoingIsNotDrawnTwice)

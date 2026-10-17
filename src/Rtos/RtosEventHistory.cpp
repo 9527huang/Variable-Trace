@@ -79,6 +79,20 @@ void RtosEventHistory::noteLostRecords(uint32_t count)
 	lost += count;
 }
 
+double RtosEventHistory::oldestSeconds() const
+{
+	std::lock_guard<std::mutex> guard(mtx);
+
+	return intervals.empty() ? 0.0 : intervals.front().fromSeconds;
+}
+
+double RtosEventHistory::newestSeconds() const
+{
+	std::lock_guard<std::mutex> guard(mtx);
+
+	return intervals.empty() ? 0.0 : intervals.back().toSeconds;
+}
+
 uint32_t RtosEventHistory::lostRecords() const
 {
 	std::lock_guard<std::mutex> guard(mtx);

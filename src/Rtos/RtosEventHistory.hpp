@@ -46,6 +46,12 @@ class RtosEventHistory
 
 	uint32_t lostRecords() const;
 
+	/* The range the runs cover, in the host's seconds. Zero when there are
+	   none. A mapping from the target's clock that is off by a minute is easier
+	   to see as a number than as a strip with nothing in it. */
+	double oldestSeconds() const;
+	double newestSeconds() const;
+
    private:
 	mutable std::mutex mtx;
 	std::deque<RtosEventRing::Interval> intervals;

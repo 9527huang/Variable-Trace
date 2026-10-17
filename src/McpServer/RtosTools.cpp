@@ -235,7 +235,9 @@ namespace mcp
 								    given, and how many records never crossed. */
 								 {"events",
 								  Json::object({{"runs", static_cast<uint32_t>(model->events().size())},
-								                {"lost", model->events().lostRecords()}})},
+								                {"lost", model->events().lostRecords()},
+								                {"oldest_s", model->events().oldestSeconds()},
+								                {"newest_s", model->events().newestSeconds()}})},
 								 {"history_samples", static_cast<uint32_t>(model->history().size())},
 								 {"history_oldest_s", model->history().oldestSeconds()},
 								 /* The stack water marks are read a few tasks a round, so the
