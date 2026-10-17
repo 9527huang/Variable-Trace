@@ -37,7 +37,7 @@
 class GuiRtosPanelTimeline
 {
    public:
-	static void draw(const RtosModel& model, const RtosSnapshot& snapshot)
+	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors)
 	{
 		const RtosTimeline& history = model.history();
 
@@ -48,14 +48,14 @@ class GuiRtosPanelTimeline
 			return;
 		}
 
-		drawHeader(history);
+		drawHeader(history, plotCursors);
 		drawLegend();
 
 		const double newest = history.newestSeconds();
-		const double from = newest - static_cast<double>(windowSeconds);
+		const RtosTimeline::Span window = windowOf(plotCursors, newest);
 
 		std::vector<RtosTimeline::Sample> samples;
-		history.copyRange(from, newest, samples);
+		history.copyRange(window.from, window.to, samples);
 
 		if (samples.empty())
 		{
@@ -64,7 +64,7 @@ class GuiRtosPanelTimeline
 			return;
 		}
 
-		drawGrid(snapshot, samples);
+		drawGrid(snapshot, samples, plotCursors);
 	}
 
    private:
@@ -76,7 +76,19 @@ class GuiRtosPanelTimeline
 	inline static bool hasPinned = false;
 	inline static double pinnedAt = 0.0;
 
-	static void drawHeader(const RtosTimeline& history)
+	/* Whether the strip follows the cursors placed in the variable view. On,
+	 * because that is what the two views sharing a clock is for; off, because a
+	 * reader looking at an old measurement still wants to watch the live rounds.
+	 */
+	inline static bool followPlotCursors = true;
+
+	/* The window rule lives in the timeline, where it has tests. */
+	static RtosTimeline::Span windowOf(const std::vector<double>& plotCursors, double newest)
+	{
+		return RtosTimeline::windowFrom(plotCursors, static_cast<double>(windowSeconds), followPlotCursors, newest);
+	}
+
+	static void drawHeader(const RtosTimeline& history, const std::vector<double>& plotCursors)
 	{
 		ImGui::TextUnformatted(I18n::tr("Timeline"));
 
@@ -93,8 +105,14 @@ class GuiRtosPanelTimeline
 			ImGui::EndTooltip();
 		}
 
+		if (followPlotCursors && !plotCursors.empty())
+		{
+			ImGui::SameLine();
+			ImGui::TextDisabled(I18n::tr("following %u plot cursor(s)"), static_cast<uint32_t>(plotCursors.size()));
+		}
+
 		ImGui::SameLine();
-		ImGui::TextDisabled("%s", I18n::tr("seconds back"));
+		ImGui::Checkbox(I18n::tr("follow plot cursors"), &followPlotCursors);
 
 		/* What the marks are, and what they are not. A row of dots invites the
 		   reading that a task ran between two of them, and the round interval is
@@ -119,7 +137,7 @@ class GuiRtosPanelTimeline
 		ImGui::Separator();
 	}
 
-	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTimeline::Sample>& samples)
+	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTimeline::Sample>& samples, const std::vector<double>& plotCursors)
 	{
 		const std::vector<uint32_t> lanes = RtosTableModel::laneOrder(snapshot);
 
@@ -203,6 +221,26 @@ class GuiRtosPanelTimeline
 				if (hasMark(entry->state))
 					drawMark(draw, ImVec2(x - markSize * 0.5f, top), markSize, markOf(entry->state), scale);
 			}
+		}
+
+		/*
+		 * Where the variable view's cursors are.
+		 *
+		 * Thin, and labelled on the axis, because they are not this view's own
+		 * marks: the reader placed them in a plot and is watching them move
+		 * there. The pin this view keeps for reading a moment out is the thick
+		 * one, so the two are never confused.
+		 */
+		for (const double at : plotCursors)
+		{
+			if (at < oldest || at > newest)
+				continue;
+
+			const float x = timeToX(at);
+
+			draw->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + plotHeight), plotCursorColour, 1.0f);
+			draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f, ImVec2(std::min(x + 2.0f * scale, plotLeft + plotWidth - 54 * scale), origin.y + plotHeight + 2 * scale),
+			              plotCursorColour, formatSeconds(at).c_str());
 		}
 
 		/* The time axis: two labels and the newest time, because a strip of dots
@@ -447,6 +485,11 @@ class GuiRtosPanelTimeline
 		}
 
 		ImGui::SameLine(0.0f, spacing);
+		ImGui::TextDisabled("%s", I18n::tr("thin line"));
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		ImGui::TextDisabled("%s", I18n::tr("a cursor in the variable view"));
+
+		ImGui::SameLine(0.0f, spacing);
 		ImGui::TextDisabled("%s", I18n::tr("- the round did not read that task, which is not the same as idle"));
 
 		if (ImGui::IsItemHovered())
@@ -472,6 +515,10 @@ class GuiRtosPanelTimeline
 	inline static const ImU32 readyColour = IM_COL32(70, 130, 210, 255);
 	inline static const ImU32 blockedColour = IM_COL32(210, 140, 55, 255);
 	inline static const ImU32 suspendedColour = IM_COL32(140, 140, 145, 255);
+
+	/* The variable view's cursors: a hue of their own, so that a thin line is
+	   never mistaken for one of the state marks. */
+	inline static const ImU32 plotCursorColour = IM_COL32(110, 175, 200, 220);
 };
 
 #endif

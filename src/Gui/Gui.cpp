@@ -348,8 +348,36 @@ void Gui::mainThread(std::string externalPath)
 			   shares that side's start button and settings. What it does not
 			   share is the plots: its rounds run inside the sampling loop that
 			   draws them. */
+			/*
+			 * The moments the variable view is pointing at.
+			 *
+			 * Every visible plot carries its own cursors, so there is no single
+			 * "the" cursor to ask for. Handing over all of them costs nothing
+			 * and needs no rule about which one counts: the timeline draws a
+			 * line where each one is, and dragging any of them moves a line.
+			 * The two views already share one clock - both take their
+			 * timestamps from the sampling loop's start - so a time means the
+			 * same thing in either.
+			 */
+			std::vector<double> plotCursors;
+
+			if (const std::shared_ptr<PlotGroup> group = plotGroupHandler->getActiveGroup(); group != nullptr)
+			{
+				for (const auto& [name, element] : *group)
+				{
+					if (!element.visibility || element.plot == nullptr || !element.plot->drawsXCursors())
+						continue;
+
+					if (element.plot->markerX0.getState())
+						plotCursors.push_back(element.plot->markerX0.getValue());
+
+					if (element.plot->markerX1.getState())
+						plotCursors.push_back(element.plot->markerX1.getValue());
+				}
+			}
+
 			GuiRtosPanel::draw(viewerDataHandler->getRtosModel(), viewerDataHandler->getRtosPrepareError(),
-			                   globalConfig->getSettings().rtosStackAlertFreePercent);
+			                   globalConfig->getSettings().rtosStackAlertFreePercent, plotCursors);
 		}
 		ImGui::End();
 

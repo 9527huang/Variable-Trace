@@ -70,6 +70,35 @@ void RtosTimeline::copyRange(double fromSeconds, double toSeconds, std::vector<S
 	}
 }
 
+RtosTimeline::Span RtosTimeline::windowFrom(const std::vector<double>& cursors, double windowSeconds, bool follow, double newest)
+{
+	Span window{newest - windowSeconds, newest};
+
+	if (!follow || cursors.empty())
+		return window;
+
+	double low = cursors.front();
+	double high = cursors.front();
+
+	for (const double at : cursors)
+	{
+		low = std::min(low, at);
+		high = std::max(high, at);
+	}
+
+	/* Cursors left where they started are not a span to draw a window around. */
+	if (high - low < 0.2)
+	{
+		const double half = windowSeconds * 0.5;
+
+		return {low - half, low + half};
+	}
+
+	const double margin = std::max((high - low) * 0.08, 0.2);
+
+	return {low - margin, high + margin};
+}
+
 size_t RtosTimeline::nearestIndex(const std::vector<Sample>& samples, double atSeconds)
 {
 	if (samples.empty())

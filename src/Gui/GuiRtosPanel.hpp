@@ -40,7 +40,8 @@
 class GuiRtosPanel
 {
    public:
-	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation, uint32_t stackAlertFreePercent)
+	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation, uint32_t stackAlertFreePercent,
+	                 const std::vector<double>& plotCursors)
 	{
 		/* The threshold comes from the settings file, and is taken once so that
 		   a run does not change under a number someone is moving in the box. */
@@ -86,7 +87,7 @@ class GuiRtosPanel
 		   what is left, so that a short window does not push the objects out of
 		   sight entirely. */
 		drawTable(snapshot);
-		GuiRtosPanelTimeline::draw(*model, *snapshot);
+		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors);
 		drawSyncObjects(*snapshot);
 	}
 

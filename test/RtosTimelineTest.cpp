@@ -185,3 +185,38 @@ TEST(RtosTimeline, TheNearestSampleIsTheOneACursorReads)
 	std::vector<RtosTimeline::Sample> none;
 	EXPECT_EQ(RtosTimeline::nearestIndex(none, 1.0), 0u);
 }
+
+TEST(RtosTimeline, TheWindowFollowsThePlotCursorsWhenThereAreAny)
+{
+	/* No cursors, or following switched off: the last few seconds. */
+	RtosTimeline::Span span = RtosTimeline::windowFrom({}, 10.0, true, 100.0);
+
+	EXPECT_DOUBLE_EQ(span.from, 90.0);
+	EXPECT_DOUBLE_EQ(span.to, 100.0);
+
+	span = RtosTimeline::windowFrom({70.0, 72.0}, 10.0, false, 100.0);
+
+	EXPECT_DOUBLE_EQ(span.from, 90.0);
+	EXPECT_DOUBLE_EQ(span.to, 100.0);
+
+	/* Two cursors make the window the measurement between them, with a margin,
+	   because that is the span the reader drew and wants to look at. */
+	span = RtosTimeline::windowFrom({70.0, 80.0}, 10.0, true, 100.0);
+
+	EXPECT_NEAR(span.from, 70.0 - 0.8, 1e-9);
+	EXPECT_NEAR(span.to, 80.0 + 0.8, 1e-9);
+
+	/* One cursor centres a window on itself: a cursor is placed at the moment
+	   being looked at, which is usually well behind the newest round. */
+	span = RtosTimeline::windowFrom({40.0}, 10.0, true, 100.0);
+
+	EXPECT_DOUBLE_EQ(span.from, 35.0);
+	EXPECT_DOUBLE_EQ(span.to, 45.0);
+
+	/* Two cursors still sitting where they started are not a span, and a
+	   zero-width window would show nothing at all. */
+	span = RtosTimeline::windowFrom({0.0, 0.05}, 10.0, true, 100.0);
+
+	EXPECT_DOUBLE_EQ(span.from, -5.0);
+	EXPECT_DOUBLE_EQ(span.to, 5.0);
+}

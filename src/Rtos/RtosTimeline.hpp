@@ -56,6 +56,27 @@ class RtosTimeline
 	   runs at, the default is about half an hour. */
 	static constexpr size_t defaultCapacity = 4096;
 
+	struct Span
+	{
+		double from = 0.0;
+		double to = 0.0;
+	};
+
+	/*
+	 * What the strip shows, given the cursors the variable view has placed.
+	 *
+	 * Two cursors make the window the span between them - the measurement the
+	 * reader drew - and one centres a window on itself. Following them matters
+	 * because a cursor is placed at the moment being looked at, and that moment
+	 * is usually well behind the newest round: a strip pinned to the recent past
+	 * would show no line at all, and sharing the cursor would then be a promise
+	 * the screen does not keep.
+	 *
+	 * With no cursors, or with following switched off, the window is the last
+	 * `windowSeconds` of what was kept.
+	 */
+	static Span windowFrom(const std::vector<double>& cursors, double windowSeconds, bool follow, double newest);
+
 	explicit RtosTimeline(size_t capacity = defaultCapacity);
 
 	/* Keeps one round. The oldest sample is dropped once the ring is full. */

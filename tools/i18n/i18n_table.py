@@ -658,6 +658,10 @@ EXTRA = {
     "blank": "空白",
     "- the round did not read that task, which is not the same as idle": "——那一轮没读到这个任务,不等于它空闲",
     "One mark is one round, not an interval: what was true at that instant, and nothing about the time between two of them.": "一个标记就是一轮,不是一段区间:它只说明那一刻为真,两轮之间的事一概不知道。",
+    "thin line": "细线",
+    "following %u plot cursor(s)": "跟随 %u 个图光标",
+    "follow plot cursors": "跟随图光标",
+    "a cursor in the variable view": "变量视图里的光标",
 
     # The stack water mark alert.
     "stack alert at": "栈告警阈值",
