@@ -8,6 +8,17 @@
 #endif
 volatile vtrace_event_ring_t vtrace_events;
 
+#if VTRACE_TRANSPORT == VTRACE_TRANSPORT_RTT
+	static char vtraceRttBuffer[VTRACE_RTT_BUFFER_SIZE];
+
+	volatile vtrace_rtt_control_t vtrace_rtt_control = {
+	    .identifier = "SEGGER RTT",
+	    .upBuffers = 1,
+	    .downBuffers = 0,
+	    .up = {{.name = "trace", .buffer = vtraceRttBuffer, .size = VTRACE_RTT_BUFFER_SIZE, .writeOffset = 0, .readOffset = 0, .flags = 0}},
+	};
+#endif
+
 
 /*
  * The time, in microseconds, from the kernel's tick plus the cycle counter.
@@ -39,6 +50,57 @@ uint32_t vtrace_now_us(void)
 }
 
 /*
+ * The record, on whichever carrier this build was told to use.
+ *
+ * The ring is filled either way - the "read the ring" path and the regression
+ * tests use it, and it costs eight bytes a switch - and the streaming carriers
+ * are written on top of it.
+ *
+ * Neither streaming carrier waits. A trace port that is not draining, or a
+ * probe that has stopped reading, must not become a place the scheduler stops:
+ * a record dropped is a gap the reader is told about, and a scheduler stopped
+ * is a bug.
+ */
+static void vtrace_publish(const volatile vtrace_event_t* source)
+{
+#if VTRACE_TRANSPORT == VTRACE_TRANSPORT_ITM
+	const uint8_t* bytes = (const uint8_t*)source;
+
+	for (int index = 0; index < 8; index++)
+	{
+		volatile uint32_t* port = (volatile uint32_t*)(0xE0000000u + VTRACE_ITM_PORT * 4u);
+
+		if (*port == 0u)
+			break;
+
+		*(volatile uint8_t*)port = bytes[index];
+	}
+#elif VTRACE_TRANSPORT == VTRACE_TRANSPORT_RTT
+	vtrace_rtt_control_t* control = (vtrace_rtt_control_t*)&vtrace_rtt_control;
+	vtrace_rtt_buffer_t* up = &control->up[0];
+	const int32_t size = up->size;
+	int32_t write = up->writeOffset;
+
+	const uint8_t* bytes = (const uint8_t*)source;
+
+	for (int32_t index = 0; index < 8; index++)
+	{
+		const int32_t next = (write + 1) % size;
+
+		if (next == up->readOffset)
+			break;
+
+		up->buffer[write] = (char)bytes[index];
+		write = next;
+	}
+
+	up->writeOffset = write;
+#else
+	(void)record;
+#endif
+}
+
+/*
  * One record, then the counter.
  *
  * The counter is the commit: a reader copies the record and then looks at the
@@ -64,4 +126,6 @@ void vtrace_event_switch(uint32_t tcb)
 	vtrace_events.data[index].timeUs = now;
 
 	vtrace_events.head = vtrace_events.head + 1u;
+
+	vtrace_publish(&vtrace_events.data[index]);
 }

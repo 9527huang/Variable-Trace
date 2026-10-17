@@ -38,6 +38,43 @@ typedef struct
 	uint32_t timeUs;
 } vtrace_event_t;
 
+/*
+ * Where the records go.
+ *
+ * The record is the same eight bytes whichever way it travels; only the
+ * carrier changes.
+ *
+ *   RING  the target's memory, read by the host between rounds. No pins, no
+ *         extra hardware, no protocol; loses whatever the ring overwrote
+ *         between two reads. The default.
+ *
+ *   ITM   the stimulus port of the trace unit, carried over SWO. Needs the
+ *         trace pin wired and the trace clock set up, and carries every record
+ *         in order with no ring to wrap - at the cost of a wire.
+ *
+ *   RTT   an up-buffer in RAM that the probe drains by itself. No pins and no
+ *         polling schedule of the host's; the cost is a control block in RAM
+ *         that the probe has to find.
+ */
+#define VTRACE_TRANSPORT_RING 0
+#define VTRACE_TRANSPORT_ITM  1
+#define VTRACE_TRANSPORT_RTT  2
+
+#ifndef VTRACE_TRANSPORT
+#define VTRACE_TRANSPORT VTRACE_TRANSPORT_RING
+#endif
+
+/* The stimulus port the records go out on, when the carrier is the ITM. It has
+   to be one the reader has enabled. */
+#ifndef VTRACE_ITM_PORT
+#define VTRACE_ITM_PORT 1
+#endif
+
+/* The up-buffer's size, when the carrier is RTT. */
+#ifndef VTRACE_RTT_BUFFER_SIZE
+#define VTRACE_RTT_BUFFER_SIZE 1024
+#endif
+
 /* How many records the ring holds. A power of two, so that the index is a mask
    rather than a division on the switch path. At 8 bytes a record this is 16 KiB
    for 2048 switches, which at a few thousand switches a second is a couple of
@@ -48,6 +85,36 @@ typedef struct
 
 #if (VTRACE_EVENT_CAPACITY & (VTRACE_EVENT_CAPACITY - 1u)) != 0
 #error "VTRACE_EVENT_CAPACITY must be a power of two"
+#endif
+
+#if VTRACE_TRANSPORT == VTRACE_TRANSPORT_RTT
+/*
+ * The control block the probe looks for, in the layout SEGGER's RTT uses.
+ *
+ * Written by hand rather than pulled in with SEGGER's library: what is needed
+ * here is one up-buffer and no down-buffers. The probe finds it by the
+ * identifier, which must be the first sixteen bytes and spelled exactly.
+ */
+typedef struct
+{
+	const char* name;
+	char* buffer;
+	int32_t size;
+	int32_t writeOffset;
+	int32_t readOffset;
+	int32_t flags;
+} vtrace_rtt_buffer_t;
+
+typedef struct
+{
+	char identifier[16];
+	int32_t upBuffers;
+	int32_t downBuffers;
+	vtrace_rtt_buffer_t up[3];
+	vtrace_rtt_buffer_t down[3];
+} vtrace_rtt_control_t;
+
+extern volatile vtrace_rtt_control_t vtrace_rtt_control;
 #endif
 
 /*
