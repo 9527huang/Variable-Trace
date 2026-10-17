@@ -158,3 +158,30 @@ TEST(RtosTimeline, AFullRingKeepsTheOrderAfterClearingAndRefilling)
 	EXPECT_DOUBLE_EQ(samples[0].atSeconds, 100.0);
 	EXPECT_DOUBLE_EQ(samples[1].atSeconds, 101.0);
 }
+
+TEST(RtosTimeline, TheNearestSampleIsTheOneACursorReads)
+{
+	std::vector<RtosTimeline::Sample> samples;
+
+	for (uint32_t index = 0; index < 3; index++)
+	{
+		RtosTimeline::Sample sample;
+		sample.atSeconds = static_cast<double>(index);
+
+		samples.push_back(sample);
+	}
+
+	/* A cursor falls between two rounds, so reading one out means naming the
+	   nearest and not the one before it. */
+	EXPECT_EQ(RtosTimeline::nearestIndex(samples, 0.4), 0u);
+	EXPECT_EQ(RtosTimeline::nearestIndex(samples, 0.6), 1u);
+	EXPECT_EQ(RtosTimeline::nearestIndex(samples, 1.4), 1u);
+	EXPECT_EQ(RtosTimeline::nearestIndex(samples, 1.6), 2u);
+
+	/* Outside the window at either end, the end sample is the answer. */
+	EXPECT_EQ(RtosTimeline::nearestIndex(samples, -5.0), 0u);
+	EXPECT_EQ(RtosTimeline::nearestIndex(samples, 99.0), 2u);
+
+	std::vector<RtosTimeline::Sample> none;
+	EXPECT_EQ(RtosTimeline::nearestIndex(none, 1.0), 0u);
+}

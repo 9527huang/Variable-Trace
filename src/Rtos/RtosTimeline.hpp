@@ -75,6 +75,15 @@ class RtosTimeline
 	 */
 	void copyRange(double fromSeconds, double toSeconds, std::vector<Sample>& into) const;
 
+	/*
+	 * Which of `samples` was taken closest to `atSeconds`.
+	 *
+	 * A round is an instant and a cursor falls between them, so reading one out
+	 * means naming the nearest - and saying it. Returns samples.size() when
+	 * there are none.
+	 */
+	static size_t nearestIndex(const std::vector<Sample>& samples, double atSeconds);
+
 	size_t size() const;
 
 	/* The ends of what is held, in the same seconds the snapshot uses. Both

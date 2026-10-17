@@ -70,6 +70,28 @@ void RtosTimeline::copyRange(double fromSeconds, double toSeconds, std::vector<S
 	}
 }
 
+size_t RtosTimeline::nearestIndex(const std::vector<Sample>& samples, double atSeconds)
+{
+	if (samples.empty())
+		return 0;
+
+	size_t best = 0;
+	double bestDistance = -1.0;
+
+	for (size_t index = 0; index < samples.size(); index++)
+	{
+		const double distance = std::abs(samples[index].atSeconds - atSeconds);
+
+		if (bestDistance < 0.0 || distance < bestDistance)
+		{
+			best = index;
+			bestDistance = distance;
+		}
+	}
+
+	return best;
+}
+
 size_t RtosTimeline::size() const
 {
 	std::lock_guard<std::mutex> guard(mtx);

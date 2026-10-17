@@ -631,6 +631,21 @@ EXTRA = {
     "Stack used": "栈占用",
     "Task Viewer": "任务查看器",
 
+    # The timeline strip under the task table. The state names it counts are
+    # not translated: they come from the same `toString` the table's column
+    # uses, so the two can never disagree about what a state is called.
+    "Timeline": "时间线",
+    "click a time to pin it": "点一下时间轴可钉住某一刻",
+    "The timeline fills up as rounds are published.": "时间线随快照发布逐步填满。",
+    "Nothing was published in this window.": "这个窗口里没有已发布的快照。",
+    "How many seconds of history to show.": "显示多少秒的历史。",
+    "seconds back": "秒之前",
+    "one mark per round, %.2f s apart": "每轮一个标记,间隔 %.2f 秒",
+    "one mark per round": "每轮一个标记",
+    "No tasks in this round.": "这一轮里没有任务。",
+    "at": "时刻",
+    "not read": "个没读到",
+
     # The stack water mark alert.
     "stack alert at": "栈告警阈值",
     "A task whose stack is this empty or less is marked. Zero turns the marking off, and a task with no reading is never marked.": "栈剩余空间小于等于该百分比的任务会被标记。填 0 关闭标记;没有读数(没扫到)的任务永远不会被标记。",

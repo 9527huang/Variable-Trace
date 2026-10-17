@@ -160,6 +160,18 @@ class RtosTableModel
 	 * nothing to show for it.
 	 */
 	static std::vector<uint32_t> addressesOf(const std::vector<RtosTaskRow>& rows);
+
+	/*
+	 * The order the timeline draws its rows in: highest priority first, then by
+	 * name, then by address.
+	 *
+	 * Not the table's order, which is whatever the reader sorted it by, and not
+	 * the order the round found them in, which changes every round as tasks
+	 * move between lists. A lane that moves under the reader is a lane they
+	 * cannot follow, so the order has to come from something the target does
+	 * not change from round to round.
+	 */
+	static std::vector<uint32_t> laneOrder(const RtosSnapshot& snapshot);
 };
 
 #endif

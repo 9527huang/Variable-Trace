@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "GuiHelper.hpp"
+#include "GuiRtosPanelTimeline.hpp"
 #include "I18n.hpp"
 #include "RtosModel.hpp"
 #include "RtosSyncEnumerator.hpp"
@@ -79,7 +80,12 @@ class GuiRtosPanel
 		drawStackScanNotice(*snapshot);
 		drawCpuLoadNotice(*snapshot);
 		drawFilters(snapshot);
+
+		/* The table keeps the larger share and the strip takes a fixed slice of
+		   what is left, so that a short window does not push the objects out of
+		   sight entirely. */
 		drawTable(snapshot);
+		GuiRtosPanelTimeline::draw(*model, *snapshot);
 		drawSyncObjects(*snapshot);
 	}
 
@@ -340,7 +346,7 @@ class GuiRtosPanel
 		 * what is available at this point, so the two tables between them fill
 		 * the view whatever its size.
 		 */
-		const ImVec2 size(0.0f, ImGui::GetContentRegionAvail().y * 0.6f);
+		const ImVec2 size(0.0f, ImGui::GetContentRegionAvail().y * 0.45f);
 
 		if (!ImGui::BeginTable("rtosTasks", 8, flags, size))
 			return;

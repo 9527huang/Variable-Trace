@@ -206,6 +206,60 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 	return read;
 }
 
+std::vector<uint32_t> RtosTableModel::laneOrder(const RtosSnapshot& snapshot)
+{
+	std::vector<const RtosTask*> ordered;
+	ordered.reserve(snapshot.tasks.size());
+
+	for (const RtosTask& task : snapshot.tasks)
+		ordered.push_back(&task);
+
+	/*
+	 * The base priority, where the target keeps one.
+	 *
+	 * A task holding a mutex has its current priority raised while another waits
+	 * for it, so ordering by the current priority makes lanes jump from round to
+	 * round - exactly when a reader is looking at them, because inheritance
+	 * happens when they are looking. The base value only changes when someone
+	 * sets it.
+	 *
+	 * A second kernel will need this to be a rank of the base priority rather
+	 * than its raw number: Zephyr numbers the other way round. The rank the
+	 * enumeration carries is of the current priority, which is why it is not
+	 * used here.
+	 */
+	const auto lanePriority = [](const RtosTask& task)
+	{
+		if (task.hasBasePriority)
+			return static_cast<int64_t>(task.basePriority);
+
+		if (task.hasPriority)
+			return static_cast<int64_t>(task.rawPriority);
+
+		/* Nothing was read for it, which is not the lowest priority. */
+		return static_cast<int64_t>(-1);
+	};
+
+	std::stable_sort(ordered.begin(), ordered.end(), [&](const RtosTask* left, const RtosTask* right)
+	{
+		if (lanePriority(*left) != lanePriority(*right))
+			return lanePriority(*left) > lanePriority(*right);
+
+		if (left->name != right->name)
+			return left->name < right->name;
+
+		return left->tcbAddress < right->tcbAddress;
+	});
+
+	std::vector<uint32_t> addresses;
+	addresses.reserve(ordered.size());
+
+	for (const RtosTask* task : ordered)
+		addresses.push_back(task->tcbAddress);
+
+	return addresses;
+}
+
 std::vector<uint32_t> RtosTableModel::addressesOf(const std::vector<RtosTaskRow>& rows)
 {
 	std::vector<uint32_t> addresses;

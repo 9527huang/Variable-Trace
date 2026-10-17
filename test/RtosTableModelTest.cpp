@@ -389,3 +389,61 @@ TEST(RtosTableModel, MarksOnlyTheStacksBelowTheAlertThreshold)
 	ASSERT_NE(findRow(off, "IDLE"), nullptr);
 	EXPECT_FALSE(findRow(off, "IDLE")->stackIsLow);
 }
+
+TEST(RtosTableModel, TheLanesAreOrderedByBasePriorityAndNotByTheCurrentOne)
+{
+	RtosSnapshot snapshot;
+
+	/* Three tasks: one at base priority 3, one at 2, one at 1 that is currently
+	   raised to 3 because it holds a mutex another task wants. */
+	RtosTask high = makeTask("zeta", 0x20000300, RtosTaskState::Ready, 3, 504);
+	RtosTask middle = makeTask("beta", 0x20000200, RtosTaskState::Ready, 2, 504);
+	RtosTask boosted = makeTask("alpha", 0x20000100, RtosTaskState::Ready, 3, 504);
+
+	boosted.hasBasePriority = true;
+	boosted.basePriority = 1;
+
+	high.hasBasePriority = true;
+	high.basePriority = 3;
+
+	middle.hasBasePriority = true;
+	middle.basePriority = 2;
+
+	snapshot.tasks = {middle, boosted, high};
+
+	const std::vector<uint32_t> lanes = RtosTableModel::laneOrder(snapshot);
+
+	/* Highest base priority first. Sorted by the current priority instead, the
+	   boosted task would be somewhere in the top group and would move there and
+	   back every time inheritance happened - a lane that jumps while the reader
+	   is looking at it. */
+	ASSERT_EQ(lanes.size(), 3u);
+	EXPECT_EQ(lanes[0], 0x20000300u);  /* zeta, base 3 */
+	EXPECT_EQ(lanes[1], 0x20000200u);  /* beta, base 2 */
+	EXPECT_EQ(lanes[2], 0x20000100u);  /* alpha, base 1 despite running at 3 */
+}
+
+TEST(RtosTableModel, ATaskWithNoPriorityGoesToTheBottomLane)
+{
+	RtosSnapshot snapshot;
+
+	RtosTask known = makeTask("known", 0x20000200, RtosTaskState::Ready, 1, 504);
+	known.hasBasePriority = true;
+	known.basePriority = 1;
+
+	RtosTask unread;
+	unread.tcbAddress = 0x20000100;
+	unread.state = RtosTaskState::Unknown;
+	unread.hasPriority = false;
+
+	snapshot.tasks = {unread, known};
+
+	const std::vector<uint32_t> lanes = RtosTableModel::laneOrder(snapshot);
+
+	ASSERT_EQ(lanes.size(), 2u);
+	EXPECT_EQ(lanes[0], 0x20000200u);
+
+	/* Nothing was read for it, which is not the same as the lowest priority -
+	   but it is still below everything that was read. */
+	EXPECT_EQ(lanes[1], 0x20000100u);
+}
