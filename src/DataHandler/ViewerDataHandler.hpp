@@ -393,8 +393,18 @@ class ViewerDataHandler : public DataHandlerBase
 	uint32_t rtosEventAnchorUs = 0;
 	double rtosEventAnchorSeconds = 0.0;
 
-	/* How many records a round reads, and how much history the strip keeps. */
-	static constexpr uint32_t rtosEventsPerRound = 32;
+	/*
+	 * How many records a round reads, and how much history the strip keeps.
+	 *
+	 * The budget is a bandwidth decision, not a storage one. At the default
+	 * round interval this many records is about 1.5 KiB, which the probe moves
+	 * in a couple of milliseconds and which leaves the strip dense enough to
+	 * see a pattern; a hundred and ninety-two switches in half a second is what
+	 * a busy target makes, so the count of records passed over stays small
+	 * enough to be worth printing rather than a number that stops meaning
+	 * anything.
+	 */
+	static constexpr uint32_t rtosEventsPerRound = 192;
 	static constexpr double rtosEventsKeepSeconds = 600.0;
 	std::atomic<bool> rtosEnabled{false};
 
