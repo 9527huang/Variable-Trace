@@ -657,7 +657,20 @@ void ViewerDataHandler::readEventRing(RtosProbeMemory& memory, double nowSeconds
 	std::array<uint8_t, 8> header{};
 
 	if (!memory.read(rtosEventRingAddress, header.data(), static_cast<uint32_t>(header.size())))
+	{
+		/* Once, so that a ring that cannot be read is a line in the log rather
+		   than a strip that quietly stays empty. */
+		static bool logged = false;
+
+		if (!logged)
+		{
+			logger->warn("The switch ring at 0x{:08X} could not be read: {}", rtosEventRingAddress, debugProbe->getLastErrorMsg());
+
+			logged = true;
+		}
+
 		return;
+	}
 
 	uint32_t words[2] = {};
 	std::memcpy(words, header.data(), sizeof(words));

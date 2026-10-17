@@ -47,6 +47,16 @@ uint32_t vtrace_now_us(void)
  */
 void vtrace_event_switch(uint32_t tcb)
 {
+	/*
+	 * The capacity is written here rather than in the object's initialiser,
+	 * which the linker did not keep: the struct went to BSS and every field
+	 * with it, so the host read a capacity of zero and had nothing to read the
+	 * ring with. A compare against a constant costs three cycles on a path that
+	 * runs a few thousand times a second, and this cannot be lost again.
+	 */
+	if (vtrace_events.capacity != VTRACE_EVENT_CAPACITY)
+		vtrace_events.capacity = VTRACE_EVENT_CAPACITY;
+
 	const uint32_t index = vtrace_events.head & (VTRACE_EVENT_CAPACITY - 1u);
 	const uint32_t now = vtrace_now_us();
 
