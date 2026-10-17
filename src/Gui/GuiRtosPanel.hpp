@@ -41,15 +41,37 @@ class GuiRtosPanel
 {
    public:
 	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation, uint32_t stackAlertFreePercent,
-	                 const std::vector<double>& plotCursors)
+	                 const std::vector<double>& plotCursors, RtosViewSettings& view)
 	{
-		/* The threshold comes from the settings file, and is taken once so that
-		   a run does not change under a number someone is moving in the box. */
+		/* What the reader had set up is taken once, from the settings file, so
+		   that a run does not change under a number someone is moving in a box -
+		   and then written back every frame, so that what they set up in this
+		   run is what the next one opens with. */
 		if (!stackAlertSeeded)
 		{
+			query.sortColumn = static_cast<RtosTaskColumn>(view.sortColumn);
+			query.descending = view.sortDescending;
+			query.hasPriorityFloor = view.hasPriorityFloor;
+			query.priorityFloor = view.priorityFloor;
+			query.onlyStackAlerts = view.onlyStackAlerts;
 			query.stackAlertFreePercent = stackAlertFreePercent;
+
+			query.states = view.showOnlyBlocked ? std::vector<RtosTaskState>{RtosTaskState::Blocked} : std::vector<RtosTaskState>{};
+
+			GuiRtosPanelTimeline::setWindowSeconds(view.timelineWindowSeconds);
+			GuiRtosPanelTimeline::setFollowPlotCursors(view.followPlotCursors);
+
 			stackAlertSeeded = true;
 		}
+
+		view.sortColumn = static_cast<uint32_t>(query.sortColumn);
+		view.sortDescending = query.descending;
+		view.hasPriorityFloor = query.hasPriorityFloor;
+		view.priorityFloor = query.priorityFloor;
+		view.onlyStackAlerts = query.onlyStackAlerts;
+		view.showOnlyBlocked = query.states.size() == 1 && query.states.front() == RtosTaskState::Blocked;
+		view.timelineWindowSeconds = GuiRtosPanelTimeline::getWindowSeconds();
+		view.followPlotCursors = GuiRtosPanelTimeline::getFollowPlotCursors();
 
 		if (model == nullptr)
 		{

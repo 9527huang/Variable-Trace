@@ -387,7 +387,7 @@ void Gui::mainThread(std::string externalPath)
 			}
 
 			GuiRtosPanel::draw(viewerDataHandler->getRtosModel(), viewerDataHandler->getRtosPrepareError(),
-			                   globalConfig->getSettings().rtosStackAlertFreePercent, plotCursors);
+			                   globalConfig->getSettings().rtosStackAlertFreePercent, plotCursors, globalConfig->getSettings().rtosView);
 		}
 		ImGui::End();
 

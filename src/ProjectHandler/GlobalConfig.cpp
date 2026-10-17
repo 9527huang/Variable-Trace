@@ -110,6 +110,20 @@ bool GlobalConfig::load()
 		const auto& rtos = root.at("rtos");
 		settings.rtosEnabled = rtos.value("enabled", settings.rtosEnabled);
 		settings.rtosStackAlertFreePercent = rtos.value("stackAlertFreePercent", settings.rtosStackAlertFreePercent);
+
+		if (rtos.contains("view") && rtos.at("view").is_object())
+		{
+			const auto& view = rtos.at("view");
+
+			settings.rtosView.sortColumn = view.value("sortColumn", settings.rtosView.sortColumn);
+			settings.rtosView.sortDescending = view.value("sortDescending", settings.rtosView.sortDescending);
+			settings.rtosView.hasPriorityFloor = view.value("hasPriorityFloor", settings.rtosView.hasPriorityFloor);
+			settings.rtosView.priorityFloor = view.value("priorityFloor", settings.rtosView.priorityFloor);
+			settings.rtosView.onlyStackAlerts = view.value("onlyStackAlerts", settings.rtosView.onlyStackAlerts);
+			settings.rtosView.showOnlyBlocked = view.value("showOnlyBlocked", settings.rtosView.showOnlyBlocked);
+			settings.rtosView.timelineWindowSeconds = view.value("timelineWindowSeconds", settings.rtosView.timelineWindowSeconds);
+			settings.rtosView.followPlotCursors = view.value("followPlotCursors", settings.rtosView.followPlotCursors);
+		}
 	}
 
 	if (root.contains("plotExport"))
@@ -167,7 +181,17 @@ bool GlobalConfig::save()
 	root["formatVersion"] = formatVersion;
 	root["autoSave"] = {{"enabled", settings.autoSaveEnabled}, {"intervalSeconds", settings.autoSaveIntervalSeconds}};
 	root["interface"] = {{"fontScale", settings.fontScale}, {"theme", settings.theme}, {"language", settings.language}};
-	root["rtos"] = {{"enabled", settings.rtosEnabled}, {"stackAlertFreePercent", settings.rtosStackAlertFreePercent}};
+	root["rtos"] = {{"enabled", settings.rtosEnabled},
+	                {"stackAlertFreePercent", settings.rtosStackAlertFreePercent},
+	                {"view",
+	                 {{"sortColumn", settings.rtosView.sortColumn},
+	                  {"sortDescending", settings.rtosView.sortDescending},
+	                  {"hasPriorityFloor", settings.rtosView.hasPriorityFloor},
+	                  {"priorityFloor", settings.rtosView.priorityFloor},
+	                  {"onlyStackAlerts", settings.rtosView.onlyStackAlerts},
+	                  {"showOnlyBlocked", settings.rtosView.showOnlyBlocked},
+	                  {"timelineWindowSeconds", settings.rtosView.timelineWindowSeconds},
+	                  {"followPlotCursors", settings.rtosView.followPlotCursors}}}};
 	root["api"] = {{"enabled", settings.mcpEnabled},
 				   {"preferredPort", settings.mcpPreferredPort},
 				   {"writesEnabled", settings.apiWritesEnabled},

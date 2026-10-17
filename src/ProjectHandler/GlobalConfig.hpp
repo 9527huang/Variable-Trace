@@ -1,6 +1,8 @@
 #ifndef _GLOBALCONFIG_HPP
 #define _GLOBALCONFIG_HPP
 
+#include "RtosTableModel.hpp"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -76,6 +78,11 @@ class GlobalConfig
 		 * zero can only mean that nobody wants to be told.
 		 */
 		uint32_t rtosStackAlertFreePercent = 20;
+
+		/* The task view's own set-up: sort order, filters, and the timeline's
+		   window. Kept here because it is about this machine's reader, not
+		   about the project being debugged. */
+		RtosViewSettings rtosView{};
 
 		/* Flashing. The programmer and the arguments it needs belong to the
 		   machine rather than to the project being debugged, so the command

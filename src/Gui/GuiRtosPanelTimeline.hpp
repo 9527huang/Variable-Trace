@@ -64,7 +64,31 @@ class GuiRtosPanelTimeline
 			return;
 		}
 
+		drawCounts(history, samples);
+
 		drawGrid(snapshot, samples, plotCursors, selectedTask, hoveredTask);
+	}
+
+	/* Read and written by the panel, which keeps them with the rest of what the
+	   reader set up. */
+	static float getWindowSeconds()
+	{
+		return windowSeconds;
+	}
+
+	static void setWindowSeconds(float value)
+	{
+		windowSeconds = std::clamp(value, 1.0f, 600.0f);
+	}
+
+	static bool getFollowPlotCursors()
+	{
+		return followPlotCursors;
+	}
+
+	static void setFollowPlotCursors(bool value)
+	{
+		followPlotCursors = value;
 	}
 
    private:
@@ -82,9 +106,24 @@ class GuiRtosPanelTimeline
 	 */
 	inline static bool followPlotCursors = true;
 
+	/*
+	 * The window the reader has zoomed or panned to, if they have.
+	 *
+	 * Both of the automatic rules - the cursors in the plots, the last few
+	 * seconds - decide the window for the reader. Once the wheel or a drag is
+	 * used, the strip stops deciding: a window that jumped back to a rule while
+	 * someone was looking through it would be worse than no zoom at all.
+	 */
+	inline static bool manualWindow = false;
+	inline static double manualFrom = 0.0;
+	inline static double manualTo = 0.0;
+
 	/* The window rule lives in the timeline, where it has tests. */
 	static RtosTimeline::Span windowOf(const std::vector<double>& plotCursors, double newest)
 	{
+		if (manualWindow)
+			return {manualFrom, manualTo};
+
 		return RtosTimeline::windowFrom(plotCursors, static_cast<double>(windowSeconds), followPlotCursors, newest);
 	}
 
@@ -105,7 +144,7 @@ class GuiRtosPanelTimeline
 			ImGui::EndTooltip();
 		}
 
-		if (followPlotCursors && !plotCursors.empty())
+		if (followPlotCursors && !plotCursors.empty() && !manualWindow)
 		{
 			ImGui::SameLine();
 			ImGui::TextDisabled(I18n::tr("following %u plot cursor(s)"), static_cast<uint32_t>(plotCursors.size()));
@@ -113,6 +152,25 @@ class GuiRtosPanelTimeline
 
 		ImGui::SameLine();
 		ImGui::Checkbox(I18n::tr("follow plot cursors"), &followPlotCursors);
+
+		/* Back to watching the run: the newest window, and no cursors deciding
+		   it. The two are one action because "latest" is not where a cursor
+		   placed an hour ago is pointing. */
+		ImGui::SameLine();
+
+		if (ImGui::Button(I18n::tr("back to latest")))
+		{
+			manualWindow = false;
+			followPlotCursors = false;
+		}
+
+		if (hasPinned)
+		{
+			ImGui::SameLine();
+
+			if (ImGui::Button(I18n::tr("unpin")))
+				hasPinned = false;
+		}
 
 		/* What the marks are, and what they are not. A row of dots invites the
 		   reading that a task ran between two of them, and the round interval is
@@ -135,6 +193,45 @@ class GuiRtosPanelTimeline
 			ImGui::TextDisabled("%s", I18n::tr("one mark per round"));
 
 		ImGui::Separator();
+	}
+
+	/*
+	 * What the window holds: how many rounds, how far apart, and how many
+	 * places a round came back without a task.
+	 *
+	 * The last one is the reason this line exists. A strip of marks and blanks
+	 * invites the reading that a blank is a task that was doing nothing, and the
+	 * count is what says how much of the picture is missing rather than idle.
+	 */
+	static void drawCounts(const RtosTimeline& history, const std::vector<RtosTimeline::Sample>& samples)
+	{
+		const size_t kept = history.size();
+		const double span = history.newestSeconds() - history.oldestSeconds();
+		const double interval = kept > 1 && span > 0.0 ? span / static_cast<double>(kept - 1) : 0.0;
+
+		size_t lanes = 0;
+		size_t unread = 0;
+
+		if (!samples.empty())
+		{
+			lanes = samples.back().entries.size();
+
+			for (const RtosTimeline::Sample& sample : samples)
+				unread += lanes > sample.entries.size() ? lanes - sample.entries.size() : 0u;
+		}
+
+		if (interval > 0.0)
+			ImGui::TextDisabled(I18n::tr("%u samples, %.2f s apart, %u unread"), static_cast<uint32_t>(samples.size()), interval,
+			                    static_cast<uint32_t>(unread));
+		else
+			ImGui::TextDisabled(I18n::tr("%u samples, %u unread"), static_cast<uint32_t>(samples.size()), static_cast<uint32_t>(unread));
+
+		if (unread > 0 && ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			ImGui::TextUnformatted(I18n::tr("A round that could not read one of the kernel's lists leaves its tasks out of that sample. The gap is not a task that was idle."));
+			ImGui::EndTooltip();
+		}
 	}
 
 	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTimeline::Sample>& samples, const std::vector<double>& plotCursors,
@@ -171,10 +268,74 @@ class GuiRtosPanelTimeline
 		};
 
 		/* One button over the whole strip: the grid is drawn, not laid out, so
-		   the mouse has to be given something to hit. */
+		   the mouse has to be given something to hit. It is also the thing that
+		   takes focus, which is what lets the keyboard move the pin. */
 		ImGui::InvisibleButton("##rtosTimelineGrid", ImVec2(width, height));
 
 		const bool hovered = ImGui::IsItemHovered();
+		const bool focused = ImGui::IsItemFocused();
+
+		const auto timeAtX = [&](float x)
+		{
+			return oldest + std::clamp(static_cast<double>((x - plotLeft) / plotWidth), 0.0, 1.0) * span;
+		};
+
+		/*
+		 * Zoom and pan, once the reader asks for them.
+		 *
+		 * The wheel zooms about the pointer, which is the one place the reader
+		 * is looking; a drag moves the window under the hand. Both switch the
+		 * automatic rules off, and both are undone by "back to latest".
+		 */
+		if (hovered && ImGui::GetIO().MouseWheel != 0.0f)
+		{
+			const double at = timeAtX(ImGui::GetIO().MousePos.x);
+			const double factor = ImGui::GetIO().MouseWheel > 0.0f ? 0.8 : 1.25;
+
+			double from = oldest - (at - oldest) * (factor - 1.0);
+			double to = newest + (newest - at) * (factor - 1.0);
+
+			/* A window narrower than one round shows a single mark and no
+			   gaps, and one wider than the ring shows what is not there. */
+			if (to - from >= 0.5 && to - from <= 3600.0)
+			{
+				manualFrom = from;
+				manualTo = to;
+				manualWindow = true;
+			}
+		}
+
+		if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 4.0f))
+		{
+			const double secondsPerPixel = span / static_cast<double>(plotWidth);
+
+			manualFrom = oldest - ImGui::GetIO().MouseDelta.x * secondsPerPixel;
+			manualTo = newest - ImGui::GetIO().MouseDelta.x * secondsPerPixel;
+			manualWindow = true;
+		}
+
+		if (focused)
+		{
+			const double step = span * 0.05;
+
+			if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))
+			{
+				pinnedAt = hasPinned ? pinnedAt - step : oldest + span * 0.5;
+				hasPinned = true;
+			}
+
+			if (ImGui::IsKeyPressed(ImGuiKey_RightArrow))
+			{
+				pinnedAt = hasPinned ? pinnedAt + step : oldest + span * 0.5;
+				hasPinned = true;
+			}
+
+			if (ImGui::IsKeyPressed(ImGuiKey_Home))
+			{
+				manualWindow = false;
+				followPlotCursors = false;
+			}
+		}
 
 		ImDrawList* draw = ImGui::GetWindowDrawList();
 
@@ -277,13 +438,32 @@ class GuiRtosPanelTimeline
 				              formatSeconds(at).c_str());
 		}
 
-		/* The time axis: two labels and the newest time, because a strip of dots
-		   without a scale says nothing about when anything happened. */
-		draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.8f, ImVec2(plotLeft, origin.y + plotHeight + 2 * scale),
-		              ImGui::GetColorU32(ImGuiCol_TextDisabled), formatSeconds(oldest).c_str());
-		draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.8f,
-		              ImVec2(plotLeft + plotWidth - 60 * scale, origin.y + plotHeight + 2 * scale),
-		              ImGui::GetColorU32(ImGuiCol_TextDisabled), formatSeconds(newest).c_str());
+		/*
+		 * The time axis, in ticks.
+		 *
+		 * Two labels at the ends leave the middle of a wide window without a
+		 * scale, and a reader placing a mark in time needs one there. Five
+		 * divisions are enough to read a moment to about a tenth of the window
+		 * and few enough that the labels never run into each other.
+		 */
+		const int tickCount = 4;
+		const ImU32 tickColour = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+		for (int tick = 0; tick <= tickCount; tick++)
+		{
+			const double at = oldest + span * tick / tickCount;
+			const float x = timeToX(at);
+
+			draw->AddLine(ImVec2(x, origin.y + plotHeight), ImVec2(x, origin.y + plotHeight + 3 * scale), tickColour);
+
+			char label[32] = {};
+			std::snprintf(label, sizeof(label), "%.1f", at);
+
+			const float textWidth = ImGui::CalcTextSize(label).x;
+			const float textX = tick == 0 ? x : (tick == tickCount ? x - textWidth : x - textWidth * 0.5f);
+
+			draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f, ImVec2(textX, origin.y + plotHeight + 4 * scale), tickColour, label);
+		}
 
 		drawCursor(draw, samples, lanes, origin, rowHeight, plotLeft, plotWidth, hovered);
 	}

@@ -150,6 +150,27 @@ struct RtosTaskRow
 	std::string sourceList;
 };
 
+/*
+ * What the reader had set up, kept between runs.
+ *
+ * Sort order and filters are judgements about one target, made once and wanted
+ * back; so is the timeline's window and whether it follows the plot cursors.
+ * Plain data, so that the settings file can hold it without knowing what an
+ * RTOS is.
+ */
+struct RtosViewSettings
+{
+	uint32_t sortColumn = 0;
+	bool sortDescending = false;
+	bool hasPriorityFloor = false;
+	uint32_t priorityFloor = 0;
+	bool onlyStackAlerts = false;
+	bool showOnlyBlocked = false;
+	uint32_t stackAlertFreePercent = 20;
+	float timelineWindowSeconds = 10.0f;
+	bool followPlotCursors = true;
+};
+
 class RtosTableModel
 {
    public:
