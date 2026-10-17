@@ -62,6 +62,10 @@ struct RtosTaskTableQuery
 	   to compare against, which is not the same as being comfortable. */
 	uint32_t stackAlertFreePercent = 20;
 
+	/* Only the rows the stack alert is on. Set from the summary line, where the
+	   count is a thing to click rather than a number to read and then type. */
+	bool onlyStackAlerts = false;
+
 	RtosTaskColumn sortColumn = RtosTaskColumn::Name;
 	bool descending = false;
 };
@@ -172,6 +176,49 @@ class RtosTableModel
 	 * not change from round to round.
 	 */
 	static std::vector<uint32_t> laneOrder(const RtosSnapshot& snapshot);
+
+	/*
+	 * The state's name as the interface writes it.
+	 *
+	 * `toString` stays the name the API reports: a caller reading JSON needs one
+	 * spelling whatever language the interface happens to be in. This one is for
+	 * the screen, and it is the only place a state is turned into words - the
+	 * table's column and the timeline's counts both come through here, so the
+	 * two cannot end up calling the same state two different things.
+	 *
+	 * A test drives every state through the translation table, so a missing
+	 * entry fails there rather than leaving an English word in the Chinese
+	 * interface, which is the kind of thing nobody notices until a user does.
+	 */
+	static const char* taskStateLabel(RtosTaskState state);
+
+	/*
+	 * The numbers a reader wants before anything else: how many tasks there
+	 * are, what they are doing, and which of the two findings worth acting on
+	 * are present.
+	 *
+	 * Counted over the whole round rather than over the rows a filter happens
+	 * to let through: a summary that answers "what is wrong" cannot itself be
+	 * narrowed by a question about something else. A task with no state counts
+	 * as unread, which is what it is.
+	 */
+	struct Summary
+	{
+		uint32_t tasks = 0;
+		uint32_t running = 0;
+		uint32_t ready = 0;
+		uint32_t blocked = 0;
+		uint32_t suspended = 0;
+		uint32_t unread = 0;
+
+		/* Stacks below the alert threshold, and tasks whose current priority
+		   has been raised above their base one - inheritance, in other words,
+		   which is the visible sign of a task waiting on a lock. */
+		uint32_t stackAlerts = 0;
+		uint32_t inherited = 0;
+	};
+
+	static Summary summaryOf(const RtosSnapshot& snapshot, uint32_t stackAlertFreePercent);
 };
 
 #endif

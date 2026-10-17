@@ -49,6 +49,7 @@ class GuiRtosPanelTimeline
 		}
 
 		drawHeader(history);
+		drawLegend();
 
 		const double newest = history.newestSeconds();
 		const double from = newest - static_cast<double>(windowSeconds);
@@ -199,7 +200,8 @@ class GuiRtosPanelTimeline
 
 				const float top = origin.y + static_cast<float>(lane) * rowHeight + (rowHeight - markSize) * 0.5f;
 
-				drawState(draw, ImVec2(x - markSize * 0.5f, top), markSize, entry->state, scale);
+				if (hasMark(entry->state))
+					drawMark(draw, ImVec2(x - markSize * 0.5f, top), markSize, markOf(entry->state), scale);
 			}
 		}
 
@@ -298,8 +300,9 @@ class GuiRtosPanelTimeline
 
 		ImGui::Text("%s %.2f s", I18n::tr("at"), at);
 		ImGui::SameLine();
-		ImGui::TextDisabled("%u %s   %u %s   %u %s   %u %s", running, toString(RtosTaskState::Running), ready, toString(RtosTaskState::Ready),
-		                    blocked, toString(RtosTaskState::Blocked), suspended, toString(RtosTaskState::Suspended));
+		ImGui::TextDisabled("%u %s   %u %s   %u %s   %u %s", running, RtosTableModel::taskStateLabel(RtosTaskState::Running), ready,
+		                    RtosTableModel::taskStateLabel(RtosTaskState::Ready), blocked, RtosTableModel::taskStateLabel(RtosTaskState::Blocked),
+		                    suspended, RtosTableModel::taskStateLabel(RtosTaskState::Suspended));
 
 		if (unread > 0)
 		{
@@ -308,47 +311,149 @@ class GuiRtosPanelTimeline
 		}
 	}
 
-	/* The second encoding: every state has a shape as well as a hue. */
-	static void drawState(ImDrawList* draw, const ImVec2& topLeft, float size, RtosTaskState state, float scale)
+	/*
+	 * How a state looks, in one place.
+	 *
+	 * The legend and the grid read this together, so a change to one cannot
+	 * drift from the other: a legend that explains marks the grid no longer
+	 * draws is worse than no legend.
+	 */
+	struct StateMark
 	{
-		const ImVec2 bottomRight(topLeft.x + size, topLeft.y + size);
+		enum class Shape
+		{
+			Filled,
+			Outline,
+			Hatched,
+			Dotted,
+		};
 
+		ImU32 colour = 0;
+		Shape shape = Shape::Outline;
+	};
+
+	/* A round that did not read a task has no state, and a mark for it would
+	   say the task was idle. Nothing is drawn there, and the legend says so. */
+	static bool hasMark(RtosTaskState state)
+	{
+		return state != RtosTaskState::Unknown;
+	}
+
+	static StateMark markOf(RtosTaskState state)
+	{
 		switch (state)
 		{
 			case RtosTaskState::Running:
-				draw->AddRectFilled(topLeft, bottomRight, runningColour);
-				break;
-
-			case RtosTaskState::Ready:
-				draw->AddRect(topLeft, bottomRight, readyColour);
-				break;
+				return {runningColour, StateMark::Shape::Filled};
 
 			case RtosTaskState::Blocked:
-			{
-				draw->AddRect(topLeft, bottomRight, blockedColour);
+				return {blockedColour, StateMark::Shape::Hatched};
+
+			case RtosTaskState::Suspended:
+				return {suspendedColour, StateMark::Shape::Dotted};
+
+			case RtosTaskState::Ready:
+			case RtosTaskState::PendingReady:
+			case RtosTaskState::Deleted:
+			case RtosTaskState::Unknown:
+			default:
+				/* Ready also covers a task that is ready with the scheduler
+				   suspended, and one whose list it was found on is the only
+				   thing that says so. Both are an outline. */
+				return {readyColour, StateMark::Shape::Outline};
+		}
+	}
+
+	/* The second encoding: every state has a shape as well as a hue. */
+	static void drawMark(ImDrawList* draw, const ImVec2& topLeft, float size, const StateMark& mark, float scale)
+	{
+		const ImVec2 bottomRight(topLeft.x + size, topLeft.y + size);
+
+		switch (mark.shape)
+		{
+			case StateMark::Shape::Filled:
+				draw->AddRectFilled(topLeft, bottomRight, mark.colour);
+				break;
+
+			case StateMark::Shape::Outline:
+				draw->AddRect(topLeft, bottomRight, mark.colour);
+				break;
+
+			case StateMark::Shape::Hatched:
+				draw->AddRect(topLeft, bottomRight, mark.colour);
 
 				/* One diagonal through the box is enough to tell it from an
 				   outline at this size, and it survives being three pixels. */
-				draw->AddLine(topLeft, bottomRight, blockedColour);
+				draw->AddLine(topLeft, bottomRight, mark.colour);
 				break;
-			}
 
-			case RtosTaskState::Suspended:
+			case StateMark::Shape::Dotted:
 			{
-				draw->AddRect(topLeft, bottomRight, suspendedColour);
+				draw->AddRect(topLeft, bottomRight, mark.colour);
 
 				const float dot = std::max(size * 0.28f, 1.0f * scale);
 
 				draw->AddRectFilled(ImVec2(topLeft.x + dot, topLeft.y + size * 0.5f - dot * 0.5f),
-				                    ImVec2(topLeft.x + dot + dot, topLeft.y + size * 0.5f + dot * 0.5f), suspendedColour);
+				                    ImVec2(topLeft.x + dot + dot, topLeft.y + size * 0.5f + dot * 0.5f), mark.colour);
 				break;
 			}
+		}
+	}
 
-			default:
-				/* No reading at that instant. Nothing is drawn, which is what
-				   tells the reader the round did not see this task - not that
-				   the task was idle. */
-				break;
+	/*
+	 * What the marks mean, always on screen.
+	 *
+	 * The shapes were already there; a reader meeting them for the first time
+	 * had no way to find out what they meant without being told. The blank case
+	 * is part of the legend because it is the one that is easiest to misread:
+	 * nothing drawn means the round did not read the task, which is not the same
+	 * as the task having been idle.
+	 */
+	static void drawLegend()
+	{
+		const float scale = GuiHelper::contentScale;
+		const float size = 8.0f * scale;
+		const float spacing = 18.0f * scale;
+
+		const RtosTaskState states[] = {RtosTaskState::Running, RtosTaskState::Ready, RtosTaskState::Blocked, RtosTaskState::Suspended};
+
+		ImDrawList* draw = ImGui::GetWindowDrawList();
+
+		for (const RtosTaskState state : states)
+		{
+			const ImVec2 origin = ImGui::GetCursorScreenPos();
+			const ImVec2 topLeft(origin.x, origin.y + (ImGui::GetTextLineHeight() - size) * 0.5f);
+
+			drawMark(draw, topLeft, size, markOf(state), scale);
+
+			ImGui::Dummy(ImVec2(size + 4.0f * scale, 0.0f));
+			ImGui::SameLine(0.0f, 4.0f * scale);
+			ImGui::TextUnformatted(RtosTableModel::taskStateLabel(state));
+
+			ImGui::SameLine(0.0f, spacing);
+		}
+
+		/* The blank, drawn as an empty slot so that the legend has a hole where
+		   the grid has one. */
+		{
+			const ImVec2 origin = ImGui::GetCursorScreenPos();
+			const ImVec2 topLeft(origin.x, origin.y + (ImGui::GetTextLineHeight() - size) * 0.5f);
+
+			draw->AddRect(topLeft, ImVec2(topLeft.x + size, topLeft.y + size), ImGui::GetColorU32(ImGuiCol_TextDisabled, 0.5f));
+
+			ImGui::Dummy(ImVec2(size + 4.0f * scale, 0.0f));
+			ImGui::SameLine(0.0f, 4.0f * scale);
+			ImGui::TextDisabled("%s", I18n::tr("blank"));
+		}
+
+		ImGui::SameLine(0.0f, spacing);
+		ImGui::TextDisabled("%s", I18n::tr("- the round did not read that task, which is not the same as idle"));
+
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			ImGui::TextUnformatted(I18n::tr("One mark is one round, not an interval: what was true at that instant, and nothing about the time between two of them."));
+			ImGui::EndTooltip();
 		}
 	}
 

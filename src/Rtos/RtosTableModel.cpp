@@ -1,5 +1,7 @@
 #include "RtosTableModel.hpp"
 
+#include "I18n.hpp"
+
 #include <algorithm>
 #include <iterator>
 #include <cctype>
@@ -22,6 +24,22 @@ namespace
 	bool matchesState(RtosTaskState state, const std::vector<RtosTaskState>& states)
 	{
 		return states.empty() || std::find(states.begin(), states.end(), state) != states.end();
+	}
+
+	/*
+	 * Whether a task's stack is below the alert threshold.
+	 *
+	 * One definition for the row's mark, the filter the summary sets and the
+	 * count the summary shows. Three copies would drift apart, and the table
+	 * would then disagree with its own summary - which is the one kind of
+	 * disagreement a reader cannot see the cause of.
+	 */
+	bool stackIsBelowAlert(const RtosTask& task, uint32_t thresholdPercent)
+	{
+		if (thresholdPercent == 0 || !task.hasStackWatermark || task.stackWatermarkStackBytes == 0)
+			return false;
+
+		return (static_cast<uint64_t>(task.stackFreeBytes) * 100u) / task.stackWatermarkStackBytes < thresholdPercent;
 	}
 
 	int compareNames(const std::string& left, const std::string& right)
@@ -143,6 +161,9 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 		if (!containsIgnoringCase(task.name, query.nameSearch))
 			continue;
 
+		if (query.onlyStackAlerts && !stackIsBelowAlert(task, query.stackAlertFreePercent))
+			continue;
+
 		RtosTaskRow row;
 
 		row.tcbAddress = task.tcbAddress;
@@ -168,7 +189,7 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 		/* Last, because it reads two of the fields above: computing it while
 		   the row was being filled in would have compared zero against the
 		   threshold and marked every row with a reading. */
-		row.stackIsLow = query.stackAlertFreePercent > 0 && row.hasStackWatermark && row.stackFreePercent() < query.stackAlertFreePercent;
+		row.stackIsLow = stackIsBelowAlert(task, query.stackAlertFreePercent);
 
 		rows.push_back(std::move(row));
 	}
@@ -204,6 +225,80 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 	read.insert(read.end(), std::make_move_iterator(notRead.begin()), std::make_move_iterator(notRead.end()));
 
 	return read;
+}
+
+RtosTableModel::Summary RtosTableModel::summaryOf(const RtosSnapshot& snapshot, uint32_t stackAlertFreePercent)
+{
+	Summary summary;
+
+	for (const RtosTask& task : snapshot.tasks)
+	{
+		summary.tasks++;
+
+		switch (task.state)
+		{
+			case RtosTaskState::Running:
+				summary.running++;
+				break;
+
+			case RtosTaskState::Ready:
+			case RtosTaskState::PendingReady:
+				summary.ready++;
+				break;
+
+			case RtosTaskState::Blocked:
+				summary.blocked++;
+				break;
+
+			case RtosTaskState::Suspended:
+				summary.suspended++;
+				break;
+
+			case RtosTaskState::Deleted:
+			case RtosTaskState::Unknown:
+			default:
+				summary.unread++;
+				break;
+		}
+
+		/* The same judgement the row makes, so that the count and the marks in
+		   the table say the same thing. */
+		if (stackIsBelowAlert(task, stackAlertFreePercent))
+			summary.stackAlerts++;
+
+		if (task.hasBasePriority && task.hasPriority && task.rawPriority != task.basePriority)
+			summary.inherited++;
+	}
+
+	return summary;
+}
+
+const char* RtosTableModel::taskStateLabel(RtosTaskState state)
+{
+	switch (state)
+	{
+		case RtosTaskState::Running:
+			return I18n::tr("running");
+
+		case RtosTaskState::Ready:
+			return I18n::tr("ready");
+
+		case RtosTaskState::Blocked:
+			return I18n::tr("blocked");
+
+		case RtosTaskState::Suspended:
+			return I18n::tr("suspended");
+
+		case RtosTaskState::PendingReady:
+			return I18n::tr("pending ready");
+
+		case RtosTaskState::Deleted:
+			return I18n::tr("deleted");
+
+		case RtosTaskState::Unknown:
+		default:
+			return I18n::tr("unknown");
+	}
 }
 
 std::vector<uint32_t> RtosTableModel::laneOrder(const RtosSnapshot& snapshot)

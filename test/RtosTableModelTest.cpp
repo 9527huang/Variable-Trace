@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstring>
 #include <string>
 #include <vector>
 
+#include "I18n.hpp"
 #include "RtosTableModel.hpp"
 
 namespace
@@ -446,4 +448,86 @@ TEST(RtosTableModel, ATaskWithNoPriorityGoesToTheBottomLane)
 	/* Nothing was read for it, which is not the same as the lowest priority -
 	   but it is still below everything that was read. */
 	EXPECT_EQ(lanes[1], 0x20000100u);
+}
+
+TEST(RtosTableModel, EveryStateHasATranslatedName)
+{
+	const RtosTaskState states[] = {RtosTaskState::Running,    RtosTaskState::Ready,  RtosTaskState::Blocked, RtosTaskState::Suspended,
+	                                RtosTaskState::PendingReady, RtosTaskState::Deleted, RtosTaskState::Unknown};
+
+	const I18n::Language was = I18n::currentLanguage;
+
+	for (const RtosTaskState state : states)
+	{
+		const char* english = RtosTableModel::taskStateLabel(state);
+
+		ASSERT_NE(english, nullptr);
+		EXPECT_GT(std::strlen(english), 0u);
+
+		/* The label is the same word the API reports while the interface is in
+		   English, so a reader looking at both sees one spelling. */
+		EXPECT_STREQ(english, toString(state));
+	}
+
+	I18n::currentLanguage = I18n::Language::Chinese;
+
+	for (const RtosTaskState state : states)
+	{
+		const char* chinese = RtosTableModel::taskStateLabel(state);
+
+		ASSERT_NE(chinese, nullptr);
+
+		/* A state with no entry comes back as its English, which is how a
+		   missing translation reaches the screen - silently. This is where it
+		   stops being silent. */
+		EXPECT_STRNE(chinese, toString(state)) << toString(state);
+	}
+
+	I18n::currentLanguage = was;
+}
+
+TEST(RtosTableModel, TheSummaryCountsWhatTheRoundHolds)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+
+	/* Under a fifth of one stack free, so one alert at a threshold of twenty. */
+	snapshot.tasks[0].hasStackWatermark = true;
+	snapshot.tasks[0].stackFreeBytes = 90;
+	snapshot.tasks[0].stackWatermarkStackBytes = 504;
+
+	/* And one task whose current priority is above its base one. */
+	snapshot.tasks[3].rawPriority = 3;
+	snapshot.tasks[3].basePriority = 2;
+	snapshot.tasks[3].hasBasePriority = true;
+
+	const RtosTableModel::Summary summary = RtosTableModel::summaryOf(snapshot, 20);
+
+	EXPECT_EQ(summary.tasks, 5u);
+	EXPECT_EQ(summary.ready, 2u);      /* IDLE, led */
+	EXPECT_EQ(summary.blocked, 2u);    /* prod, deep */
+	EXPECT_EQ(summary.suspended, 1u);  /* work */
+	EXPECT_EQ(summary.stackAlerts, 1u);
+	EXPECT_EQ(summary.inherited, 1u);
+
+	/* Zero is the switch: no threshold, no alerts. */
+	EXPECT_EQ(RtosTableModel::summaryOf(snapshot, 0).stackAlerts, 0u);
+}
+
+TEST(RtosTableModel, TheStackAlertFilterKeepsOnlyTheMarkedRows)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+
+	snapshot.tasks[0].hasStackWatermark = true;
+	snapshot.tasks[0].stackFreeBytes = 90;
+	snapshot.tasks[0].stackWatermarkStackBytes = 504;
+
+	RtosTaskTableQuery query;
+	query.stackAlertFreePercent = 20;
+	query.onlyStackAlerts = true;
+
+	const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(snapshot, query);
+
+	ASSERT_EQ(rows.size(), 1u);
+	EXPECT_EQ(rows.front().name, "IDLE");
+	EXPECT_TRUE(rows.front().stackIsLow);
 }
