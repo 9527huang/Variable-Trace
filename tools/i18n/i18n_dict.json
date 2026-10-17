@@ -492,6 +492,7 @@
   "- the round did not read that task, which is not the same as idle": "——那一轮没读到这个任务,不等于它空闲",
   "One mark is one round, not an interval: what was true at that instant, and nothing about the time between two of them.": "一个标记就是一轮,不是一段区间:它只说明那一刻为真,两轮之间的事一概不知道。",
   "thin line": "细线",
+  "runs from the target's switch records, %.0f s held": "区间来自目标的切换记录,保留 %.0f 秒",
   "back to latest": "回到最新",
   "priority inheritance": "优先级继承",
   "suspected deadlock": "疑似死锁",

@@ -24,6 +24,8 @@
 #include "PerformanceDiagnosis.hpp"
 #include "VariableHandler.hpp"
 
+class RtosProbeMemory;
+
 class ViewerDataHandler : public DataHandlerBase
 {
    public:
@@ -330,6 +332,9 @@ class ViewerDataHandler : public DataHandlerBase
 	   reaching for the probe itself. */
 	void runRtosRound(std::chrono::steady_clock::time_point start);
 
+	/* One batch of switch records, when the target keeps them. */
+	void readEventRing(RtosProbeMemory& memory, double nowSeconds);
+
    private:
 	static constexpr size_t maxVariablesOnSinglePlot = 100;
 	std::shared_ptr<IDebugProbe> debugProbe;
@@ -373,6 +378,24 @@ class ViewerDataHandler : public DataHandlerBase
 	   counter comes with the control block. */
 	RtosCpuLoad rtosCpuLoad;
 	RtosCpuLoad::Settings rtosCpuLoadSettings{};
+
+	/* Path B: where the target keeps its switch records, zero when it does not.
+	   Optional, because a firmware without the ring is a firmware the task view
+	   still works against. */
+	uint32_t rtosEventRingAddress = 0;
+
+	/* How far the reader has got, in the ring's own monotonic count. */
+	uint32_t rtosEventsRead = 0;
+
+	/* The same moment said twice: the newest record's target microseconds and
+	   the host's seconds when it was read. Drift between the two crystals is
+	   corrected slowly, not jumped at. */
+	uint32_t rtosEventAnchorUs = 0;
+	double rtosEventAnchorSeconds = 0.0;
+
+	/* How many records a round reads, and how much history the strip keeps. */
+	static constexpr uint32_t rtosEventsPerRound = 32;
+	static constexpr double rtosEventsKeepSeconds = 600.0;
 	std::atomic<bool> rtosEnabled{false};
 
 	/* Set by the sampling loop on the pass where it prepared the sampler.

@@ -182,6 +182,7 @@ namespace mcp
 									 {"last_rejection", ""},
 									 {"problems", Json::array()},
 								 {"findings", Json::array()},
+								 {"events", Json::object({{"runs", 0}, {"lost", 0}})},
 								 {"history_samples", 0},
 								 {"history_oldest_s", 0.0},
 								 {"stack_scan", Json::object({{"enabled", false}, {"fill_seen", false}, {"tasks_scanned", 0}, {"oldest_age_s", 0.0}})},
@@ -230,6 +231,11 @@ namespace mcp
 								    here, and a session that has run for hours has dropped the
 								    beginning of itself. */
 								 {"findings", findingsJson(snapshot.get())},
+								 /* Path B: how many runs the target's switch records have
+								    given, and how many records never crossed. */
+								 {"events",
+								  Json::object({{"runs", static_cast<uint32_t>(model->events().size())},
+								                {"lost", model->events().lostRecords()}})},
 								 {"history_samples", static_cast<uint32_t>(model->history().size())},
 								 {"history_oldest_s", model->history().oldestSeconds()},
 								 /* The stack water marks are read a few tasks a round, so the

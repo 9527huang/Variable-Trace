@@ -50,8 +50,19 @@ SZ        := $(if $(TOOLCHAIN),$(TOOLCHAIN)/arm-none-eabi-size,arm-none-eabi-siz
 
 KERNEL    := $(FREERTOS_KERNEL)
 
-# 通路 B 的目标侧事件环，与 main.c 并列。
-EVENTS    := ../event_ring
+# 通路 B 的目标侧事件环。默认不编进固件：它要求固件动一处（一个 trace 宏），
+# 而「不给固件加约束」是这个项目的前提。要试通路 B 时：make EVENTS=1
+EVENTS_ON ?= 0
+EVENTS_DIR := ../event_ring
+EVENTS_SRC :=
+EVENTS_INC :=
+EVENTS_DEF :=
+
+ifeq ($(EVENTS_ON),1)
+  EVENTS_SRC := $(EVENTS_DIR)/vtrace_events.c
+  EVENTS_INC := -I$(EVENTS_DIR)
+  EVENTS_DEF := -DVTRACE_EVENTS=1
+endif
 
 # 三块板子：
 #   f401  Cortex-M4F，512K Flash / 96K RAM（默认）
@@ -98,13 +109,13 @@ endif
 BUILD_DIR := build_$(BOARD)$(BUILD_SUFFIX)
 TARGET    := $(BUILD_DIR)/freertos_probe
 
-C_SOURCES  := main.c startup.c $(EVENTS)/vtrace_events.c \
+C_SOURCES  := main.c startup.c $(EVENTS_SRC) \
               $(KERNEL)/tasks.c $(KERNEL)/list.c $(KERNEL)/queue.c \
               $(PORT_DIR)/port.c \
               $(KERNEL)/portable/MemMang/heap_4.c
-C_INCLUDES := -I. -I$(KERNEL)/include -I$(PORT_DIR) -I$(EVENTS)
+C_INCLUDES := -I. -I$(KERNEL)/include -I$(PORT_DIR) $(EVENTS_INC)
 
-CFLAGS   := $(CPUFLAGS) $(BOARD_DEFS) $(OPT_DEFS) -O1 -g3 -Wall -ffunction-sections -fdata-sections -std=c99
+CFLAGS   := $(CPUFLAGS) $(BOARD_DEFS) $(OPT_DEFS) $(EVENTS_DEF) -O1 -g3 -Wall -ffunction-sections -fdata-sections -std=c99
 LDFLAGS  := $(CPUFLAGS) -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections -Wl,-Map=$(TARGET).map
 
 # 去掉 -p：本机这份 SysGCC 的 GNU Make 3.82（mingw32 构建）在调用 shell 时会把

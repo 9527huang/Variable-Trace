@@ -10,6 +10,7 @@
 #include "GuiHelper.hpp"
 #include "I18n.hpp"
 #include "RtosModel.hpp"
+#include "RtosEventRing.hpp"
 #include "RtosTableModel.hpp"
 #include "RtosTimeline.hpp"
 #include "imgui.h"
@@ -64,9 +65,31 @@ class GuiRtosPanelTimeline
 			return;
 		}
 
-		drawCounts(history, samples);
+		/*
+		 * Runs, when the target keeps switch records, and samples when it does
+		 * not.
+		 *
+		 * A run says a task held the processor from one moment to another; a
+		 * sample says only that it was running when the round looked. The
+		 * second cannot be drawn as a band without claiming the time between
+		 * two rounds, so the shape follows the source rather than the
+		 * preference.
+		 */
+		std::vector<RtosEventRing::Interval> runs;
+		model.events().copyRange(window.from, window.to, runs);
 
-		drawGrid(snapshot, samples, plotCursors, selectedTask, hoveredTask);
+		if (!runs.empty())
+		{
+			drawCounts(history, samples, true);
+
+			drawGrid(snapshot, samples, runs, plotCursors, selectedTask, hoveredTask);
+		}
+		else
+		{
+			drawCounts(history, samples, false);
+
+			drawGrid(snapshot, samples, {}, plotCursors, selectedTask, hoveredTask);
+		}
 	}
 
 	/* Read and written by the panel, which keeps them with the rest of what the
@@ -203,7 +226,7 @@ class GuiRtosPanelTimeline
 	 * invites the reading that a blank is a task that was doing nothing, and the
 	 * count is what says how much of the picture is missing rather than idle.
 	 */
-	static void drawCounts(const RtosTimeline& history, const std::vector<RtosTimeline::Sample>& samples)
+	static void drawCounts(const RtosTimeline& history, const std::vector<RtosTimeline::Sample>& samples, bool fromRuns)
 	{
 		const size_t kept = history.size();
 		const double span = history.newestSeconds() - history.oldestSeconds();
@@ -220,7 +243,14 @@ class GuiRtosPanelTimeline
 				unread += lanes > sample.entries.size() ? lanes - sample.entries.size() : 0u;
 		}
 
-		if (interval > 0.0)
+		if (fromRuns)
+		{
+			/* Where the runs come from is worth saying: a reader who knows the
+			   timeline is built from samples will read a band as a coarse
+			   thing, and this one is not coarse. */
+			ImGui::TextDisabled(I18n::tr("runs from the target's switch records, %.0f s held"), static_cast<double>(windowSeconds));
+		}
+		else if (interval > 0.0)
 			ImGui::TextDisabled(I18n::tr("%u samples, %.2f s apart, %u unread"), static_cast<uint32_t>(samples.size()), interval,
 			                    static_cast<uint32_t>(unread));
 		else
@@ -234,8 +264,9 @@ class GuiRtosPanelTimeline
 		}
 	}
 
-	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTimeline::Sample>& samples, const std::vector<double>& plotCursors,
-	                     uint32_t selectedTask, uint32_t hoveredTask)
+	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTimeline::Sample>& samples,
+	                     const std::vector<RtosEventRing::Interval>& runs, const std::vector<double>& plotCursors, uint32_t selectedTask,
+	                     uint32_t hoveredTask)
 	{
 		const std::vector<uint32_t> lanes = RtosTableModel::laneOrder(snapshot);
 
@@ -385,11 +416,16 @@ class GuiRtosPanelTimeline
 		highlightLane(hoveredTask, ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.22f));
 		highlightLane(selectedTask, ImGui::GetColorU32(ImGuiCol_Header, 0.35f));
 
-		/* The marks. A mark is as wide as one row is tall, so a column of marks
-		   reads as a column and not as a bar. */
+		/*
+		 * The marks, when there are no runs.
+		 *
+		 * A mark is as wide as one row is tall, so a column of marks reads as a
+		 * column and not as a bar. With runs drawn the marks would only repeat
+		 * what the bands already say, less precisely.
+		 */
 		const float markSize = std::max(std::min(rowHeight - 2.0f * scale, 10.0f * scale), 3.0f * scale);
 
-		for (const RtosTimeline::Sample& sample : samples)
+		for (const RtosTimeline::Sample& sample : runs.empty() ? samples : std::vector<RtosTimeline::Sample>{})
 		{
 			const float x = timeToX(sample.atSeconds);
 
@@ -408,6 +444,35 @@ class GuiRtosPanelTimeline
 
 				if (hasMark(entry->state))
 					drawMark(draw, ImVec2(x - markSize * 0.5f, top), markSize, markOf(entry->state), scale);
+			}
+		}
+
+		/*
+		 * The runs, as bands.
+		 *
+		 * One per switch: the task that was switched in, from then until the
+		 * next switch. This is what the sampled marks could not say - a run has
+		 * a length, a sample does not - and it is why the strip changes shape
+		 * when the target reports switches.
+		 */
+		for (const RtosEventRing::Interval& run : runs)
+		{
+			for (size_t lane = 0; lane < lanes.size(); lane++)
+			{
+				if (lanes[lane] != run.tcbAddress)
+					continue;
+
+				const float from = timeToX(std::max(run.fromSeconds, oldest));
+				const float to = timeToX(std::min(run.toSeconds, newest));
+
+				if (to <= from)
+					break;
+
+				const float top = origin.y + static_cast<float>(lane) * rowHeight + 1.0f * scale;
+
+				draw->AddRectFilled(ImVec2(from, top), ImVec2(to, top + rowHeight - 2.0f * scale), runningColour);
+
+				break;
 			}
 		}
 

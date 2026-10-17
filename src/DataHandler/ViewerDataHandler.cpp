@@ -395,6 +395,24 @@ bool ViewerDataHandler::prepareRtos()
 
 	logger->info("The task view is ready: {} symbols resolved, {} lists to walk.", symbols.size(), sampler->listSources().size());
 
+	/*
+	 * Path B, if this firmware has it.
+	 *
+	 * Optional on purpose: the task view works on samples alone, and a target
+	 * that carries no ring is a target it still has something to say about. One
+	 * symbol is all that is looked for - the ring is one object, so that the
+	 * linker keeps the capacity that only the host reads.
+	 */
+	rtosEventRingAddress = 0;
+	rtosEventsRead = 0;
+
+	if (const auto ring = symbols.find("vtrace_events"); ring != symbols.end())
+	{
+		rtosEventRingAddress = ring->second.address;
+
+		logger->info("Switch records are kept by the target, at 0x{:08X}.", rtosEventRingAddress);
+	}
+
 	/* Every snapshot carries the identity of the run it came from, so a saved
 	   record can be told apart from the next one. The wall clock is the only
 	   thing at hand that is unique to this run. */
@@ -616,6 +634,113 @@ bool ViewerDataHandler::rtosRoundIsDue(double now, std::chrono::steady_clock::ti
 	return std::chrono::steady_clock::now() < nextDeadline + interval;
 }
 
+/*
+ * One batch of switch records.
+ *
+ * The ring is one object on the target: a monotonic head, its capacity, and the
+ * records. The head is read first and the records after it, and a record that
+ * the target overwrote while it was being read is a record the counter no
+ * longer covers - which is why what is read is bounded by the head that was
+ * read before it, and not by whatever the head says afterwards.
+ *
+ * What is read is the newest few rather than the oldest: a round has a budget,
+ * and a reader that falls behind wants to be looking at now. Everything passed
+ * over is counted, so the strip can say its picture has a hole instead of
+ * drawing one task's run across another's turn.
+ */
+void ViewerDataHandler::readEventRing(RtosProbeMemory& memory, double nowSeconds)
+{
+	if (rtosEventRingAddress == 0 || rtosModel == nullptr)
+		return;
+
+	/* Two words: the head, then the capacity. */
+	std::array<uint8_t, 8> header{};
+
+	if (!memory.read(rtosEventRingAddress, header.data(), static_cast<uint32_t>(header.size())))
+		return;
+
+	uint32_t words[2] = {};
+	std::memcpy(words, header.data(), sizeof(words));
+
+	const uint32_t head = words[0];
+	const uint32_t capacity = words[1];
+
+	/* A ring is a power of two, and a sane one is a few thousand records. */
+	if (capacity < 2 || capacity > 65536 || (capacity & (capacity - 1)) != 0)
+		return;
+
+	const RtosEventRing::Window window = RtosEventRing::windowFor(head, rtosEventsRead, capacity, rtosEventsPerRound);
+
+	/* The first read is not a reader that fell behind: what was in the ring
+	   before it started is history, not loss. */
+	if (rtosEventsRead != 0)
+		rtosModel->noteLostEvents(window.lost);
+
+	rtosEventsRead = head;
+
+	if (window.count == 0)
+		return;
+
+	std::vector<RtosEventRing::Record> records;
+	records.reserve(window.count);
+
+	uint32_t next = window.first;
+
+	while (records.size() < window.count)
+	{
+		const uint32_t index = next & (capacity - 1u);
+		const uint32_t run = std::min(window.count - static_cast<uint32_t>(records.size()), capacity - index);
+		const uint32_t address = rtosEventRingAddress + 8u + index * static_cast<uint32_t>(sizeof(RtosEventRing::Record));
+
+		std::vector<uint8_t> bytes(static_cast<size_t>(run) * sizeof(RtosEventRing::Record));
+
+		if (!memory.read(address, bytes.data(), static_cast<uint32_t>(bytes.size())))
+			return;
+
+		for (uint32_t entry = 0; entry < run; entry++)
+		{
+			RtosEventRing::Record record;
+
+			std::memcpy(&record.tcbAddress, bytes.data() + entry * 8, 4);
+			std::memcpy(&record.timeUs, bytes.data() + entry * 8 + 4, 4);
+
+			records.push_back(record);
+		}
+
+		next += run;
+	}
+
+	/*
+	 * Where the target's clock meets the host's.
+	 *
+	 * Taken from the newest record and the host time it arrived at, then
+	 * corrected by a tenth of the error each round: the two crystals drift
+	 * slowly apart, and following every reading would put the read's own
+	 * latency into the picture as jitter. A jump too large to be drift is a new
+	 * session on the host, and the anchor is set again rather than nudged.
+	 */
+	if (rtosEventAnchorSeconds == 0.0)
+	{
+		rtosEventAnchorUs = records.back().timeUs;
+		rtosEventAnchorSeconds = nowSeconds;
+	}
+	else
+	{
+		const double targetElapsed = static_cast<double>(static_cast<uint32_t>(records.back().timeUs - rtosEventAnchorUs)) / 1000000.0;
+		const double error = (nowSeconds - rtosEventAnchorSeconds) - targetElapsed;
+
+		if (std::abs(error) < 5.0)
+			rtosEventAnchorSeconds += error * 0.1;
+		else
+		{
+			rtosEventAnchorUs = records.back().timeUs;
+			rtosEventAnchorSeconds = nowSeconds;
+		}
+	}
+
+	rtosModel->appendEventIntervals(RtosEventRing::intervalsFrom(records, rtosEventAnchorUs, rtosEventAnchorSeconds, nowSeconds), rtosEventsKeepSeconds);
+}
+
 void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start)
 {
 	if (rtosSampler == nullptr || rtosModel == nullptr || debugProbe == nullptr)
@@ -632,6 +757,10 @@ void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start
 	   built on a reference to the open probe rather than looking it up and
 	   taking the lock a second time. */
 	RtosProbeMemory memory(*debugProbe);
+
+	/* Path B, read before the round's verdict: a round that did not hold
+	   together says nothing about whether switches happened. */
+	readEventRing(memory, startedAt);
 
 	RtosSampler::Round round = rtosSampler->collect(memory, rtosSessionId, rtosSettings);
 

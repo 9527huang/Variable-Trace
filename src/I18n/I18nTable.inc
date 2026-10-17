@@ -496,6 +496,7 @@ static const Entry table[] = {
 	{"rising", "上升沿"},
 	{"run", "连续"},
 	{"running", "运行"},
+	{"runs from the target's switch records, %.0f s held", "区间来自目标的切换记录,保留 %.0f 秒"},
 	{"sampling: %.2f Hz", "采样率: %.2f Hz"},
 	{"sampling: 1000000.00 Hz", "采样率: 1000000.00 Hz"},
 	{"script file:", "脚本文件:"},

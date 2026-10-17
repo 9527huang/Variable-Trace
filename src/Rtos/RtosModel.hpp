@@ -8,6 +8,7 @@
 #include <string>
 
 #include "RtosSnapshot.hpp"
+#include "RtosEventHistory.hpp"
 #include "RtosTimeline.hpp"
 
 /*
@@ -74,6 +75,23 @@ class RtosModel
 		return timeline;
 	}
 
+	/* The runs the target reported, which the timeline draws instead of the
+	   samples when the target keeps an event ring. */
+	const RtosEventHistory& events() const
+	{
+		return eventHistory;
+	}
+
+	void appendEventIntervals(const std::vector<RtosEventRing::Interval>& intervals, double keepSeconds)
+	{
+		eventHistory.append(intervals, keepSeconds);
+	}
+
+	void noteLostEvents(uint32_t count)
+	{
+		eventHistory.noteLostRecords(count);
+	}
+
 	/*
 	 * Records a round that failed its checks and was therefore not published.
 	 *
@@ -108,6 +126,7 @@ class RtosModel
 	std::atomic<std::shared_ptr<const RtosSnapshot>> published{nullptr};
 
 	RtosTimeline timeline;
+	RtosEventHistory eventHistory;
 
 	mutable std::mutex modelMutex;
 	Stats counters;

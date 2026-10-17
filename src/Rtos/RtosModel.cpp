@@ -66,6 +66,7 @@ void RtosModel::beginSession(const std::string& sessionId)
 	/* A new session is a new history: two runs drawn on one axis would be a
 	   picture of neither. */
 	timeline.clear();
+	eventHistory.clear();
 }
 
 std::shared_ptr<RtosSnapshot> RtosModel::fromEnumeration(const RtosTaskEnumeration& enumeration,
