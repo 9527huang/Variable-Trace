@@ -37,7 +37,7 @@
 class GuiRtosPanelTimeline
 {
    public:
-	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors)
+	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors, uint32_t selectedTask, uint32_t hoveredTask)
 	{
 		const RtosTimeline& history = model.history();
 
@@ -64,7 +64,7 @@ class GuiRtosPanelTimeline
 			return;
 		}
 
-		drawGrid(snapshot, samples, plotCursors);
+		drawGrid(snapshot, samples, plotCursors, selectedTask, hoveredTask);
 	}
 
    private:
@@ -137,7 +137,8 @@ class GuiRtosPanelTimeline
 		ImGui::Separator();
 	}
 
-	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTimeline::Sample>& samples, const std::vector<double>& plotCursors)
+	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTimeline::Sample>& samples, const std::vector<double>& plotCursors,
+	                     uint32_t selectedTask, uint32_t hoveredTask)
 	{
 		const std::vector<uint32_t> lanes = RtosTableModel::laneOrder(snapshot);
 
@@ -197,6 +198,32 @@ class GuiRtosPanelTimeline
 			}
 		}
 
+		/*
+		 * The lane the reader is on, in the table above.
+		 *
+		 * Drawn under the marks so that the marks stay readable, and only for a
+		 * task the table is pointing at: a highlight that appears for every
+		 * row the mouse crosses would be a flicker, not a pointer.
+		 */
+		const auto highlightLane = [&](uint32_t address, ImU32 colour)
+		{
+			if (address == 0)
+				return;
+
+			for (size_t lane = 0; lane < lanes.size(); lane++)
+			{
+				if (lanes[lane] != address)
+					continue;
+
+				const float top = origin.y + static_cast<float>(lane) * rowHeight;
+
+				draw->AddRectFilled(ImVec2(origin.x, top), ImVec2(plotLeft + plotWidth, top + rowHeight), colour);
+			}
+		};
+
+		highlightLane(hoveredTask, ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.22f));
+		highlightLane(selectedTask, ImGui::GetColorU32(ImGuiCol_Header, 0.35f));
+
 		/* The marks. A mark is as wide as one row is tall, so a column of marks
 		   reads as a column and not as a bar. */
 		const float markSize = std::max(std::min(rowHeight - 2.0f * scale, 10.0f * scale), 3.0f * scale);
@@ -239,8 +266,15 @@ class GuiRtosPanelTimeline
 			const float x = timeToX(at);
 
 			draw->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + plotHeight), plotCursorColour, 1.0f);
-			draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f, ImVec2(std::min(x + 2.0f * scale, plotLeft + plotWidth - 54 * scale), origin.y + plotHeight + 2 * scale),
-			              plotCursorColour, formatSeconds(at).c_str());
+
+			/* The label goes under the axis, and is left off where it would sit
+			   on top of the axis's own last label: two times printed over each
+			   other read as one wrong time. */
+			const float labelX = x + 2.0f * scale;
+
+			if (labelX < plotLeft + plotWidth - 54 * scale)
+				draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f, ImVec2(labelX, origin.y + plotHeight + 2 * scale), plotCursorColour,
+				              formatSeconds(at).c_str());
 		}
 
 		/* The time axis: two labels and the newest time, because a strip of dots
