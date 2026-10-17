@@ -75,6 +75,14 @@ extern uint32_t SystemCoreClock;
 #define configUSE_C_RUNTIME_TLS_SUPPORT          0
 
 #define configUSE_TRACE_FACILITY                 1
+
+/* 通路 B：任务切换的事件环。宏在内核切完任务后、临界区里被调用，所以那里只做两次
+   32 位写和一个计数。实现见 ../../event_ring/vtrace_events.c。 */
+#include <stdint.h>
+
+void vtrace_event_switch(uint32_t tcb);
+
+#define traceTASK_SWITCHED_IN()                  vtrace_event_switch((uint32_t)pxCurrentTCB)
 #define configUSE_STATS_FORMATTING_FUNCTIONS     0
 #define configRECORD_STACK_HIGH_ADDRESS          1
 #define configGENERATE_RUN_TIME_STATS            1

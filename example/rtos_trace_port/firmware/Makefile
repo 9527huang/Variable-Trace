@@ -50,6 +50,9 @@ SZ        := $(if $(TOOLCHAIN),$(TOOLCHAIN)/arm-none-eabi-size,arm-none-eabi-siz
 
 KERNEL    := $(FREERTOS_KERNEL)
 
+# 通路 B 的目标侧事件环，与 main.c 并列。
+EVENTS    := ../event_ring
+
 # 三块板子：
 #   f401  Cortex-M4F，512K Flash / 96K RAM（默认）
 #   f103  本机测试板，Cortex-M3，64K Flash / 20K RAM
@@ -62,7 +65,8 @@ ifeq ($(BOARD),f103)
   CPUFLAGS   := -mcpu=cortex-m3 -mthumb
   PORT_DIR   := $(KERNEL)/portable/GCC/ARM_CM3
   LDSCRIPT   := linker/f103.ld
-  BOARD_DEFS := -DPROBE_CPU_HZ=8000000 -DPROBE_HEAP_KB=14
+  # 事件环 512 条 = 4 KB：这颗片子只有 20 KB RAM，剩下的留给内核与栈。
+  BOARD_DEFS := -DPROBE_CPU_HZ=8000000 -DPROBE_HEAP_KB=14 -DVTRACE_EVENT_CAPACITY=512u
 else ifeq ($(BOARD),f407)
   # CPU 标志与 f401 逐字相同：同为核心、同一份移植层，只有容量与堆不同。
   # 堆放到 48 KB，为「五十个任务」那一档快照场景留出空间（每个任务约
@@ -94,11 +98,11 @@ endif
 BUILD_DIR := build_$(BOARD)$(BUILD_SUFFIX)
 TARGET    := $(BUILD_DIR)/freertos_probe
 
-C_SOURCES  := main.c startup.c \
+C_SOURCES  := main.c startup.c $(EVENTS)/vtrace_events.c \
               $(KERNEL)/tasks.c $(KERNEL)/list.c $(KERNEL)/queue.c \
               $(PORT_DIR)/port.c \
               $(KERNEL)/portable/MemMang/heap_4.c
-C_INCLUDES := -I. -I$(KERNEL)/include -I$(PORT_DIR)
+C_INCLUDES := -I. -I$(KERNEL)/include -I$(PORT_DIR) -I$(EVENTS)
 
 CFLAGS   := $(CPUFLAGS) $(BOARD_DEFS) $(OPT_DEFS) -O1 -g3 -Wall -ffunction-sections -fdata-sections -std=c99
 LDFLAGS  := $(CPUFLAGS) -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections -Wl,-Map=$(TARGET).map
