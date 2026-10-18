@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <map>
+#include <optional>
 #include <set>
 
 namespace
@@ -29,6 +30,15 @@ namespace
 		return buffer;
 	}
 
+	/*
+	 * How many rounds have to say the same thing before it is a fault.
+	 *
+	 * Four rounds at the task view's round interval is about two seconds: long
+	 * enough that a switch in flight cannot look like one, short enough to see
+	 * inside a session.
+	 */
+	constexpr uint32_t minimumHeldRounds = 4;
+
 	const RtosTask* findTaskByAddress(const RtosSnapshot& snapshot, uint32_t address)
 	{
 		for (const RtosTask& task : snapshot.tasks)
@@ -41,7 +51,7 @@ namespace
 	}
 }  // namespace
 
-std::vector<RtosDiagnostics::Finding> RtosDiagnostics::diagnose(const RtosSnapshot& snapshot)
+std::vector<RtosDiagnostics::Finding> RtosDiagnostics::diagnose(const RtosSnapshot& snapshot, const RtosTimeline& history)
 {
 	std::vector<Finding> findings;
 
@@ -184,6 +194,103 @@ std::vector<RtosDiagnostics::Finding> RtosDiagnostics::diagnose(const RtosSnapsh
 				break;
 
 			current = next;
+		}
+	}
+
+	/*
+	 * Ready starvation: a task above the one the scheduler ran, ready in every
+	 * round of the window.
+	 *
+	 * The one finding that needs more than the round in front of it. A single
+	 * round saying a high priority task is ready while a lower one runs is a
+	 * moment - the switch may be about to happen - and reporting moments would
+	 * make the panel unreadable. The window is what turns a moment into a
+	 * claim.
+	 *
+	 * Two things make it not a fault, and both are the kernel working: a task
+	 * at or above this one also ready (then the scheduler is right to run what
+	 * it ran), and a running task holding a lock someone above it wants (then
+	 * it runs at the waiter's priority, which is inheritance, not starvation).
+	 * A round that did not carry the task at all says nothing either way, and
+	 * ends the window rather than being read as a gap.
+	 */
+	std::vector<RtosTimeline::Sample> samples;
+	history.copyRange(0.0, history.newestSeconds(), samples);
+
+	const size_t window = std::min<size_t>(samples.size(), minimumHeldRounds);
+
+	if (window == minimumHeldRounds)
+	{
+		const auto stateOf = [](const RtosTimeline::Sample& sample, uint32_t address) -> std::optional<RtosTaskState>
+		{
+			for (const RtosTimeline::Entry& entry : sample.entries)
+			{
+				if (entry.tcbAddress == address)
+					return entry.state;
+			}
+
+			return std::nullopt;
+		};
+
+		const size_t first = samples.size() - window;
+
+		for (const RtosTask& task : snapshot.tasks)
+		{
+			if (task.state != RtosTaskState::Ready || !task.hasPriority)
+				continue;
+
+			bool readyThroughout = true;
+
+			for (size_t index = first; index < samples.size(); index++)
+			{
+				const std::optional<RtosTaskState> state = stateOf(samples[index], task.tcbAddress);
+
+				if (!state.has_value() || *state != RtosTaskState::Ready)
+				{
+					readyThroughout = false;
+
+					break;
+				}
+			}
+
+			if (!readyThroughout)
+				continue;
+
+			bool somethingAtLeastAsHighRan = false;
+			bool ranWhileBoosted = false;
+
+			for (size_t index = first; index < samples.size(); index++)
+			{
+				for (const RtosTimeline::Entry& entry : samples[index].entries)
+				{
+					if (entry.state != RtosTaskState::Running)
+						continue;
+
+					const RtosTask* runner = findTaskByAddress(snapshot, entry.tcbAddress);
+
+					if (runner == nullptr || !runner->hasPriority)
+						continue;
+
+					if (runner->hasBasePriority && runner->rawPriority > runner->basePriority)
+						ranWhileBoosted = true;
+					else if (runner->rawPriority >= task.rawPriority)
+						somethingAtLeastAsHighRan = true;
+				}
+			}
+
+			if (somethingAtLeastAsHighRan || ranWhileBoosted)
+				continue;
+
+			Finding finding;
+			finding.kind = Kind::ReadyStarvation;
+
+			finding.chain = {describe(task)};
+			finding.tasks = {task.tcbAddress};
+
+			finding.readySeconds = samples.back().atSeconds - samples[first].atSeconds;
+			finding.heldRounds = static_cast<uint32_t>(window);
+
+			findings.push_back(finding);
 		}
 	}
 

@@ -108,7 +108,7 @@ class GuiRtosPanel
 		/* Findings, and only when there are any: a section that says "nothing
 		   is wrong" every round trains the reader to skip the place where the
 		   answer appears. */
-		const std::vector<RtosDiagnostics::Finding> findings = RtosDiagnostics::diagnose(*snapshot);
+		const std::vector<RtosDiagnostics::Finding> findings = RtosDiagnostics::diagnose(*snapshot, model->history());
 
 		if (!findings.empty())
 			drawDiagnostics(findings);
@@ -314,16 +314,30 @@ class GuiRtosPanel
 			ImGui::PushID(&finding);
 
 			const bool deadlock = finding.kind == RtosDiagnostics::Kind::SuspectedDeadlock;
+			const bool starvation = finding.kind == RtosDiagnostics::Kind::ReadyStarvation;
 
-			ImGui::TextColored(deadlock ? ImVec4(0.90f, 0.40f, 0.35f, 1.0f) : ImVec4(0.85f, 0.55f, 0.15f, 1.0f),
-			                   "%s", I18n::tr(deadlock ? "suspected deadlock" : "priority inheritance"));
+			const char* label = deadlock ? "suspected deadlock" : (starvation ? "ready, never switched in" : "priority inheritance");
+
+			ImGui::TextColored(deadlock ? ImVec4(0.90f, 0.40f, 0.35f, 1.0f) : (starvation ? ImVec4(0.85f, 0.35f, 0.60f, 1.0f) : ImVec4(0.85f, 0.55f, 0.15f, 1.0f)),
+			                   "%s", I18n::tr(label));
 
 			if (ImGui::IsItemHovered())
 			{
 				ImGui::BeginTooltip();
-				ImGui::TextUnformatted(I18n::tr(deadlock ? "Two or more tasks are each waiting for a lock the next one holds. A round is a sample: if the ring clears between two of them it leaves no trace, which is why this is suspected rather than proven."
-				                                         : "The task on the right is running above the priority it was created with, which the kernel only does while a higher priority task waits for a lock it holds. The lock is how long it has been held."));
+
+				if (starvation)
+					ImGui::TextUnformatted(I18n::tr("A task higher in priority than the one that ran, ready in every round of the last couple of seconds. A preemptive scheduler cannot do that, except while the running task holds a lock someone above it wants - and that case is not reported here."));
+				else
+					ImGui::TextUnformatted(I18n::tr(deadlock ? "Two or more tasks are each waiting for a lock the next one holds. A round is a sample: if the ring clears between two of them it leaves no trace, which is why this is suspected rather than proven."
+					                                         : "The task on the right is running above the priority it was created with, which the kernel only does while a higher priority task waits for a lock it holds. The lock is how long it has been held."));
+
 				ImGui::EndTooltip();
+			}
+
+			if (starvation)
+			{
+				ImGui::SameLine();
+				ImGui::TextDisabled(I18n::tr("for %.1f s over %u rounds"), finding.readySeconds, finding.heldRounds);
 			}
 
 			for (size_t node = 0; node < finding.chain.size(); node++)

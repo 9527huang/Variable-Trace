@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "RtosSnapshot.hpp"
+#include "RtosTimeline.hpp"
 
 /*
  * What one round says is wrong, in words and in tasks.
@@ -32,6 +33,12 @@ class RtosDiagnostics
 	{
 		PriorityInheritance,
 		SuspectedDeadlock,
+
+		/* A task higher in priority than the one the scheduler was running, and
+		   ready in every round of the window. Not a matter of opinion: with a
+		   preemptive priority scheduler, that cannot happen - except while the
+		   running task is holding a lock someone above it wants. */
+		ReadyStarvation,
 	};
 
 	struct Finding
@@ -46,9 +53,19 @@ class RtosDiagnostics
 		/* The tasks involved, in the same order, for selecting them in the
 		   table. Zero for a name that is not a task. */
 		std::vector<uint32_t> tasks;
+
+		/* For a starvation: how long the task has been ready without being
+		   switched in, and how many rounds were read to say so. */
+		double readySeconds = 0.0;
+		uint32_t heldRounds = 0;
 	};
 
-	static std::vector<Finding> diagnose(const RtosSnapshot& snapshot);
+	/* `history` is the sampled rounds. A starvation is the one finding that
+	   needs more than the round in front of it: one round saying a high
+	   priority task is ready while a lower one runs is a moment, and a moment
+	   is not a fault - a switch may be about to happen. Four rounds of it is a
+	   fault. */
+	static std::vector<Finding> diagnose(const RtosSnapshot& snapshot, const RtosTimeline& history);
 };
 
 #endif

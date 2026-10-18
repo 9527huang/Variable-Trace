@@ -16,18 +16,33 @@ namespace mcp
 	 * goes, with the same task addresses the task list carries so that a caller
 	 * can join the two.
 	 */
-	Json findingsJson(const RtosSnapshot* snapshot)
+	const char* findingKindName(RtosDiagnostics::Kind kind)
+	{
+		switch (kind)
+		{
+			case RtosDiagnostics::Kind::SuspectedDeadlock:
+				return "suspected deadlock";
+			case RtosDiagnostics::Kind::ReadyStarvation:
+				return "ready, never switched in";
+			default:
+				return "priority inheritance";
+		}
+	}
+
+	Json findingsJson(const RtosSnapshot* snapshot, const RtosTimeline& history)
 	{
 		Json findings = Json::array();
 
 		if (snapshot == nullptr)
 			return findings;
 
-		for (const RtosDiagnostics::Finding& finding : RtosDiagnostics::diagnose(*snapshot))
+		for (const RtosDiagnostics::Finding& finding : RtosDiagnostics::diagnose(*snapshot, history))
 		{
-			findings.push_back(Json::object({{"kind", finding.kind == RtosDiagnostics::Kind::SuspectedDeadlock ? "suspected deadlock" : "priority inheritance"},
+			findings.push_back(Json::object({{"kind", findingKindName(finding.kind)},
 			                                 {"chain", finding.chain},
-			                                 {"tasks", finding.tasks}}));
+			                                 {"tasks", finding.tasks},
+			                                 {"ready_seconds", finding.readySeconds},
+			                                 {"held_rounds", finding.heldRounds}}));
 		}
 
 		return findings;
@@ -230,7 +245,7 @@ namespace mcp
 								    and the time of the oldest. A view can draw only what is
 								    here, and a session that has run for hours has dropped the
 								    beginning of itself. */
-								 {"findings", findingsJson(snapshot.get())},
+								 {"findings", findingsJson(snapshot.get(), model->history())},
 								 /* Path B: how many runs the target's switch records have
 								    given, and how many records never crossed. */
 								 {"events",

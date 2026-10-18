@@ -40,6 +40,15 @@ namespace
 		return object;
 	}
 
+	/* The findings of one round, with no history behind it: the three rules that
+	   only need the round itself. */
+	std::vector<RtosDiagnostics::Finding> diagnoseOnly(const RtosSnapshot& snapshot)
+	{
+		RtosTimeline empty(4);
+
+		return RtosDiagnostics::diagnose(snapshot, empty);
+	}
+
 	std::string join(const std::vector<std::string>& parts)
 	{
 		std::string text;
@@ -62,7 +71,7 @@ TEST(RtosDiagnostics, FindsTheLockHeldWhileSomebodyWaits)
 	snapshot.tasks.push_back(makeTask("low", 0x20000200, 3, 1, ""));
 	snapshot.syncObjects.push_back(makeMutex("mtx", 0x20001000, 0x20000200));
 
-	const std::vector<RtosDiagnostics::Finding> findings = RtosDiagnostics::diagnose(snapshot);
+	const std::vector<RtosDiagnostics::Finding> findings = diagnoseOnly(snapshot);
 
 	ASSERT_EQ(findings.size(), 1u);
 	EXPECT_EQ(findings[0].kind, RtosDiagnostics::Kind::PriorityInheritance);
@@ -87,7 +96,7 @@ TEST(RtosDiagnostics, FindsARingOfTwoTasks)
 	snapshot.syncObjects.push_back(makeMutex("m1", 0x20001000, 0x20000100));
 	snapshot.syncObjects.push_back(makeMutex("m2", 0x20002000, 0x20000200));
 
-	const std::vector<RtosDiagnostics::Finding> findings = RtosDiagnostics::diagnose(snapshot);
+	const std::vector<RtosDiagnostics::Finding> findings = diagnoseOnly(snapshot);
 
 	/* One ring, reported once however many tasks are on it. */
 	ASSERT_EQ(findings.size(), 1u);
@@ -105,7 +114,7 @@ TEST(RtosDiagnostics, AOneWayWaitIsNotADeadlock)
 
 	snapshot.syncObjects.push_back(makeMutex("m1", 0x20001000, 0x20000200));
 
-	EXPECT_TRUE(RtosDiagnostics::diagnose(snapshot).empty());
+	EXPECT_TRUE(diagnoseOnly(snapshot).empty());
 }
 
 TEST(RtosDiagnostics, ACleanRoundHasNoFindings)
@@ -114,7 +123,7 @@ TEST(RtosDiagnostics, ACleanRoundHasNoFindings)
 
 	snapshot.tasks.push_back(makeTask("idle", 0x20000100, 0, 0, ""));
 
-	EXPECT_TRUE(RtosDiagnostics::diagnose(snapshot).empty());
+	EXPECT_TRUE(diagnoseOnly(snapshot).empty());
 }
 
 TEST(RtosDiagnostics, AWaitOnSomethingTheRoundDidNotSeeEndsTheWalk)
@@ -125,5 +134,107 @@ TEST(RtosDiagnostics, AWaitOnSomethingTheRoundDidNotSeeEndsTheWalk)
 	   claimed about it: a guess here would be a deadlock that is not there. */
 	snapshot.tasks.push_back(makeTask("waiter", 0x20000100, 2, 2, "missing"));
 
-	EXPECT_TRUE(RtosDiagnostics::diagnose(snapshot).empty());
+	EXPECT_TRUE(diagnoseOnly(snapshot).empty());
+}
+
+namespace
+{
+	/* One round: a waiter that is ready (or not), and a runner at a priority. */
+	RtosSnapshot starvationRound(bool withWaiter, RtosTaskState waiterState, uint32_t runnerRaw, uint32_t runnerBase)
+	{
+		RtosSnapshot snapshot;
+
+		if (withWaiter)
+		{
+			RtosTask waiter = makeTask("waiter", 0x20000100, 2, 2, "");
+
+			waiter.state = waiterState;
+			snapshot.tasks.push_back(waiter);
+		}
+
+		RtosTask runner = makeTask("runner", 0x20000200, runnerRaw, runnerBase, "");
+
+		runner.state = RtosTaskState::Running;
+		snapshot.tasks.push_back(runner);
+
+		return snapshot;
+	}
+
+	void fillRounds(RtosTimeline& timeline, int rounds, bool withWaiter, RtosTaskState waiterState, uint32_t runnerRaw, uint32_t runnerBase)
+	{
+		for (int round = 0; round < rounds; round++)
+			timeline.add(starvationRound(withWaiter, waiterState, runnerRaw, runnerBase));
+	}
+}  // namespace
+
+TEST(RtosDiagnostics, AReadyTaskAboveTheRunnerIsStarving)
+{
+	RtosTimeline timeline(64);
+	fillRounds(timeline, 5, true, RtosTaskState::Ready, 1, 1);
+
+	const std::vector<RtosDiagnostics::Finding> findings =
+	    RtosDiagnostics::diagnose(starvationRound(true, RtosTaskState::Ready, 1, 1), timeline);
+
+	ASSERT_EQ(findings.size(), 1u);
+	EXPECT_EQ(findings[0].kind, RtosDiagnostics::Kind::ReadyStarvation);
+	ASSERT_EQ(findings[0].tasks.size(), 1u);
+	EXPECT_EQ(findings[0].tasks[0], 0x20000100u);
+	EXPECT_EQ(findings[0].heldRounds, 4u);
+}
+
+TEST(RtosDiagnostics, AHigherPriorityRunnerIsNotStarvation)
+{
+	RtosTimeline timeline(64);
+	fillRounds(timeline, 5, true, RtosTaskState::Ready, 3, 3);
+
+	/* The scheduler is running something above the waiter, which is what it is
+	   supposed to do. */
+	EXPECT_TRUE(RtosDiagnostics::diagnose(starvationRound(true, RtosTaskState::Ready, 3, 3), timeline).empty());
+}
+
+TEST(RtosDiagnostics, ARunnerHoldingALockIsNotStarvation)
+{
+	RtosTimeline timeline(64);
+
+	/* Boosted: it was created at 1 and is running at 3 because someone above it
+	   is waiting for a lock it holds. That is the kernel working. */
+	fillRounds(timeline, 5, true, RtosTaskState::Ready, 3, 1);
+
+	EXPECT_TRUE(RtosDiagnostics::diagnose(starvationRound(true, RtosTaskState::Ready, 3, 1), timeline).empty());
+}
+
+TEST(RtosDiagnostics, ThreeRoundsSayNothing)
+{
+	RtosTimeline timeline(64);
+	fillRounds(timeline, 3, true, RtosTaskState::Ready, 1, 1);
+
+	/* A moment is not a fault: the switch may be about to happen. */
+	EXPECT_TRUE(RtosDiagnostics::diagnose(starvationRound(true, RtosTaskState::Ready, 1, 1), timeline).empty());
+}
+
+TEST(RtosDiagnostics, ATaskThatRanInTheMiddleIsNotStarving)
+{
+	RtosTimeline timeline(64);
+
+	timeline.add(starvationRound(true, RtosTaskState::Ready, 1, 1));
+	timeline.add(starvationRound(true, RtosTaskState::Ready, 1, 1));
+	timeline.add(starvationRound(true, RtosTaskState::Running, 1, 1));
+	timeline.add(starvationRound(true, RtosTaskState::Ready, 1, 1));
+	timeline.add(starvationRound(true, RtosTaskState::Ready, 1, 1));
+
+	EXPECT_TRUE(RtosDiagnostics::diagnose(starvationRound(true, RtosTaskState::Ready, 1, 1), timeline).empty());
+}
+
+TEST(RtosDiagnostics, ARoundWithoutTheTaskEndsTheWindow)
+{
+	RtosTimeline timeline(64);
+
+	timeline.add(starvationRound(true, RtosTaskState::Ready, 1, 1));
+	timeline.add(starvationRound(true, RtosTaskState::Ready, 1, 1));
+	timeline.add(starvationRound(false, RtosTaskState::Ready, 1, 1));
+	timeline.add(starvationRound(true, RtosTaskState::Ready, 1, 1));
+	timeline.add(starvationRound(true, RtosTaskState::Ready, 1, 1));
+
+	/* A round that did not carry the task says nothing either way. */
+	EXPECT_TRUE(RtosDiagnostics::diagnose(starvationRound(true, RtosTaskState::Ready, 1, 1), timeline).empty());
 }
