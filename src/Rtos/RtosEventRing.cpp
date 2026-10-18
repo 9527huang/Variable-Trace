@@ -9,6 +9,14 @@ RtosEventRing::Window RtosEventRing::windowFor(uint32_t head, uint32_t read, uin
 	if (capacity == 0)
 		return window;
 
+	/* The reader is ahead of the writer: the target began again. */
+	if (read > head)
+	{
+		window.restarted = true;
+
+		read = 0;
+	}
+
 	/* Nothing before this survived the ring. */
 	const uint32_t oldestHeld = head > capacity ? head - capacity : 0u;
 

@@ -405,6 +405,8 @@ bool ViewerDataHandler::prepareRtos()
 	 * linker keeps the capacity that only the host reads.
 	 */
 	rtosEventRingAddress = 0;
+	resetEventSources();
+
 	rtosEventsRead = 0;
 
 	if (const auto ring = symbols.find("vtrace_events"); ring != symbols.end())
@@ -648,6 +650,30 @@ bool ViewerDataHandler::rtosRoundIsDue(double now, std::chrono::steady_clock::ti
 }
 
 /*
+ * Everything the event sources remember.
+ *
+ * A target that was reset has a new run: its ring starts again from zero, its
+ * clocks start again from zero, and a connection that was lost does not come
+ * back. Keeping any of it means the events stop arriving and never start
+ * again - which looks exactly like the task view dying.
+ */
+void ViewerDataHandler::resetEventSources()
+{
+	rttActive = false;
+	rttAnchorSeconds = 0.0;
+
+	swoActive = false;
+	swoStarted = false;
+	swoUnavailable = false;
+	swoProbe.reset();
+	swoAnchorSeconds = 0.0;
+
+	itmDecoder.clear();
+
+	rtosEventsRead = 0;
+}
+
+/*
  * One batch of switch records.
  *
  * The ring is one object on the target: a monotonic head, its capacity, and the
@@ -732,7 +758,7 @@ void ViewerDataHandler::pollEventStream(double nowSeconds)
  */
 void ViewerDataHandler::pollSwoStream(double nowSeconds)
 {
-	if (swoActive)
+	if (swoActive || swoUnavailable)
 		return;
 
 	if (swoCoreFrequency == 0)
@@ -790,6 +816,11 @@ void ViewerDataHandler::pollSwoStream(double nowSeconds)
 
 				said = true;
 			}
+
+			/* Not every tick: each attempt opens a connection, and a probe that
+			   is in use refuses it the same way every time. The next preparation
+			   clears this. */
+			swoUnavailable = true;
 
 			return;
 		}
@@ -892,6 +923,14 @@ void ViewerDataHandler::readEventRing(RtosProbeMemory& memory, double nowSeconds
 		return;
 
 	const RtosEventRing::Window window = RtosEventRing::windowFor(head, rtosEventsRead, capacity, rtosEventsPerRound);
+
+	/* The target began again, and so does everything that remembered it. */
+	if (window.restarted)
+	{
+		logger->info("The target restarted: the switch records begin again, and so do their clocks.");
+
+		resetEventSources();
+	}
 
 	/* The first read is not a reader that fell behind: what was in the ring
 	   before it started is history, not loss. */

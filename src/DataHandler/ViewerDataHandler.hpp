@@ -372,6 +372,12 @@ class ViewerDataHandler : public DataHandlerBase
 	   history. The anchor rule is the same for every stream and for the ring. */
 	void appendStreamRecords(const std::vector<RtosEventRing::Record>& batch, double nowSeconds, uint32_t& anchorUs, double& anchorSeconds);
 
+	/* Everything the event sources remember about a target and a connection.
+	   Called when either may have changed underneath: a target reset starts its
+	   ring from zero, and a connection that was lost does not come back with the
+	   state it had. */
+	void resetEventSources();
+
    private:
 	static constexpr size_t maxVariablesOnSinglePlot = 100;
 	std::shared_ptr<IDebugProbe> debugProbe;
@@ -467,6 +473,10 @@ class ViewerDataHandler : public DataHandlerBase
 	ITraceProbe::TraceProbeSettings swoProbeSettings{};
 	bool swoStarted = false;
 	bool swoActive = false;
+
+	/* A start that failed is not retried every tick: each attempt opens a
+	   connection, and a probe that is already in use will refuse it every time. */
+	bool swoUnavailable = false;
 	uint32_t swoCoreFrequency = 0;
 	uint32_t swoTracePrescaler = 0;
 	uint32_t swoAnchorUs = 0;

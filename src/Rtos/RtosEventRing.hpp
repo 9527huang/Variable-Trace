@@ -57,6 +57,17 @@ class RtosEventRing
 		uint32_t first = 0;
 		uint32_t count = 0;
 		uint32_t lost = 0;
+
+		/*
+		 * Set when the reader's place was ahead of the writer's counter, which
+		 * cannot happen unless the target started again: its ring begins at
+		 * zero, and a reader that kept its place would wait for a head it has
+		 * already passed - for ever, because what it reads is everything after
+		 * its place and there is nothing after it. When this is set the reader
+		 * has been put back to the beginning and the caller should treat the
+		 * target as new: its clocks start again too.
+		 */
+		bool restarted = false;
 	};
 
 	static Window windowFor(uint32_t head, uint32_t read, uint32_t capacity, uint32_t budget);

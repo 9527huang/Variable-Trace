@@ -116,3 +116,24 @@ TEST(RtosEventRing, ABatchThatEndsBeforeItStartedLeavesTheLastRunOpen)
 
 	EXPECT_TRUE(intervals.empty());
 }
+
+TEST(RtosEventRing, AReaderAheadOfTheWriterHasMetARestartedTarget)
+{
+	/* The reader had got to 5000; the target's counter is at 100. That cannot
+	   happen unless the target began again, and a reader that kept its place
+	   would wait for ever for a head it had already passed. */
+	const RtosEventRing::Window window = RtosEventRing::windowFor(100, 5000, 512, 192);
+
+	EXPECT_TRUE(window.restarted);
+	EXPECT_EQ(window.first, 0u);
+	EXPECT_EQ(window.count, 100u);
+}
+
+TEST(RtosEventRing, ACaughtUpReaderIsNotARestart)
+{
+	/* Equal is the ordinary "nothing new" case, not a restart. */
+	const RtosEventRing::Window window = RtosEventRing::windowFor(100, 100, 512, 192);
+
+	EXPECT_FALSE(window.restarted);
+	EXPECT_EQ(window.count, 0u);
+}
