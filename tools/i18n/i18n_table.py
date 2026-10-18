@@ -695,6 +695,7 @@ EXTRA = {
     # The CPU column. The numbers are a share of what the tasks used, not of
     # the wall clock, so the tooltip says what the whole is.
     "CPU": "CPU 占用",
+    "Task share": "任务时间占比",
     "The target was not built with run time statistics (configGENERATE_RUN_TIME_STATS), so how much of the time each task used cannot be worked out.": "目标没有启用运行时间统计(configGENERATE_RUN_TIME_STATS),因此算不出每个任务占用了多少时间。",
     "The run time counter did not move over the last window, so the shares cannot be worked out. The timer behind it is probably not running.": "运行时间计数器在上一个窗口里没有变化,因此算不出占比。它背后的定时器很可能没有运行。",
     "Share of the time the kernel counted across all tasks over the last %.2f s.": "在所有任务被计到的时间里的占比,窗口为最近 %.2f 秒。",

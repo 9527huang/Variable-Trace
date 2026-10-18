@@ -347,6 +347,7 @@ static const Entry table[] = {
 	{"Target name is empty, the J-Link cannot connect. Enter the device name, e.g. STM32F103C8.", "目标名称为空，J-Link 无法连接。请输入器件名称，例如 STM32F103C8。"},
 	{"Target name:", "目标名称:"},
 	{"Task Viewer", "任务查看器"},
+	{"Task share", "任务时间占比"},
 	{"Test flash", "测试烧录"},
 	{"Test output:", "测试输出:"},
 	{"The *.png extension is added when it is missing.", "缺少 *.png 扩展名时会自动补上。"},

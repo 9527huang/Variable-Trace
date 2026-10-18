@@ -319,3 +319,21 @@ TEST(RtosDiagnostics, ABoostedWaiterIsJudgedByThePriorityItWasCreatedWith)
 
 	EXPECT_TRUE(RtosDiagnostics::diagnose(snapshot, timeline).empty());
 }
+
+TEST(RtosDiagnostics, AWindowWhereNothingRanReportsNoStarvation)
+{
+	RtosSnapshot snapshot;
+	RtosTask waiter = makeTask("waiter", 0x20000100, 2, 2, "");
+
+	waiter.state = RtosTaskState::Ready;
+	snapshot.tasks.push_back(waiter);
+
+	/* No task is running at all - an idle round, or a target that was paused.
+	   With nothing to compare against, a ready task is not being passed over. */
+	RtosTimeline timeline(16);
+
+	for (int round = 0; round < 5; round++)
+		timeline.add(snapshot);
+
+	EXPECT_TRUE(RtosDiagnostics::diagnose(snapshot, timeline).empty());
+}

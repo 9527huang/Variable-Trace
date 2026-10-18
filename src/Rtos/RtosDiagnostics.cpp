@@ -269,6 +269,13 @@ std::vector<RtosDiagnostics::Finding> RtosDiagnostics::diagnose(const RtosSnapsh
 			bool somethingAtLeastAsHighRan = false;
 			bool ranWhileBoosted = false;
 
+			/* Whether anything at all was running in the window. A round that
+			   caught the target idle has no runner, and with nothing to compare
+			   against every ready task looks passed over - which is what a whole
+			   column of findings was, the first time this ran on a target whose
+			   idle task was ready rather than running. */
+			bool sawARunner = false;
+
 			for (size_t index = first; index < samples.size(); index++)
 			{
 				for (const RtosTimeline::Entry& entry : samples[index].entries)
@@ -281,6 +288,8 @@ std::vector<RtosDiagnostics::Finding> RtosDiagnostics::diagnose(const RtosSnapsh
 					if (runner == nullptr || !runner->hasPriority)
 						continue;
 
+					sawARunner = true;
+
 					if (runner->hasBasePriority && runner->rawPriority > runner->basePriority)
 						ranWhileBoosted = true;
 					else if (runner->rawPriority >= priority)
@@ -288,7 +297,7 @@ std::vector<RtosDiagnostics::Finding> RtosDiagnostics::diagnose(const RtosSnapsh
 				}
 			}
 
-			if (somethingAtLeastAsHighRan || ranWhileBoosted)
+			if (!sawARunner || somethingAtLeastAsHighRan || ranWhileBoosted)
 				continue;
 
 			Finding finding;

@@ -613,7 +613,8 @@ class GuiRtosPanel
 	{
 		const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(*snapshot, query);
 
-		const ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY;
+		const ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY |
+		                              ImGuiTableFlags_ScrollX | ImGuiTableFlags_ContextMenuInBody;
 
 		/*
 		 * The table is given a height rather than the whole window.
@@ -624,7 +625,19 @@ class GuiRtosPanel
 		 * what is available at this point, so the two tables between them fill
 		 * the view whatever its size.
 		 */
-		const ImVec2 size(0.0f, ImGui::GetContentRegionAvail().y * 0.45f);
+		/*
+		 * The table is as tall as what is in it, within reason.
+		 *
+		 * A fixed share of the window left rows of empty table under a dozen
+		 * tasks and squeezed what came after it. The height comes from the rows
+		 * instead: six minimum, so a short list does not look like a table that
+		 * failed to load; twenty maximum, so a long one scrolls inside itself.
+		 */
+		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		const size_t visibleRows = std::clamp<size_t>(rows.size(), 6, 20);
+		const float wantedHeight = ImGui::GetFrameHeight() + rowHeight * static_cast<float>(visibleRows) + ImGui::GetStyle().CellPadding.y * 2.0f;
+
+		const ImVec2 size(0.0f, std::min(wantedHeight, ImGui::GetContentRegionAvail().y * 0.9f));
 
 		if (!ImGui::BeginTable("rtosTasks", 8, flags, size))
 			return;
@@ -641,14 +654,23 @@ class GuiRtosPanel
 		 * With assertions on, that is an `abort` - the window hangs on the
 		 * dialog for a moment and then the process is gone.
 		 */
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Name));
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Address));
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Priority));
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::State));
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackSize));
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackWatermark));
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::CpuLoad));
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::WaitingOn));
+		/*
+		 * Widths by what the column holds, not evenly across the eight.
+		 *
+		 * The address is the widest fixed thing in the table and the one least
+		 * needed at a glance, so it starts hidden - the right click menu brings
+		 * it back. The columns between Name and Waiting object are short numbers
+		 * or short words and get a width that fits them; the two names take what
+		 * is left, because they are the two that were being cut.
+		 */
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Name), ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Address), ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultHide, 95.0f);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Priority), ImGuiTableColumnFlags_WidthFixed, 70.0f);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::State), ImGuiTableColumnFlags_WidthFixed, 75.0f);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackSize), ImGuiTableColumnFlags_WidthFixed, 65.0f);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackWatermark), ImGuiTableColumnFlags_WidthFixed, 130.0f);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::CpuLoad), ImGuiTableColumnFlags_WidthFixed, 70.0f);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::WaitingOn), ImGuiTableColumnFlags_WidthStretch, 1.0f);
 
 			drawHeaderRow(snapshot);
 
@@ -792,7 +814,10 @@ class GuiRtosPanel
 
 
 			case RtosTaskColumn::CpuLoad:
-				return I18n::tr("CPU");
+				/* Not "CPU": this is the share of the measured time this task used,
+				   not the machine's utilisation. The column name has to say so
+				   without a tooltip. */
+				return I18n::tr("Task share");
 
 			case RtosTaskColumn::WaitingOn:
 				return I18n::tr("Waiting on");
@@ -874,7 +899,8 @@ class GuiRtosPanel
 			return;
 		}
 
-		const ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY;
+		const ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY |
+		                              ImGuiTableFlags_ScrollX | ImGuiTableFlags_ContextMenuInBody;
 
 		if (!ImGui::BeginTable("rtosSyncObjects", 6, flags))
 			return;
