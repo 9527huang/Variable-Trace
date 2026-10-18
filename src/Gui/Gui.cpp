@@ -579,6 +579,18 @@ void Gui::drawMenu()
 		ImGui::MenuItem(I18n::tr("Flash Output"), NULL, &showFlashOutputWindow, true);
 		ImGui::MenuItem(I18n::tr("Write Planner"), NULL, &showWritePlannerWindow, active);
 		ImGui::MenuItem(I18n::tr("Preferences"), NULL, &showPreferencesWindow, active);
+		ImGui::Separator();
+
+		if (ImGui::MenuItem(I18n::tr("Reset layout")))
+			resetLayout();
+
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			ImGui::TextUnformatted(I18n::tr("Puts the windows, the docking and the table columns back the way a first run has them. Sizes and column choices are remembered per window, so a new layout would otherwise never reach an installation that has been started before."));
+			ImGui::EndTooltip();
+		}
+
 		ImGui::EndMenu();
 	}
 	if (ImGui::BeginMenu(I18n::tr("Help")))
@@ -1316,6 +1328,27 @@ void Gui::applyTheme()
  * for a name rather than for the file: a language that has been used before
  * gets its own arrangement back, untouched.
  */
+/*
+ * Back to the layout a first run has.
+ *
+ * Window geometry, docking and every table's column widths and visibility live
+ * in the ini settings, which are loaded at start and written at exit. Changing a
+ * layout in the code therefore reaches only installations that have never been
+ * started - so there has to be a way to ask for the first-run layout on purpose.
+ *
+ * Loading an empty ini is the whole of it: the settings are gone from memory,
+ * and asking the dock builder again gives back the arrangement the code
+ * describes. What is written at exit is then a fresh file.
+ */
+void Gui::resetLayout()
+{
+	ImGui::LoadIniSettingsFromMemory("", 0);
+
+	dockLayoutChecked = false;
+
+	logger->info("Interface layout reset: docking, window sizes and table columns go back to their defaults.");
+}
+
 void Gui::ensureDockLayout(ImGuiID dockspaceId)
 {
 	if (dockLayoutChecked)

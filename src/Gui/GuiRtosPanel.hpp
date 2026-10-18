@@ -639,7 +639,15 @@ class GuiRtosPanel
 
 		const ImVec2 size(0.0f, std::min(wantedHeight, ImGui::GetContentRegionAvail().y * 0.9f));
 
-		if (!ImGui::BeginTable("rtosTasks", 8, flags, size))
+		/*
+		 * The name carries a version. ImGui stores a table's column widths and
+		 * which columns are shown under its name in imgui.ini, so a table that
+		 * is given better widths under the old name keeps the old ones - for
+		 * every user who has run the program before. Changing the name is what
+		 * makes a column layout take effect on an existing installation, and
+		 * bumping it is what a later layout change should do.
+		 */
+		if (!ImGui::BeginTable("rtosTasks-v2", 8, flags, size))
 			return;
 
 		ImGui::TableSetupScrollFreeze(0, 1);
@@ -902,7 +910,7 @@ class GuiRtosPanel
 		const ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY |
 		                              ImGuiTableFlags_ScrollX | ImGuiTableFlags_ContextMenuInBody;
 
-		if (!ImGui::BeginTable("rtosSyncObjects", 6, flags))
+		if (!ImGui::BeginTable("rtosSyncObjects-v2", 6, flags))
 			return;
 
 		ImGui::TableSetupScrollFreeze(0, 1);

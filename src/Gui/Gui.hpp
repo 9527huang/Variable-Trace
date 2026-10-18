@@ -335,6 +335,9 @@ class Gui
 	   not have to carry imgui.h. */
 	void ensureDockLayout(unsigned int dockspaceId);
 
+	/* Forgets every saved layout setting and asks for the default one again. */
+	void resetLayout();
+
 	/* Builds the font atlas for the language in force. Called once before the
 	   first frame. */
 	void setupFonts();
