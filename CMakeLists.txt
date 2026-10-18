@@ -212,6 +212,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosCpuLoad.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosDiagnostics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosEventRing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosEventHistory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosTimeline.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer/CSVStreamer.cpp

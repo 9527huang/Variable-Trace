@@ -3,8 +3,17 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#if __has_include("core_cm3.h")
-#include "core_cm3.h"
+#if VTRACE_TRANSPORT == VTRACE_TRANSPORT_ITM
+/*
+ * The ITM's registers, at the addresses the architecture fixes.
+ *
+ * Written out rather than taken from a device header: this file has to compile
+ * in a project that may not include one, and these three addresses are the same
+ * on every Cortex-M with an ITM.
+ */
+#define VTRACE_ITM_TER (*(volatile uint32_t*)0xE0000E00u)
+#define VTRACE_ITM_TCR (*(volatile uint32_t*)0xE0000E80u)
+#define VTRACE_ITM_LAR (*(volatile uint32_t*)0xE0000FB0u)
 #endif
 volatile vtrace_event_ring_t vtrace_events;
 
@@ -96,7 +105,7 @@ static void vtrace_publish(const volatile vtrace_event_t* source)
 
 	up->writeOffset = write;
 #else
-	(void)record;
+	(void)source;
 #endif
 }
 
@@ -118,6 +127,23 @@ void vtrace_event_switch(uint32_t tcb)
 	 */
 	if (vtrace_events.capacity != VTRACE_EVENT_CAPACITY)
 		vtrace_events.capacity = VTRACE_EVENT_CAPACITY;
+
+#if VTRACE_TRANSPORT == VTRACE_TRANSPORT_ITM
+	/*
+	 * The stimulus port has to be switched on by the firmware.
+	 *
+	 * The ITM belongs to the target, not to the probe: a debugger can enable it
+	 * over the debug port, but nothing here may assume that has happened, and a
+	 * port that is off swallows every byte written to it without saying so.
+	 * Once, on the first switch; after that this is a read and a compare.
+	 */
+	if ((VTRACE_ITM_TER & (1u << VTRACE_ITM_PORT)) == 0u)
+	{
+		VTRACE_ITM_LAR = 0xC5ACCE55u;                  /* unlock the trace registers */
+		VTRACE_ITM_TER |= (1u << VTRACE_ITM_PORT);     /* this port's stimulus */
+		VTRACE_ITM_TCR |= 1u;                          /* and the ITM itself */
+	}
+#endif
 
 	const uint32_t index = vtrace_events.head & (VTRACE_EVENT_CAPACITY - 1u);
 	const uint32_t now = vtrace_now_us();
