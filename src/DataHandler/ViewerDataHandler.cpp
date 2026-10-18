@@ -2,6 +2,7 @@
 
 #include "GdbRtosLayout.hpp"
 #include "RtosFactory.hpp"
+#include "RtosItmDecoder.hpp"
 #include "RtosProbeMemory.hpp"
 
 #include <memory>
@@ -719,27 +720,94 @@ void ViewerDataHandler::pollEventStream(double nowSeconds)
 
 	rttCarry.erase(rttCarry.begin(), rttCarry.begin() + static_cast<long>(whole * sizeof(RtosEventRing::Record)));
 
-	/* The same anchor rule the ring path uses, and for the same reason. */
-	if (rttAnchorSeconds == 0.0)
+	appendStreamRecords(batch, nowSeconds, rttAnchorUs, rttAnchorSeconds);
+}
+
+/*
+ * The trace hardware, when the target's records travel over SWO.
+ *
+ * The decoder does the framing; this only has to hand it the bytes and take the
+ * records that come out. It is the same shape as the RTT path above, and the
+ * same rule applies: nothing takes over until it has handed over a record.
+ */
+void ViewerDataHandler::pollSwoStream(double nowSeconds)
+{
+	if (swoActive)
+		return;
+
+	if (swoCoreFrequency == 0)
 	{
-		rttAnchorUs = batch.front().timeUs;
-		rttAnchorSeconds = nowSeconds - static_cast<double>(static_cast<uint32_t>(batch.back().timeUs - rttAnchorUs)) / 1000000.0;
+		/* Asked for but not configured: one line, not one per tick. */
+		static bool said = false;
+
+		if (!said)
+		{
+			logger->warn("SWO was asked for as the carrier, but the trace clock was never handed over.");
+
+			said = true;
+		}
+
+		return;
+	}
+
+	if (!debugProbe->startSwo(swoCoreFrequency, swoTraceFrequency, 1u << RtosItmDecoder::recordPort))
+		return;
+
+	std::array<uint8_t, 4096> buffer{};
+	const uint32_t bytes = debugProbe->readSwo(buffer.data(), static_cast<uint32_t>(buffer.size()));
+
+	if (bytes == 0)
+		return;
+
+	itmDecoder.feed(buffer.data(), bytes);
+
+	const std::vector<RtosEventRing::Record> batch = itmDecoder.take();
+
+	if (batch.empty())
+		return;
+
+	/* The stream has handed over a record: from here it is the source, and the
+	   ring is left alone so the same records do not arrive twice. */
+	swoActive = true;
+
+	appendStreamRecords(batch, nowSeconds, swoAnchorUs, swoAnchorSeconds);
+}
+
+/*
+ * A batch from a stream, put on the host's clock.
+ *
+ * The anchor is the oldest record of the batch against the host's now minus the
+ * batch's own span: every record in a batch is at or after its first, so the
+ * unsigned difference between them is a small step forward and never seventy-one
+ * minutes of it. Drift between the two crystals is corrected by a tenth of the
+ * error each batch; a jump too large to be drift is a new session.
+ */
+void ViewerDataHandler::appendStreamRecords(const std::vector<RtosEventRing::Record>& batch, double nowSeconds, uint32_t& anchorUs,
+                                            double& anchorSeconds)
+{
+	if (batch.empty() || rtosModel == nullptr)
+		return;
+
+	if (anchorSeconds == 0.0)
+	{
+		anchorUs = batch.front().timeUs;
+		anchorSeconds = nowSeconds - static_cast<double>(static_cast<uint32_t>(batch.back().timeUs - anchorUs)) / 1000000.0;
 	}
 	else
 	{
-		const double targetElapsed = static_cast<double>(static_cast<uint32_t>(batch.back().timeUs - rttAnchorUs)) / 1000000.0;
-		const double error = (nowSeconds - rttAnchorSeconds) - targetElapsed;
+		const double targetElapsed = static_cast<double>(static_cast<uint32_t>(batch.back().timeUs - anchorUs)) / 1000000.0;
+		const double error = (nowSeconds - anchorSeconds) - targetElapsed;
 
 		if (std::abs(error) < 5.0)
-			rttAnchorSeconds += error * 0.1;
+			anchorSeconds += error * 0.1;
 		else
 		{
-			rttAnchorUs = batch.front().timeUs;
-			rttAnchorSeconds = nowSeconds;
+			anchorUs = batch.front().timeUs;
+			anchorSeconds = nowSeconds;
 		}
 	}
 
-	rtosModel->appendEventIntervals(RtosEventRing::intervalsFrom(batch, rttAnchorUs, rttAnchorSeconds, nowSeconds), rtosEventsKeepSeconds);
+	rtosModel->appendEventIntervals(RtosEventRing::intervalsFrom(batch, anchorUs, anchorSeconds, nowSeconds), rtosEventsKeepSeconds);
 }
 
 
@@ -879,7 +947,7 @@ void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start
 	   draining it on the sampling tick, and reading the ring as well would put
 	   every record in twice - and would keep reporting the ring's own losses,
 	   which the stream has none of. */
-	if (!rttActive)
+	if (!rttActive && !swoActive)
 		readEventRing(memory, startedAt);
 
 	RtosSampler::Round round = rtosSampler->collect(memory, rtosSessionId, rtosSettings);
@@ -1196,9 +1264,10 @@ void ViewerDataHandler::dataHandler()
 						metricsModelUpdateNs.fetch_add(nanosecondsBetween(modelUpdateBegan, std::chrono::steady_clock::now()), std::memory_order_relaxed);
 						metricsCompletedSamples.fetch_add(1, std::memory_order_relaxed);
 
-						/* Path B's stream, drained here because this is the
-						   tick that runs often enough for it. */
+						/* Path B's streams, drained here because this is the
+						   tick that runs often enough for them. */
 						pollEventStream(timestamp);
+						pollSwoStream(timestamp);
 					}
 					else
 						metricsFailedSamples.fetch_add(1, std::memory_order_relaxed);

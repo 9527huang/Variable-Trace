@@ -111,6 +111,8 @@ bool GlobalConfig::load()
 		settings.rtosEnabled = rtos.value("enabled", settings.rtosEnabled);
 		settings.rtosStackAlertFreePercent = rtos.value("stackAlertFreePercent", settings.rtosStackAlertFreePercent);
 
+		settings.rtosEventsTransport = rtos.value("eventsTransport", settings.rtosEventsTransport);
+
 		if (rtos.contains("view") && rtos.at("view").is_object())
 		{
 			const auto& view = rtos.at("view");
@@ -183,6 +185,7 @@ bool GlobalConfig::save()
 	root["interface"] = {{"fontScale", settings.fontScale}, {"theme", settings.theme}, {"language", settings.language}};
 	root["rtos"] = {{"enabled", settings.rtosEnabled},
 	                {"stackAlertFreePercent", settings.rtosStackAlertFreePercent},
+	                {"eventsTransport", settings.rtosEventsTransport},
 	                {"view",
 	                 {{"sortColumn", settings.rtosView.sortColumn},
 	                  {"sortDescending", settings.rtosView.sortDescending},

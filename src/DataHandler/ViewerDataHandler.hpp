@@ -18,6 +18,7 @@
 
 #include "RtosModel.hpp"
 #include "RtosCpuLoad.hpp"
+#include "RtosItmDecoder.hpp"
 #include "RtosSampler.hpp"
 #include "RtosStackSweep.hpp"
 #include "MovingAverage.hpp"
@@ -259,6 +260,14 @@ class ViewerDataHandler : public DataHandlerBase
 	Settings getSettings() const;
 	void setSettings(const Settings& newSettings);
 
+	/* The clock SWO runs from. Taken from the project's trace settings, since
+	   the trace view and this share one trace unit. */
+	void setSwoClock(uint32_t coreFrequency, uint32_t prescaler)
+	{
+		swoCoreFrequency = coreFrequency;
+		swoTraceFrequency = coreFrequency / (prescaler + 1);
+	}
+
 	double getAverageSamplingFrequency() const
 	{
 		if (averageSamplingPeriod > 0.0)
@@ -335,11 +344,17 @@ class ViewerDataHandler : public DataHandlerBase
 	/* One batch of switch records, when the target keeps them. */
 	void readEventRing(RtosProbeMemory& memory, double nowSeconds);
 
-	/* The stream the probe pushes, when the target keeps an RTT buffer. Read on
-	   the sampling tick rather than on the task view's own: a stream has to be
-	   drained at the rate it is written, and the task view's round is far too
-	   slow for that. */
+	/* The streams, read on the sampling tick rather than on the task view's own:
+	   a stream has to be drained at the rate it is written, and the task view's
+	   round is far too slow for that. Both are tried; whichever hands over
+	   records first becomes the source. */
 	void pollEventStream(double nowSeconds);
+
+	void pollSwoStream(double nowSeconds);
+
+	/* A batch of records from a stream, put on the host's clock and given to the
+	   history. The anchor rule is the same for every stream and for the ring. */
+	void appendStreamRecords(const std::vector<RtosEventRing::Record>& batch, double nowSeconds, uint32_t& anchorUs, double& anchorSeconds);
 
    private:
 	static constexpr size_t maxVariablesOnSinglePlot = 100;
@@ -424,6 +439,16 @@ class ViewerDataHandler : public DataHandlerBase
 	/* The same anchor the ring path keeps, for the same reason. */
 	uint32_t rttAnchorUs = 0;
 	double rttAnchorSeconds = 0.0;
+
+	/* The trace hardware. Its clock comes from the project's trace settings,
+	   because SWO runs from the same clock the trace view would use. */
+	bool swoActive = false;
+	uint32_t swoCoreFrequency = 0;
+	uint32_t swoTraceFrequency = 0;
+	uint32_t swoAnchorUs = 0;
+	double swoAnchorSeconds = 0.0;
+
+	RtosItmDecoder itmDecoder;
 
 	static constexpr uint32_t rtosEventsPerRound = 192;
 	static constexpr double rtosEventsKeepSeconds = 600.0;

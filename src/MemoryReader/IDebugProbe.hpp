@@ -173,6 +173,30 @@ class IDebugProbe
 		return 0;
 	}
 
+	/*
+	 * The trace hardware, for a target whose records travel over SWO.
+	 *
+	 * This is the carrier that costs a wire and a trace clock, and buys an
+	 * ordered stream with no ring to wrap. A probe without a trace unit refuses
+	 * and the caller falls back to the ring.
+	 */
+	virtual bool startSwo(uint32_t coreFrequency, uint32_t traceFrequency, uint32_t stimulusMask)
+	{
+		(void)coreFrequency;
+		(void)traceFrequency;
+		(void)stimulusMask;
+
+		return false;
+	}
+
+	virtual uint32_t readSwo(uint8_t* buffer, uint32_t size)
+	{
+		(void)buffer;
+		(void)size;
+
+		return 0;
+	}
+
 	virtual std::vector<std::string> getConnectedDevices() = 0;
 
    protected:

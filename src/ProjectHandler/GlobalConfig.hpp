@@ -84,6 +84,12 @@ class GlobalConfig
 		   about the project being debugged. */
 		RtosViewSettings rtosView{};
 
+		/* Which carrier the target's switch records arrive on: the ring in its
+		   memory, or the trace unit. "ring" unless someone asks for the other,
+		   because asking for SWO means writing the target's trace registers -
+		   not something to do to a board that was never wired for it. */
+		std::string rtosEventsTransport = "ring";
+
 		/* Flashing. The programmer and the arguments it needs belong to the
 		   machine rather than to the project being debugged, so the command
 		   template lives here and not in the project file. */

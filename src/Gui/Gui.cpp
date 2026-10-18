@@ -380,6 +380,23 @@ void Gui::mainThread(std::string externalPath)
 			 * timestamps from the sampling loop's start - so a time means the
 			 * same thing in either.
 			 */
+			/*
+			 * The trace clock, for the carrier that needs one.
+			 *
+			 * SWO runs from the same clock the trace view would program, so the
+			 * trace view's settings are the ones to use. Handed over here rather
+			 * than at the settings dialog, which only runs while that dialog is
+			 * open.
+			 */
+			if (globalConfig->getSettings().rtosEventsTransport == "swo")
+			{
+				const TraceDataHandler::Settings swo = traceDataHandler->getSettings();
+
+				viewerDataHandler->setSwoClock(swo.coreFrequency, swo.tracePrescaler);
+			}
+			else
+				viewerDataHandler->setSwoClock(0, 0);
+
 			std::vector<double> plotCursors;
 
 			if (const std::shared_ptr<PlotGroup> group = plotGroupHandler->getActiveGroup(); group != nullptr)

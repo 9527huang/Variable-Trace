@@ -38,6 +38,23 @@ extern "C" uint32_t JLINK_RTTERMINAL_Read(uint32_t channel, uint8_t* buffer, uin
 
 constexpr uint32_t jlinkRttStart = 1;
 
+/* What the SWO start command expects. The bundled header names the command and
+   points at this structure without declaring it. */
+struct JlinkSwoStart
+{
+	uint32_t sizeOfStruct;
+	uint32_t interface;
+	uint32_t speed;
+};
+
+/* The four SWO calls are declared in the SDK header; the register write is not,
+   so it is declared here. */
+extern "C" int32_t JLINKARM_WriteU32(uint32_t address, uint32_t value);
+
+constexpr uint32_t jlinkSwoStart = 0;    /* JLINKARM_SWO_CMD_START */
+constexpr uint32_t jlinkSwoFlush = 2;    /* JLINKARM_SWO_CMD_FLUSH */
+constexpr uint32_t jlinkSwoInterfaceUart = 1;
+
 /* What the start command takes: the address of the control block, and an
    identifier of zero for "the one the address points at". A zero address makes
    the DLL search the target's RAM, which is what it did before - and found the
@@ -431,6 +448,80 @@ uint32_t JlinkDebugProbe::readRtt(uint8_t* buffer, uint32_t size)
 	/* What the target wrote, and nothing waiting for it: an empty read is the
 	   usual answer between two switches. */
 	return JLINK_RTTERMINAL_Read(0, buffer, size);
+}
+
+/*
+ * The trace unit, configured the way the trace view configures it.
+ *
+ * The two are the same hardware: the same ITM, the same clock, the same pin. The
+ * sequence here is the trace view's, and it has to be, because a J-Link connect
+ * clears the target's ITM configuration - the link then looks healthy, the clock
+ * is programmed, and nothing ever arrives until the registers are written back.
+ */
+bool JlinkDebugProbe::startSwo(uint32_t coreFrequency, uint32_t traceFrequency, uint32_t stimulusMask)
+{
+	if (swoStarted)
+		return true;
+
+	std::lock_guard<std::mutex> lock(mtx);
+
+	if (!isRunning)
+		return false;
+
+	JLINKARM_SWO_Config("TSEnable=1");
+
+	const int32_t enabled = JLINKARM_SWO_EnableTarget(coreFrequency, traceFrequency, jlinkSwoInterfaceUart, stimulusMask);
+
+	if (enabled != 0)
+	{
+		logger->warn("The trace unit refused to enable: {} (core {} Hz, trace {} Hz, mask 0x{:X}).", enabled, coreFrequency, traceFrequency,
+		             stimulusMask);
+
+		return false;
+	}
+
+	JLINKARM_WriteU32(0xE0000FB0u, 0xC5ACCE55u);         /* ITM->LAR: unlock */
+	JLINKARM_WriteU32(0xE0000E80u, 0x00010003u);         /* ITM->TCR: TraceBusID 1, timestamps, enabled */
+	JLINKARM_WriteU32(0xE0000E00u, stimulusMask);        /* ITM->TER: the ports */
+	JLINKARM_WriteU32(0xE0000E40u, 0x0000000Fu);         /* ITM->TPR: every privilege level */
+
+	JlinkSwoStart start{};
+	start.sizeOfStruct = sizeof(start);
+	start.interface = jlinkSwoInterfaceUart;
+	start.speed = traceFrequency;
+
+	const int32_t started = JLINKARM_SWO_Control(jlinkSwoStart, &start);
+
+	if (started < 0)
+	{
+		logger->warn("The trace unit refused to start: {}.", started);
+
+		return false;
+	}
+
+	swoStarted = true;
+
+	logger->info("The trace unit is carrying the target's switch records.");
+
+	return true;
+}
+
+uint32_t JlinkDebugProbe::readSwo(uint8_t* buffer, uint32_t size)
+{
+	if (!swoStarted)
+		return 0;
+
+	std::lock_guard<std::mutex> lock(mtx);
+
+	if (!isRunning)
+		return 0;
+
+	uint32_t available = size;
+
+	JLINKARM_SWO_Read(buffer, 0, &available);
+	JLINKARM_SWO_Control(jlinkSwoFlush, &available);
+
+	return available;
 }
 
 bool JlinkDebugProbe::readBlock(uint32_t address, uint8_t* buf, uint32_t size)
