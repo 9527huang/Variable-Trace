@@ -256,7 +256,7 @@ bool GdbServerDebugProbe::receivePacket(std::string& reply)
 
 bool GdbServerDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, std::vector<std::pair<uint32_t, uint8_t>>&, uint32_t)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	lastErrorMsg = "";
 
@@ -400,7 +400,7 @@ bool GdbServerDebugProbe::startAcqusition(const DebugProbeSettings& probeSetting
 
 bool GdbServerDebugProbe::stopAcqusition()
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	if (handle == noHandle)
 		return true;
@@ -419,7 +419,7 @@ bool GdbServerDebugProbe::stopAcqusition()
 
 bool GdbServerDebugProbe::readMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	if (handle == noHandle || !isRunning || size == 0)
 		return false;
@@ -453,7 +453,7 @@ bool GdbServerDebugProbe::readMemory(uint32_t address, uint8_t* buf, uint32_t si
 
 bool GdbServerDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	if (handle == noHandle || !isRunning || size == 0)
 		return false;

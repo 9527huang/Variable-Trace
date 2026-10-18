@@ -92,6 +92,14 @@ class RtosModel
 		eventHistory.noteLostRecords(count);
 	}
 
+	/* A new run keeps its own history: its clock starts at zero, and samples
+	   from the previous one would sit on an axis that went back to the start. */
+	void clearHistory()
+	{
+		timeline.clear();
+		eventHistory.clear();
+	}
+
 	/*
 	 * Records a round that failed its checks and was therefore not published.
 	 *

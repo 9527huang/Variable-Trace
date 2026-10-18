@@ -15,7 +15,7 @@ StlinkDebugProbe::StlinkDebugProbe(spdlog::logger* logger) : logger(logger)
 
 bool StlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, std::vector<std::pair<uint32_t, uint8_t>>& addressSizeVector, uint32_t samplingFreqency)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	sl = stlink_open_usb(UINFO, CONNECT_HOT_PLUG, (char*)probeSettings.serialNumber.data(), probeSettings.speedkHz);
 	isRunning = false;
 
@@ -38,14 +38,14 @@ bool StlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, 
 }
 bool StlinkDebugProbe::stopAcqusition()
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	isRunning = false;
 	stlink_close(sl);
 	return true;
 }
 bool StlinkDebugProbe::isValid() const
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	return isRunning;
 }
 
@@ -56,7 +56,7 @@ std::optional<IDebugProbe::varEntryType> StlinkDebugProbe::readSingleEntry()
 
 bool StlinkDebugProbe::readMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	if (!isRunning)
 		return false;
 
@@ -102,7 +102,7 @@ bool StlinkDebugProbe::readMemory(uint32_t address, uint8_t* buf, uint32_t size)
 }
 bool StlinkDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	if (!isRunning)
 		return false;
 	std::copy(buf, buf + size, sl->q_buf);
@@ -111,7 +111,7 @@ bool StlinkDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size
 
 bool StlinkDebugProbe::readBlock(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	if (!isRunning)
 		return false;
@@ -159,7 +159,7 @@ std::string StlinkDebugProbe::getLastErrorMsg() const
 
 std::vector<std::string> StlinkDebugProbe::getConnectedDevices()
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	stlink_t** stdevs;
 	uint32_t size;
 

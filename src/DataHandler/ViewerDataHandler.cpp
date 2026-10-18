@@ -1033,7 +1033,27 @@ void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start
 	   every record in twice - and would keep reporting the ring's own losses,
 	   which the stream has none of. */
 	if (!rttActive && !swoActive)
+	{
+		{
+			static bool said = false;
+
+			if (!said) { logger->info("Task view: reading the ring."); said = true; }
+		}
+
 		readEventRing(memory, startedAt);
+
+		{
+			static bool said = false;
+
+			if (!said) { logger->info("Task view: the ring is read."); said = true; }
+		}
+	}
+
+	{
+		static bool said = false;
+
+		if (!said) { logger->info("Task view: collecting the snapshot."); said = true; }
+	}
 
 	RtosSampler::Round round = rtosSampler->collect(memory, rtosSessionId, rtosSettings);
 
@@ -1350,7 +1370,25 @@ void ViewerDataHandler::dataHandler()
 						metricsProbeLockWaitNs.fetch_add(nanosecondsBetween(probeLockBegan, std::chrono::steady_clock::now()), std::memory_order_relaxed);
 						const auto probeReadBegan = std::chrono::steady_clock::now();
 
+						/* Once per run, on either side of the read: a read that
+						   never comes back is the one thing this loop can hang
+						   in, and a marker after it is the only proof it got
+						   there. */
+						if (!samplingLogged)
+						{
+							logger->info("Sampling: reading the target.");
+
+							samplingLogged = true;
+						}
+
 						sampleSucceeded = readNormalSample(normalRawValues, normalRawValid);
+
+						if (samplingLogged && !samplingConfirmed)
+						{
+							logger->info("Sampling: the target answered.");
+
+							samplingConfirmed = true;
+						}
 
 						metricsProbeReadNs.fetch_add(nanosecondsBetween(probeReadBegan, std::chrono::steady_clock::now()), std::memory_order_relaxed);
 					}
@@ -1364,8 +1402,15 @@ void ViewerDataHandler::dataHandler()
 						metricsCompletedSamples.fetch_add(1, std::memory_order_relaxed);
 
 						/* Path B's streams, drained here because this is the
-						   tick that runs often enough for them. */
-						pollEventStream(timestamp);
+						   tick that runs often enough for them.
+
+						   RTT is off: with the DLL this build bundles, the
+						   terminal is found and then reads nothing back - and
+						   starting it on every target, every tick, puts a
+						   second reader on a connection that is doing memory
+						   reads. That is not a diagnostic anybody asked for, and
+						   the ring is the carrier that works. */
+						// pollEventStream(timestamp);
 						pollSwoStream(timestamp);
 					}
 					else
@@ -1375,7 +1420,16 @@ void ViewerDataHandler::dataHandler()
 					   would rather lose a round than push the other out of the
 					   way, and the snapshot loses one more cheaply. */
 					if (rtosRoundIsDue(period, nextDeadline, sampleInterval))
+					{
+						if (!roundLogged)
+						{
+							logger->info("Task view: a round is due.");
+
+							roundLogged = true;
+						}
+
 						runRtosRound(start);
+					}
 
 					/* Asked for, running, and publishing nothing: the panel says
 					   so as well, but a line survives the program. */

@@ -202,7 +202,14 @@ class IDebugProbe
    protected:
 	std::atomic<bool> isRunning = false;
 	std::string lastErrorMsg = "";
-	mutable std::mutex mtx;
+	/*
+	 * Re-entrant on purpose. The sampling loop holds it for the length of a
+	 * round, and the reads a round makes go through this same probe and take
+	 * it again - a plain mutex deadlocks the thread against itself, which is
+	 * what "the task view stops and never comes back" was: it hung inside a
+	 * round, most often right after a stop and start.
+	 */
+	mutable std::recursive_mutex mtx;
 };
 
 #endif

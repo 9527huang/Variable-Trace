@@ -171,7 +171,7 @@ bool SerialDebugProbe::fetchSweep()
 
 bool SerialDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, std::vector<std::pair<uint32_t, uint8_t>>& addressSizeVector, uint32_t samplingFreqency)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	isRunning = false;
 
 	(void)samplingFreqency;
@@ -226,7 +226,7 @@ bool SerialDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, 
 
 bool SerialDebugProbe::stopAcqusition()
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	isRunning = false;
 	transport->close();
 	sweepDataValid = false;
@@ -236,13 +236,13 @@ bool SerialDebugProbe::stopAcqusition()
 
 bool SerialDebugProbe::isValid() const
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	return isRunning;
 }
 
 std::optional<IDebugProbe::varEntryType> SerialDebugProbe::readSingleEntry()
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	if (!isRunning || sweepList.empty())
 		return std::nullopt;
@@ -265,7 +265,7 @@ std::optional<IDebugProbe::varEntryType> SerialDebugProbe::readSingleEntry()
 
 bool SerialDebugProbe::readMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	if (!isRunning)
 		return false;
@@ -330,7 +330,7 @@ bool SerialDebugProbe::readMemory(uint32_t address, uint8_t* buf, uint32_t size)
 
 bool SerialDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	if (!isRunning)
 		return false;
@@ -368,7 +368,7 @@ bool SerialDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size
 
 bool SerialDebugProbe::readBlock(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	if (!isRunning)
 		return false;

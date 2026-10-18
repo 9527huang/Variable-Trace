@@ -451,6 +451,12 @@ class ViewerDataHandler : public DataHandlerBase
 	   when it keeps none, or when the probe is left to search for it. */
 	uint32_t rtosRttControlAddress = 0;
 
+	/* Whether this run has reached the read and come back from it. Reset with
+	   each new run; the pair of lines tells a hang from a slow start. */
+	bool samplingLogged = false;
+	bool roundLogged = false;
+	bool samplingConfirmed = false;
+
 	/* Set once the stream has handed over a record. The ring is not read while
 	   this is true: the same records would arrive twice. */
 	bool rttActive = false;

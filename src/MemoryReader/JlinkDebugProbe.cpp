@@ -82,7 +82,7 @@ JlinkDebugProbe::JlinkDebugProbe(spdlog::logger* logger) : logger(logger)
 
 bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, std::vector<std::pair<uint32_t, uint8_t>>& addressSizeVector, uint32_t samplingFreqency)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	int serialNumberInt = std::atoi(probeSettings.serialNumber.c_str());
 	lastErrorMsg = "";
 	isRunning = false;
@@ -296,7 +296,7 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 
 bool JlinkDebugProbe::stopAcqusition()
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	/* The link can be asked to outlive the run. Closing it halts the core on
 	   some targets, and that halt is what the next run would have to undo;
@@ -320,7 +320,7 @@ bool JlinkDebugProbe::isValid() const
 
 std::string JlinkDebugProbe::getTargetName()
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	JLINKARM_DEVICE_SELECT_INFO info;
 	info.SizeOfStruct = sizeof(JLINKARM_DEVICE_SELECT_INFO);
 	int32_t index = JLINKARM_DEVICE_SelectDialog(NULL, 0, &info);
@@ -334,7 +334,7 @@ std::string JlinkDebugProbe::getTargetName()
 
 std::optional<IDebugProbe::varEntryType> JlinkDebugProbe::readSingleEntry()
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	uint8_t rawBuffer[bufferSizeHSS]{};
 
 	int32_t readSize = JLINK_HSS_Read(rawBuffer, sizeof(rawBuffer));
@@ -381,7 +381,7 @@ std::optional<IDebugProbe::varEntryType> JlinkDebugProbe::readSingleEntry()
 
 bool JlinkDebugProbe::readMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	if (!isRunning)
 		return false;
 
@@ -394,7 +394,7 @@ bool JlinkDebugProbe::readMemory(uint32_t address, uint8_t* buf, uint32_t size)
 
 bool JlinkDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	if (!isRunning)
 		return false;
 
@@ -410,7 +410,7 @@ bool JlinkDebugProbe::startRtt(uint32_t controlBlock)
 	if (rttStarted && rttControlBlock == controlBlock)
 		return true;
 
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	if (!isRunning)
 		return false;
@@ -438,7 +438,7 @@ uint32_t JlinkDebugProbe::readRtt(uint8_t* buffer, uint32_t size)
 	if (!rttStarted)
 		return 0;
 
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 
 	if (!isRunning)
 		return 0;
@@ -450,7 +450,7 @@ uint32_t JlinkDebugProbe::readRtt(uint8_t* buffer, uint32_t size)
 
 bool JlinkDebugProbe::readBlock(uint32_t address, uint8_t* buf, uint32_t size)
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	/* The J-Link moves the whole range in one call, which is what makes the
 	   recorder buffer download bearable: a word at a time would be some eight
 	   thousand round trips for a full buffer. */
@@ -486,7 +486,7 @@ std::string JlinkDebugProbe::getLastErrorMsg() const
 
 std::vector<std::string> JlinkDebugProbe::getConnectedDevices()
 {
-	std::lock_guard<std::mutex> lock(mtx);
+	std::scoped_lock lock(mtx);
 	std::vector<std::string> deviceIDs{};
 
 	JLINKARM_EMU_CONNECT_INFO connectInfo[maxDevices]{};
