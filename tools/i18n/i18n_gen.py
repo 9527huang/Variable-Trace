@@ -31,6 +31,7 @@ WINDOW_TITLES = [
     "Trace Viewer",
     "Trace Plots",
     "Task Viewer",
+    "Task Analysis",
     "Var Viewer",
     "Plots",
     "Flash Output",

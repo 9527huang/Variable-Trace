@@ -712,6 +712,25 @@ EXTRA = {
     "The target does not fill its stacks, so how much of one is used cannot be worked out. FreeRTOS fills them when configCHECK_FOR_STACK_OVERFLOW is above 1, or configUSE_TRACE_FACILITY, or INCLUDE_uxTaskGetStackHighWaterMark, or INCLUDE_uxTaskGetStackHighWaterMark2 is set.": "目标没有填充栈,因此算不出每个栈用了多少。FreeRTOS 在下面任一条件成立时会填充:configCHECK_FOR_STACK_OVERFLOW 大于 1、configUSE_TRACE_FACILITY、INCLUDE_uxTaskGetStackHighWaterMark、INCLUDE_uxTaskGetStackHighWaterMark2。",
     "Scanned on this side over %d task(s); the oldest reading is %.1f s old.": "本机侧扫描,覆盖 %d 个任务;最旧的读数已过 %.1f 秒。",
     "A few tasks are scanned per round, so the readings are not all from the same moment. A reading marked with a leading <= stopped at the scan limit, so the used part is at most what it says.": "每轮只扫几个任务,所以这些读数并非取自同一时刻。前面带 <= 的读数在扫描上限处停下,因此已用部分至多为该值。",
+
+    # The two halves of the task view, and the words the timeline's header
+    # carries: a window title, the menu entry that puts the layout back, and
+    # the two words around the window length box.
+    "Task Analysis": "任务分析",
+    # The column names of the two task tables. `Name`, `Address`, `State`,
+    # `Stack used` and `Task share` were already in the list; these are the
+    # rest of the headers, which stayed English in a Chinese window.
+    "Priority": "优先级",
+    "Stack": "栈",
+    "Waiting on": "等待对象",
+    "Kind": "类型",
+    "Items / capacity": "项目 / 容量",
+    "Waiting to send": "发送等待",
+    "Waiting to receive": "接收等待",
+    "Synchronisation objects": "同步对象",
+    "Reset layout": "重置界面布局",
+    "last": "最近",
+    "s": "秒",
 }
 
 

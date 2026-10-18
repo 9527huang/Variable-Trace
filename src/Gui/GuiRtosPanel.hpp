@@ -9,6 +9,7 @@
 
 #include "GuiHelper.hpp"
 #include "GuiRtosPanelTimeline.hpp"
+#include "GuiRtosSelection.hpp"
 #include "RtosDiagnostics.hpp"
 #include "I18n.hpp"
 #include "RtosModel.hpp"
@@ -114,11 +115,7 @@ class GuiRtosPanel
 
 		drawFilters(snapshot);
 
-		/* The table keeps the larger share and the strip takes a fixed slice of
-		   what is left, so that a short window does not push the objects out of
-		   sight entirely. */
 		drawTable(snapshot);
-		drawSyncObjects(*snapshot);
 	}
 
 	/*
@@ -139,9 +136,9 @@ class GuiRtosPanel
 		   may not have been drawn at all - the reader can be looking at
 		   another view with this one still open beside it. A stale address
 		   would leave a lane lit with nothing pointing at it. */
-		const uint32_t hovered = tableDrewThisFrame ? hoveredTask : 0u;
+		const uint32_t hovered = selection().tableDrewThisFrame ? selection().hoveredTask : 0u;
 
-		tableDrewThisFrame = false;
+		selection().tableDrewThisFrame = false;
 
 		if (model == nullptr)
 		{
@@ -164,7 +161,11 @@ class GuiRtosPanel
 			return;
 		}
 
-		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, selectedTask, hovered);
+		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, selection().task, hovered);
+
+		/* Under the strip, and in the same window: a task that is waiting is
+		   waiting for one of these, so the two are read together. */
+		drawSyncObjects(*snapshot);
 	}
 
 	/*
@@ -319,22 +320,14 @@ class GuiRtosPanel
 	   where it is hidden. */
 	inline static bool addressColumnSeeded = false;
 
-	/* What the reader is pointing at: the row they clicked, and the row they
-	   are on. Both travel to the timeline, which is the only place they mean
-	   anything to anyone else. */
-	inline static uint32_t selectedTask = 0;
-	inline static uint32_t hoveredTask = 0;
-
-	/* The object the objects table should point at, and the one it last
-	   scrolled to - scrolling every frame would fight the wheel. */
-	inline static std::string selectedObject;
-	inline static std::string scrolledObject;
-
-	/* Whether the table was drawn in this frame. The hover follows the mouse
-	   over rows, which only the table knows about; the timeline asks for it a
-	   moment later in the frame and has to be able to tell "no row under the
-	   mouse" from "the table did not run". */
-	inline static bool tableDrewThisFrame = false;
+	/* What the reader is pointing at - the row they clicked, the row they are
+	   on, the object the objects table should show. It lives outside this
+	   class because the two halves of the view are drawn in two windows, and
+	   the timeline has to point at the row this table selected. */
+	static GuiRtosSelection& selection()
+	{
+		return GuiRtosSelection::shared();
+	}
 
 	/*
 	 * The search field's buffer, kept between frames.
@@ -422,13 +415,13 @@ class GuiRtosPanel
 					continue;
 				}
 
-				const bool selected = finding.tasks[node] == selectedTask;
+				const bool selected = finding.tasks[node] == selection().task;
 
 				if (selected)
 					ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
 
 				if (ImGui::SmallButton(finding.chain[node].c_str()))
-					selectedTask = selected ? 0u : finding.tasks[node];
+					selection().task = selected ? 0u : finding.tasks[node];
 
 				if (selected)
 					ImGui::PopStyleColor();
@@ -785,8 +778,8 @@ class GuiRtosPanel
 
 			drawHeaderRow(snapshot);
 
-		hoveredTask = 0;
-		tableDrewThisFrame = true;
+		selection().hoveredTask = 0;
+		selection().tableDrewThisFrame = true;
 
 		for (const RtosTaskRow& row : rows)
 		{
@@ -803,19 +796,19 @@ class GuiRtosPanel
 			 * reader comparing a row with a lane is doing it by eye, and by
 			 * eye is where the wrong lane gets read.
 			 */
-			const bool selected = row.tcbAddress == selectedTask;
+			const bool selected = row.tcbAddress == selection().task;
 
 			if (ImGui::Selectable(row.name.empty() ? unknown() : row.name.c_str(), selected,
 			                      ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap))
 			{
-				selectedTask = selected ? 0u : row.tcbAddress;
+				selection().task = selected ? 0u : row.tcbAddress;
 
 				if (!selected && !row.waitingOn.empty())
-					selectedObject = row.waitingOn;
+					selection().object = row.waitingOn;
 			}
 
 			if (ImGui::IsItemHovered())
-				hoveredTask = row.tcbAddress;
+				selection().hoveredTask = row.tcbAddress;
 
 			ImGui::TableNextColumn();
 			ImGui::Text("0x%08X", row.tcbAddress);
@@ -1011,20 +1004,35 @@ class GuiRtosPanel
 			return;
 		}
 
+		/* No sideways scrolling here, and stretching columns instead: this
+		   table is in the wide half of the view now, so the room is there to
+		   share out. The two do not go together - with `ScrollX` a table is
+		   sized to its contents, and the last column of it ends up short. */
 		const ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY |
-		                              ImGuiTableFlags_ScrollX | ImGuiTableFlags_ContextMenuInBody;
+		                              ImGuiTableFlags_ContextMenuInBody;
 
-		if (!ImGui::BeginTable("rtosSyncObjects-v2", 6, flags))
+		/* As tall as what is in it, within what the strip above has left. A
+		   table given no height with `ScrollY` takes everything that remains,
+		   which would put the objects under the bottom of the window. */
+		const float objectRowHeight = ImGui::GetTextLineHeightWithSpacing();
+		const size_t objectRows = std::clamp<size_t>(snapshot.syncObjects.size(), 3, 12);
+		const float objectHeight = ImGui::GetFrameHeight() + objectRowHeight * static_cast<float>(objectRows) + ImGui::GetStyle().CellPadding.y * 2.0f;
+		const ImVec2 objectSize(0.0f, std::min(objectHeight, ImGui::GetContentRegionAvail().y));
+
+		if (!ImGui::BeginTable("rtosSyncObjects-v2", 6, flags, objectSize))
 			return;
 
 		ImGui::TableSetupScrollFreeze(0, 1);
 
-		ImGui::TableSetupColumn(I18n::tr("Kind"));
-		ImGui::TableSetupColumn(I18n::tr("Name"));
-		ImGui::TableSetupColumn(I18n::tr("Address"));
-		ImGui::TableSetupColumn(I18n::tr("Items / capacity"));
-		ImGui::TableSetupColumn(I18n::tr("Waiting to send"));
-		ImGui::TableSetupColumn(I18n::tr("Waiting to receive"));
+		/* The weights follow how much each column holds: two short names, an
+		   address, a pair of counts, and the two headers that were being cut -
+		   "Items / capacity" and "Waiting to receive" - which get the most. */
+		ImGui::TableSetupColumn(I18n::tr("Kind"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn(I18n::tr("Name"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn(I18n::tr("Address"), ImGuiTableColumnFlags_WidthStretch, 1.1f);
+		ImGui::TableSetupColumn(I18n::tr("Items / capacity"), ImGuiTableColumnFlags_WidthStretch, 1.6f);
+		ImGui::TableSetupColumn(I18n::tr("Waiting to send"), ImGuiTableColumnFlags_WidthStretch, 1.5f);
+		ImGui::TableSetupColumn(I18n::tr("Waiting to receive"), ImGuiTableColumnFlags_WidthStretch, 1.8f);
 
 		/* Draws the header row from the labels above, so the column order
 		   lives in one place instead of two. */
@@ -1035,16 +1043,16 @@ class GuiRtosPanel
 
 			/* The object the selected task is waiting on, so that a row in the
 			   task table leads somewhere in this one. */
-			const bool objectSelected = !selectedObject.empty() && object.name == selectedObject;
+			const bool objectSelected = !selection().object.empty() && object.name == selection().object;
 
 			if (objectSelected)
 			{
 				ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header, 0.35f));
 
-				if (selectedObject != scrolledObject)
+				if (selection().object != selection().scrolledObject)
 				{
 					ImGui::SetScrollHereY(0.5f);
-					scrolledObject = selectedObject;
+					selection().scrolledObject = selection().object;
 				}
 			}
 
