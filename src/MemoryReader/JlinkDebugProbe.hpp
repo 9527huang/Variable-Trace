@@ -20,8 +20,7 @@ class JlinkDebugProbe : public IDebugProbe
 
 	bool startRtt(uint32_t controlBlock) override;
 
-	bool startSwo(uint32_t coreFrequency, uint32_t traceFrequency, uint32_t stimulusMask) override;
-	uint32_t readSwo(uint8_t* buffer, uint32_t size) override;
+
 	uint32_t readRtt(uint8_t* buffer, uint32_t size) override;
 	std::string getTargetName() override;
 
@@ -69,9 +68,7 @@ class JlinkDebugProbe : public IDebugProbe
 	   is not answered from the first one's success. */
 	uint32_t rttControlBlock = 0;
 
-	/* The trace unit, once it is configured. A refusal is not remembered, for
-	   the same reason as above. */
-	bool swoStarted = false;
+
 	std::string openedLink;
 
 	std::unordered_map<uint32_t, uint8_t> addressSizeMap;

@@ -294,3 +294,28 @@ TEST(RtosDiagnostics, ATimedBlockIsNotReported)
 	/* On the delayed list: the kernel knows when to wake it. */
 	EXPECT_TRUE(RtosDiagnostics::diagnose(blockedRound(RtosTaskState::Blocked, "delayed"), timeline).empty());
 }
+
+TEST(RtosDiagnostics, ABoostedWaiterIsJudgedByThePriorityItWasCreatedWith)
+{
+	RtosSnapshot snapshot;
+
+	/* Ready, carrying a lent priority of 3 while its own is 1 - it holds a lock
+	   someone wants. The runner is at 2, which is above the waiter as it was
+	   created, so nothing is wrong. */
+	RtosTask waiter = makeTask("waiter", 0x20000100, 3, 1, "");
+
+	waiter.state = RtosTaskState::Ready;
+	snapshot.tasks.push_back(waiter);
+
+	RtosTask runner = makeTask("runner", 0x20000200, 2, 2, "");
+
+	runner.state = RtosTaskState::Running;
+	snapshot.tasks.push_back(runner);
+
+	RtosTimeline timeline(16);
+
+	for (int round = 0; round < 5; round++)
+		timeline.add(snapshot);
+
+	EXPECT_TRUE(RtosDiagnostics::diagnose(snapshot, timeline).empty());
+}

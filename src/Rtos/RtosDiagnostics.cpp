@@ -239,6 +239,16 @@ std::vector<RtosDiagnostics::Finding> RtosDiagnostics::diagnose(const RtosSnapsh
 			if (task.state != RtosTaskState::Ready || !task.hasPriority)
 				continue;
 
+			/*
+			 * Compared by the priority the task was created with, not the one it
+			 * carries now. A task running above its own holds a lock that
+			 * someone above it wants, and its current number is the waiter's -
+			 * comparing that made every lock holder look starved the moment a
+			 * middle priority task ran, which is what happened the first time
+			 * this ran on hardware.
+			 */
+			const uint32_t priority = task.hasBasePriority ? task.basePriority : task.rawPriority;
+
 			bool readyThroughout = true;
 
 			for (size_t index = first; index < samples.size(); index++)
@@ -273,7 +283,7 @@ std::vector<RtosDiagnostics::Finding> RtosDiagnostics::diagnose(const RtosSnapsh
 
 					if (runner->hasBasePriority && runner->rawPriority > runner->basePriority)
 						ranWhileBoosted = true;
-					else if (runner->rawPriority >= task.rawPriority)
+					else if (runner->rawPriority >= priority)
 						somethingAtLeastAsHighRan = true;
 				}
 			}

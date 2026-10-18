@@ -18,6 +18,7 @@
 
 #include "RtosModel.hpp"
 #include "RtosCpuLoad.hpp"
+#include "ITraceProbe.hpp"
 #include "RtosItmDecoder.hpp"
 #include "RtosSampler.hpp"
 #include "RtosStackSweep.hpp"
@@ -262,10 +263,25 @@ class ViewerDataHandler : public DataHandlerBase
 
 	/* The clock SWO runs from. Taken from the project's trace settings, since
 	   the trace view and this share one trace unit. */
-	void setSwoClock(uint32_t coreFrequency, uint32_t prescaler)
+	/*
+	 * What the trace unit is opened with. The settings are the trace view's,
+	 * because it is the same unit - and the same clean connection that view
+	 * opens, which is the one that has been seen to carry SWO on this target. A
+	 * zero core frequency means the carrier is not wanted.
+	 */
+	void setSwoSettings(const ITraceProbe::TraceProbeSettings& settings, uint32_t coreFrequency, uint32_t prescaler)
 	{
+		swoProbeSettings = settings;
 		swoCoreFrequency = coreFrequency;
-		swoTraceFrequency = coreFrequency / (prescaler + 1);
+		swoTracePrescaler = prescaler;
+	}
+
+	/* How to make one. The handler speaks to the interface, not to a J-Link: it
+	   is the interface the reader has, and the choice of probe belongs where the
+	   probes are known. */
+	void setSwoProbeFactory(std::function<std::unique_ptr<ITraceProbe>()> factory)
+	{
+		swoProbeFactory = std::move(factory);
 	}
 
 	double getAverageSamplingFrequency() const
@@ -440,11 +456,19 @@ class ViewerDataHandler : public DataHandlerBase
 	uint32_t rttAnchorUs = 0;
 	double rttAnchorSeconds = 0.0;
 
-	/* The trace hardware. Its clock comes from the project's trace settings,
-	   because SWO runs from the same clock the trace view would use. */
+	/* The trace hardware, on a connection of its own.
+	 *
+	 * The debug probe's connection cannot carry SWO - it was tried, the trace
+	 * unit was configured and the target was transmitting, and every read came
+	 * back empty. The trace view opens its own connection and its reads arrive,
+	 * so this opens one the same way and uses the same probe class. */
+	std::unique_ptr<ITraceProbe> swoProbe;
+	std::function<std::unique_ptr<ITraceProbe>()> swoProbeFactory;
+	ITraceProbe::TraceProbeSettings swoProbeSettings{};
+	bool swoStarted = false;
 	bool swoActive = false;
 	uint32_t swoCoreFrequency = 0;
-	uint32_t swoTraceFrequency = 0;
+	uint32_t swoTracePrescaler = 0;
 	uint32_t swoAnchorUs = 0;
 	double swoAnchorSeconds = 0.0;
 

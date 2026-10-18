@@ -750,16 +750,62 @@ void ViewerDataHandler::pollSwoStream(double nowSeconds)
 		return;
 	}
 
-	if (!debugProbe->startSwo(swoCoreFrequency, swoTraceFrequency, 1u << RtosItmDecoder::recordPort))
-		return;
+	if (swoProbeSettings.device.empty())
+	{
+		/* Same probe, same target, same speed: the acquisition settings already
+		   hold all three. The trace view's own settings would say the same thing,
+		   but only after its tab has been opened at least once - and the carrier
+		   has to work from the task view alone. */
+		swoProbeSettings.device = probeSettings.device;
+		swoProbeSettings.speedkHz = probeSettings.speedkHz;
+		swoProbeSettings.serialNumber = probeSettings.serialNumber;
+		swoProbeSettings.keepConnection = true;
+		swoProbeSettings.connection = static_cast<ITraceProbe::Connection>(probeSettings.connection);
+	}
+
+	if (swoProbe == nullptr)
+	{
+		if (!swoProbeFactory)
+			return;
+
+		swoProbe = swoProbeFactory();
+	}
+
+	if (!swoStarted)
+	{
+		/* The stimulus port the records go out on is the only one enabled: the
+		   trace view's channels are not wanted here, and enabling them would put
+		   another protocol's packets in the stream. */
+		if (!swoProbe->startTrace(swoProbeSettings, swoCoreFrequency, swoTracePrescaler, 1u << RtosItmDecoder::recordPort, false))
+		{
+			static bool said = false;
+
+			if (!said)
+			{
+				/* A J-Link serves one connection at a time. The acquisition has
+				   it, so this one cannot have it - and SWO only works on the
+				   connection that holds it. That is the whole reason the trace
+				   view asks for the acquisition to be stopped before it starts. */
+				logger->warn("The trace unit could not be started: {}. A probe serves one connection at a time: SWO and the task view's own reads cannot share it.", swoProbe->getLastErrorMsg());
+
+				said = true;
+			}
+
+			return;
+		}
+
+		swoStarted = true;
+
+		logger->info("The target's switch records are on the trace unit, on a connection of their own.");
+	}
 
 	std::array<uint8_t, 4096> buffer{};
-	const uint32_t bytes = debugProbe->readSwo(buffer.data(), static_cast<uint32_t>(buffer.size()));
+	const int32_t bytes = swoProbe->readTraceBuffer(buffer.data(), static_cast<uint32_t>(buffer.size()));
 
-	if (bytes == 0)
+	if (bytes <= 0)
 		return;
 
-	itmDecoder.feed(buffer.data(), bytes);
+	itmDecoder.feed(buffer.data(), static_cast<size_t>(bytes));
 
 	const std::vector<RtosEventRing::Record> batch = itmDecoder.take();
 

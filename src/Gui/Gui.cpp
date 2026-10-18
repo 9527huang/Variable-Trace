@@ -388,14 +388,17 @@ void Gui::mainThread(std::string externalPath)
 			 * than at the settings dialog, which only runs while that dialog is
 			 * open.
 			 */
+			viewerDataHandler->setSwoProbeFactory([this]()
+			                                      { return std::unique_ptr<ITraceProbe>(std::make_unique<JlinkTraceProbe>(logger)); });
+
 			if (globalConfig->getSettings().rtosEventsTransport == "swo")
 			{
 				const TraceDataHandler::Settings swo = traceDataHandler->getSettings();
 
-				viewerDataHandler->setSwoClock(swo.coreFrequency, swo.tracePrescaler);
+				viewerDataHandler->setSwoSettings(traceDataHandler->getProbeSettings(), swo.coreFrequency, swo.tracePrescaler);
 			}
 			else
-				viewerDataHandler->setSwoClock(0, 0);
+				viewerDataHandler->setSwoSettings({}, 0, 0);
 
 			std::vector<double> plotCursors;
 
