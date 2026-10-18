@@ -113,6 +113,14 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 	if (linkUsable)
 	{
 		logger->info("J-Link link kept from the last run, nothing to open.");
+
+		/* The link survived the stop; the target did not necessarily. A stop
+		   can leave the core halted, and a read of a halted core - the reads
+		   this same probe makes for the task view - blocks in the DLL instead
+		   of failing, which is what "the task view stops after a stop and start"
+		   turned out to be. Whatever the last run left behind, this one begins
+		   with the target running. */
+		JLINKARM_Go();
 	}
 	else
 	{

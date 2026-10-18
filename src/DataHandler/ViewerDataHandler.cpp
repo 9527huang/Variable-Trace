@@ -1011,7 +1011,21 @@ void ViewerDataHandler::readEventRing(RtosProbeMemory& memory, double nowSeconds
 void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start)
 {
 	if (rtosSampler == nullptr || rtosModel == nullptr || debugProbe == nullptr)
+	{
+		/* The round gives way in silence here, which looks exactly like a hang
+		   from the outside. One line says which of the three was missing. */
+		static bool said = false;
+
+		if (!said)
+		{
+			logger->warn("The task view round gave way: sampler {}, model {}, probe {}.", rtosSampler != nullptr, rtosModel != nullptr,
+			             debugProbe != nullptr);
+
+			said = true;
+		}
+
 		return;
+	}
 
 	const auto secondsSinceStart = [&start]()
 	{
