@@ -162,6 +162,11 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 			return false;
 		}
 
+		/* Each step of the start is named before it is taken. A start that
+		   never comes back cannot report anything afterwards, and the only way
+		   to know which DLL call it was is to have written the one before. */
+		logger->info("J-Link: opening.");
+
 		const char* error = JLINKARM_Open();
 
 		if (error != 0)
@@ -176,10 +181,14 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 		linkOpen = true;
 		openedLink = linkWanted;
 
+		logger->info("J-Link: setting speed.");
+
 		JLINKARM_SetSpeed(probeSettings.speedkHz > maxSpeedkHz ? maxSpeedkHz : probeSettings.speedkHz);
 		logger->info("J-Link speed set to: {}", JLINKARM_GetSpeed());
 
 		/* select interface - SWD only for now */
+		logger->info("J-Link: selecting SWD.");
+
 		JLINKARM_TIF_Select(JLINKARM_TIF_SWD);
 
 		/* A script of the reader's own goes in before the target is named and
@@ -207,6 +216,8 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 			logger->error(acOut);
 
 		/* try to connect to target */
+		logger->info("J-Link: connecting.");
+
 		if (JLINKARM_Connect() < 0)
 		{
 			lastErrorMsg = "Could not connect to the target! Check the Target name.";
@@ -220,6 +231,8 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 		/* Connecting can leave the core halted before firmware initialization.
 		   Acquisition observes a running target, so resume it before either the
 		   Normal reader or HSS starts consuming memory. */
+		logger->info("J-Link: running the target.");
+
 		JLINKARM_Go();
 	}
 
