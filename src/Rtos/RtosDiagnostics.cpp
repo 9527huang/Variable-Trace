@@ -287,11 +287,74 @@ std::vector<RtosDiagnostics::Finding> RtosDiagnostics::diagnose(const RtosSnapsh
 			finding.chain = {describe(task)};
 			finding.tasks = {task.tcbAddress};
 
-			finding.readySeconds = samples.back().atSeconds - samples[first].atSeconds;
+			finding.heldSeconds = samples.back().atSeconds - samples[first].atSeconds;
 			finding.heldRounds = static_cast<uint32_t>(window);
 
 			findings.push_back(finding);
 		}
+	}
+
+	/*
+	 * Unbounded waits: blocked, with the state item on the suspended list.
+	 *
+	 * That is where the kernel puts a task whose block has no timeout - it is
+	 * not on the delayed list because there is no time to wake it at. A task in
+	 * this state runs again only when the object it waits for is given; if that
+	 * never happens it waits for as long as the target is powered.
+	 *
+	 * A task that was suspended on purpose looks the same in the list, and is
+	 * told apart by its state: suspended means nobody is waiting for anything,
+	 * blocked means something is expected. Only the second is reported.
+	 */
+	for (const RtosTask& task : snapshot.tasks)
+	{
+		if (task.sourceList != "suspended" || task.state != RtosTaskState::Blocked)
+			continue;
+
+		Finding finding;
+		finding.kind = Kind::UnboundedWait;
+
+		finding.chain.push_back(describe(task));
+		finding.tasks.push_back(task.tcbAddress);
+
+		if (!task.waitingOn.empty())
+		{
+			finding.chain.push_back(task.waitingOn);
+			finding.tasks.push_back(0);
+		}
+
+		/* How long it has been in this state, when the history reaches back far
+		   enough to say. A round that did not carry the task ends the count, for
+		   the same reason as everywhere else: it said nothing. */
+		if (!samples.empty())
+		{
+			size_t first = samples.size();
+
+			for (size_t index = samples.size(); index > 0; index--)
+			{
+				const RtosTimeline::Sample& sample = samples[index - 1];
+				bool blocked = false;
+
+				for (const RtosTimeline::Entry& entry : sample.entries)
+				{
+					if (entry.tcbAddress == task.tcbAddress)
+						blocked = entry.state == RtosTaskState::Blocked;
+				}
+
+				if (!blocked)
+					break;
+
+				first = index - 1;
+			}
+
+			if (first < samples.size())
+			{
+				finding.heldSeconds = samples.back().atSeconds - samples[first].atSeconds;
+				finding.heldRounds = static_cast<uint32_t>(samples.size() - first);
+			}
+		}
+
+		findings.push_back(finding);
 	}
 
 	return findings;

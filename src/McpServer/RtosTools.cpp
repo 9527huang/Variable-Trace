@@ -24,6 +24,8 @@ namespace mcp
 				return "suspected deadlock";
 			case RtosDiagnostics::Kind::ReadyStarvation:
 				return "ready, never switched in";
+			case RtosDiagnostics::Kind::UnboundedWait:
+				return "waiting with no timeout";
 			default:
 				return "priority inheritance";
 		}
@@ -41,7 +43,7 @@ namespace mcp
 			findings.push_back(Json::object({{"kind", findingKindName(finding.kind)},
 			                                 {"chain", finding.chain},
 			                                 {"tasks", finding.tasks},
-			                                 {"ready_seconds", finding.readySeconds},
+			                                 {"held_seconds", finding.heldSeconds},
 			                                 {"held_rounds", finding.heldRounds}}));
 		}
 

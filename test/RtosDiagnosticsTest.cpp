@@ -238,3 +238,59 @@ TEST(RtosDiagnostics, ARoundWithoutTheTaskEndsTheWindow)
 	/* A round that did not carry the task says nothing either way. */
 	EXPECT_TRUE(RtosDiagnostics::diagnose(starvationRound(true, RtosTaskState::Ready, 1, 1), timeline).empty());
 }
+
+namespace
+{
+	/* A task blocked on an object, with the list its state item sits on. */
+	RtosSnapshot blockedRound(RtosTaskState state, const std::string& sourceList)
+	{
+		RtosSnapshot snapshot;
+
+		RtosTask task = makeTask("stuck", 0x20000100, 2, 2, "sem");
+
+		task.state = state;
+		task.sourceList = sourceList;
+
+		snapshot.tasks.push_back(task);
+
+		return snapshot;
+	}
+}  // namespace
+
+TEST(RtosDiagnostics, ABlockedTaskWithNoTimeoutIsReported)
+{
+	RtosTimeline timeline(16);
+	timeline.add(blockedRound(RtosTaskState::Blocked, "suspended"));
+	timeline.add(blockedRound(RtosTaskState::Blocked, "suspended"));
+
+	/* Blocked, with its state on the suspended list: there is no time to wake it
+	   at, so it runs again only when the object is given. */
+	const std::vector<RtosDiagnostics::Finding> findings =
+	    RtosDiagnostics::diagnose(blockedRound(RtosTaskState::Blocked, "suspended"), timeline);
+
+	ASSERT_EQ(findings.size(), 1u);
+	EXPECT_EQ(findings[0].kind, RtosDiagnostics::Kind::UnboundedWait);
+
+	ASSERT_EQ(findings[0].chain.size(), 2u);
+	EXPECT_EQ(findings[0].chain[0], "stuck");
+	EXPECT_EQ(findings[0].chain[1], "sem");
+
+	/* Two rounds of history, both carried the task blocked. */
+	EXPECT_EQ(findings[0].heldRounds, 2u);
+}
+
+TEST(RtosDiagnostics, ATaskSuspendedOnPurposeIsNotWaitingForAnything)
+{
+	RtosTimeline timeline(16);
+
+	/* Same list, different state: nobody is waiting for anything. */
+	EXPECT_TRUE(RtosDiagnostics::diagnose(blockedRound(RtosTaskState::Suspended, "suspended"), timeline).empty());
+}
+
+TEST(RtosDiagnostics, ATimedBlockIsNotReported)
+{
+	RtosTimeline timeline(16);
+
+	/* On the delayed list: the kernel knows when to wake it. */
+	EXPECT_TRUE(RtosDiagnostics::diagnose(blockedRound(RtosTaskState::Blocked, "delayed"), timeline).empty());
+}

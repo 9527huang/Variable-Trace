@@ -39,6 +39,13 @@ class RtosDiagnostics
 		   preemptive priority scheduler, that cannot happen - except while the
 		   running task is holding a lock someone above it wants. */
 		ReadyStarvation,
+
+		/* Blocked with the state item on the kernel's suspended list, which is
+		   where an indefinite block lives: the kernel puts a task whose block
+		   has no timeout there rather than on the delayed list. If what it waits
+		   for never comes, it never runs again - which is a fact worth knowing,
+		   not a fault in itself. */
+		UnboundedWait,
 	};
 
 	struct Finding
@@ -54,9 +61,10 @@ class RtosDiagnostics
 		   table. Zero for a name that is not a task. */
 		std::vector<uint32_t> tasks;
 
-		/* For a starvation: how long the task has been ready without being
-		   switched in, and how many rounds were read to say so. */
-		double readySeconds = 0.0;
+		/* How long the condition has held: a starvation's wait to run, an
+		   unbounded wait's time blocked. Zero when there was no history to say.
+		   `heldRounds` is how many rounds established it. */
+		double heldSeconds = 0.0;
 		uint32_t heldRounds = 0;
 	};
 

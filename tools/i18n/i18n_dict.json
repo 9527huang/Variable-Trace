@@ -496,6 +496,8 @@
   "back to latest": "回到最新",
   "priority inheritance": "优先级继承",
   "ready, never switched in": "就绪但从未被切入",
+  "waiting with no timeout": "无超时等待",
+  "Blocked with no timeout: the kernel keeps the state of a task that waits forever on its suspended list, because there is no time to wake it at. It runs again only when the object is given, and if that never happens it waits for as long as the target is powered.": "阻塞且没有超时:内核把「永远等下去」的任务的状态项放在挂起表上,因为没有唤醒时刻可放。它只有在那个对象被给出时才会再跑;若始终不给,它就等到断电为止。",
   "for %.1f s over %u rounds": "持续 %.1f 秒,来自 %u 轮",
   "A task higher in priority than the one that ran, ready in every round of the last couple of seconds. A preemptive scheduler cannot do that, except while the running task holds a lock someone above it wants - and that case is not reported here.": "有一个比实际在跑的那个优先级更高、且最近两秒每一轮都是就绪的任务。抢占式调度器不该这样——唯一合法的情况是正在跑的任务持着它想要的锁(那时按继承的优先级在跑),那种情况这里不报。",
   "suspected deadlock": "疑似死锁",

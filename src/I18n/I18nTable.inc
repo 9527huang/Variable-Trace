@@ -69,6 +69,7 @@ static const Entry table[] = {
 	{"Bar", "柱状图"},
 	{"Baudrate", "波特率"},
 	{"Baudrate:", "波特率:"},
+	{"Blocked with no timeout: the kernel keeps the state of a task that waits forever on its suspended list, because there is no time to wake it at. It runs again only when the object is given, and if that never happens it waits for as long as the target is powered.", "阻塞且没有超时:内核把「永远等下去」的任务的状态项放在挂起表上,因为没有唤醒时刻可放。它只有在那个对象被给出时才会再跑;若始终不给,它就等到断电为止。"},
 	{"Bottleneck", "性能瓶颈"},
 	{"Buffer wait", "缓冲区等待"},
 	{"C2000 Target Detected", "检测到 C2000 目标"},
@@ -539,6 +540,7 @@ static const Entry table[] = {
 	{"version: ", "版本: "},
 	{"visible plot", "张可见的图"},
 	{"visible plots", "张可见的图"},
+	{"waiting with no timeout", "无超时等待"},
 	{"write", "写入"},
 	{"write limits:", "写入限制:"},
 };
