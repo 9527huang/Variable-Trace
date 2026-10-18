@@ -59,6 +59,8 @@ EVENTS_INC :=
 EVENTS_DEF :=
 
 # 载体：0 = 目标内存里的环（默认），1 = ITM/SWO，2 = RTT 上行缓冲。
+# 现状（2026-10-18）：0 端到端可用；1 目标侧就绪、宿主侧的解码器还没写；
+# 2 目标侧就绪，但 J-Link DLL 找得到控制块却读不出数据（见 IDebugProbe::startRtt）。
 EVENTS_TRANSPORT ?= 0
 
 ifeq ($(EVENTS_ON),1)

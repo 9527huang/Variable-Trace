@@ -143,9 +143,16 @@ class IDebugProbe
 	 * the caller falls back to reading the ring the target keeps in its memory.
 	 *
 	 * `controlBlock` is where the target keeps its buffer's control block, or
-	 * zero to let the probe search for it. The search found the block in
-	 * testing and still read nothing out of it, so the address the symbol file
-	 * names is the way in.
+	 * zero to let the probe search for it.
+	 *
+	 * KNOWN NOT TO WORK, 2026-10-18. With the J-Link DLL this build bundles
+	 * (V8.10k), both the search and an explicit address find the control block -
+	 * the start command answers with the number of up-buffers - and
+	 * `JLINK_RTTERMINAL_Read` then returns nothing, while the target's write
+	 * offset sits at the end of its buffer and its read offset at the start.
+	 * Nothing has been read out of it. The ring in the target's memory is the
+	 * carrier that works; this one is kept for the day someone has the time to
+	 * find out whether the hand-written control block or the DLL is at fault.
 	 *
 	 * A refusal is not remembered, because the target may load the block after
 	 * the first attempt.
