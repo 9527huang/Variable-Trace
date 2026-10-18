@@ -76,6 +76,7 @@
   <a href="#paths">三条数据通路</a>
   <a href="#ui">界面导览</a>
   <a href="#features">功能清单</a>
+  <a href="#tasks">任务视图</a>
   <a href="#shortcuts">快捷键</a>
   <a href="#automation">自动化接口</a>
   <a href="#limits">限制与已知问题</a>
@@ -358,6 +359,110 @@
 </table>
 </section>
 
+<section id="tasks">
+<h2>任务视图</h2>
+
+<p>变量视图回答"这个变量现在是多少"。任务视图回答另一类问题：<strong>谁在跑、谁在等、在等什么、等了多久</strong>。
+它不读固件里的任何统计，全部从 FreeRTOS 的内核结构里读出来，所以不需要改编译选项，也不需要固件配合。</p>
+
+<p>在全局设置里打开任务视图（配置文件 <code>global.json</code> 的 <code>rtos.enabled</code>），
+然后切到 <strong>Task</strong> 页签。它和变量视图共用同一次采集：探针连着、采着，任务视图才有数据。</p>
+
+<div class="note">
+  <strong>它读的是内核自己的工作数据</strong>
+  就绪、延时、挂起、终止四张表，每个任务的等待对象，同步对象的持有者与等待人数，
+  以及运行时间统计。这些是内核自己为调度而维护的，软件只是把它们读出来并做算术。
+</div>
+
+<h3>任务表</h3>
+<table>
+  <thead><tr><th>列</th><th>含义</th></tr></thead>
+  <tbody>
+    <tr><td>Task</td><td>任务名</td></tr>
+    <tr><td>Priority</td><td>当前优先级。显示成 <code>3 (1)</code> 表示<strong>当前 3、创建时 1</strong>——这叫优先级继承：它持着一把别人想要的锁，内核临时把优先级借给它。这一列着色时也是这个意思</td></tr>
+    <tr><td>State</td><td>Running / Ready / Blocked / Suspended / Terminated</td></tr>
+    <tr><td>Waiting on</td><td>阻塞时等的对象名；读的是内核的<strong>对象等待表</strong>，不是任务表</td></tr>
+    <tr><td>Stack</td><td>已用 / 声明大小，以及剩余百分比。数字后面带 <code>!</code> 表示低于告警阈值（默认 20%，<code>rtos.stackAlertFreePercent</code>，设为 0 关闭）</td></tr>
+    <tr><td>CPU</td><td>最近窗口内的处理器占用。目标没开 <code>configGENERATE_RUN_TIME_STATS</code> 时这一列显示"未启用"，这是目标的选择，不是软件的故障</td></tr>
+  </tbody>
+</table>
+
+<p>表里一行都读不到数据时显示 <code>-</code>，那是"没有读数"，不是"零"。
+栈水位靠宿主扫栈里的 <code>0xa5</code> 填充，一轮扫不完所有任务，所以每行的读数各带年龄。</p>
+
+<h3>同步对象与时间线</h3>
+
+<p><strong>同步对象表</strong>列出内核里注册过的队列、信号量、互斥量：类型、容量、当前计数、各有几个任务在等、谁持着。
+点了任务行，相关的对象会跟着高亮。</p>
+
+<p><strong>时间线</strong>把每个任务画成一条泳道，横轴与变量视图共用。<strong>跟随光标</strong>打开时，窗口跟着变量视图的光标走：
+双光标是区间，单光标是居中。缺某一轮读数的任务画成"没有读数"，不画成"没在跑"——这两件事不一样。</p>
+
+<h3>四条诊断</h3>
+
+<p>面板顶部会出现几条诊断，<strong>没有问题的时候整段不出现</strong>。每条都带一小段链子，点链子里的任务名会选中表里对应的行。</p>
+
+<table>
+  <thead><tr><th>诊断</th><th>它说明什么</th><th>什么情况下<em>不</em>报</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>优先级继承</td>
+      <td>某个持锁任务的优先级被抬高了——内核只在有更高优先级的任务等这把锁时这样做。链子读作：<em>等待者 → 锁 → 持有者</em></td>
+      <td>——</td>
+    </tr>
+    <tr>
+      <td>疑似死锁</td>
+      <td>两个或更多任务各自等着下一个任务手里的锁，绕成一个环</td>
+      <td>环在两轮之间自行解开时看不见——一轮只是一个采样，所以说"疑似"</td>
+    </tr>
+    <tr>
+      <td>就绪但从未被切入</td>
+      <td>一个任务比<strong>实际在跑的那个</strong>优先级更高，且最近两秒每一轮都是 Ready。抢占式调度器不该这样</td>
+      <td>有同级或更高优先级的任务也 Ready（调度器跑的是对的）；在跑的任务正处优先级继承中（它持着别人要的锁）；只持续了一两轮（可能是切换在途）</td>
+    </tr>
+    <tr>
+      <td>无超时等待</td>
+      <td>任务阻塞、但等待没有超时——它只有在那个对象被给出时才会再跑。会附带"已经等了多久"</td>
+      <td>故意挂起（Suspended）的任务；有超时的阻塞（内核知道何时唤醒它）</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>"不报"和"报了"一样重要</strong>
+  这些判据的价值首先在于不乱报。比如"Ready 却没在跑"本身是正常调度——低优先级任务本来就在等，
+  所以只有当一个任务的优先级<strong>高于实际在跑的那个</strong>时才算异常。判断时用的是它<strong>创建时</strong>的优先级，
+  因为被继承的那个号码是等待者的，不是它自己的。
+</div>
+
+<h3>切换记录：时间线是怎么来的</h3>
+
+<p>时间线有两种画法，取决于数据来源：</p>
+
+<table>
+  <thead><tr><th>来源</th><th>时间线画成</th><th>代价</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>目标的<strong>内存环形缓冲</strong>（默认）</td>
+      <td>一条条<strong>运行区间</strong>：某个任务从被切入到被切出跑了多久</td>
+      <td>两轮之间被覆盖的记录会丢，丢了多少如实显示（<code>lost</code>）。条带的疏密就是这个数在说话</td>
+    </tr>
+    <tr>
+      <td>每轮一次的<strong>采样</strong>（没有环形缓冲时）</td>
+      <td>一个个点：那一刻谁在跑</td>
+      <td>看不到区间之间的形状</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>目标侧要提供切换记录，需要一处固件改动（一个 trace 宏）。参考实现与说明在
+<code>example/rtos_trace_port/event_ring/</code>，编译开关是 <code>make EVENTS_ON=1</code>——
+默认不进固件，符合"不给固件加约束"这条原则。</p>
+
+<p>除了内存环形缓冲，还可以走 <strong>ITM/SWO</strong> 与 <strong>RTT</strong> 两条通路
+（<code>global.json</code> 的 <code>rtos.eventsTransport</code>）。它们的现状见"限制与已知问题"。</p>
+</section>
+
 <section id="shortcuts">
 <h2>快捷键</h2>
 <table>
@@ -411,6 +516,9 @@
     <tr><td>采样率有上限</td><td>上限取决于探针、地址布局和消费者负载；连续 RAM 变量可合并读取，稀疏或外设地址仍可能随事务数明显下降</td></tr>
     <tr><td>SWD 速度并非越快越好</td><td>从 1 MHz 提到 4 MHz 提升明显，4 MHz 往上收益递减</td></tr>
     <tr><td>记录器需要目标侧代码</td><td>固件里必须集成配套的参考实现</td></tr>
+    <tr><td>任务视图只能看到被调度过的东西</td><td>内核不维护"切换次数"，所以没有这一列；统计的是当前状态与最近的历史</td></tr>
+    <tr><td>SWO 与任务视图的读数不能共存（J-Link）</td><td>一颗 J-Link 同时只服务一条连接。调试连接占着它时，SWO 那条连接连不上；跟踪视图能用 SWO，正是因为它独占连接。要改用 <code>rtos.eventsTransport</code> 时必须接受"任务视图读不到内核"</td></tr>
+    <tr><td>RTT 通路当前不可用</td><td>目标侧已就绪，但 J-Link 的 DLL 能找到控制块、读不出数据。默认的数据通路是内存环形缓冲，不受影响</td></tr>
   </tbody>
 </table>
 
