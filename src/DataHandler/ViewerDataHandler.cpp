@@ -1225,6 +1225,20 @@ void ViewerDataHandler::dataHandler()
 
 	while (!done)
 	{
+		/* What the loop is acting on, one line per change. A run that stops
+		   without saying why is the hardest thing to read back afterwards. */
+		{
+			static State reported = State::STOP;
+
+			if (viewerState != reported)
+			{
+				logger->info("Acquisition state: {} (probe {}).", viewerState == State::RUN ? "RUN" : "STOP",
+				             debugProbe != nullptr ? (debugProbe->isValid() ? "valid" : "invalid") : "none");
+
+				reported = viewerState;
+			}
+		}
+
 		/* Preparing the task view reads a symbol file, which takes seconds on
 		   a large one, so it happens here rather than at the moment the switch
 		   went on: this is the first point at which the project is known to be
@@ -1362,6 +1376,23 @@ void ViewerDataHandler::dataHandler()
 					   way, and the snapshot loses one more cheaply. */
 					if (rtosRoundIsDue(period, nextDeadline, sampleInterval))
 						runRtosRound(start);
+
+					/* Asked for, running, and publishing nothing: the panel says
+					   so as well, but a line survives the program. */
+					if (rtosEnabled.load(std::memory_order_relaxed) && rtosLastRoundAt > 0.0)
+					{
+						static bool said = false;
+						const double silentFor = period - rtosLastRoundAt;
+
+						if (silentFor > 5.0 && !said)
+						{
+							logger->warn("The task view has published nothing for {:.1f} s.", silentFor);
+
+							said = true;
+						}
+						else if (silentFor < 2.0)
+							said = false;
+					}
 
 					metricsElapsedNs.store(nanosecondsBetween(start, Clock::now()), std::memory_order_relaxed);
 
