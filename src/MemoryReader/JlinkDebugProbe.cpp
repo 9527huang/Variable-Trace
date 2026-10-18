@@ -38,6 +38,16 @@ extern "C" uint32_t JLINK_RTTERMINAL_Read(uint32_t channel, uint8_t* buffer, uin
 
 constexpr uint32_t jlinkRttStart = 1;
 
+/* What the start command takes: the address of the control block, and an
+   identifier of zero for "the one the address points at". A zero address makes
+   the DLL search the target's RAM, which is what it did before - and found the
+   block without being able to read it. */
+struct JlinkRttStart
+{
+	uint32_t controlBlockAddress;
+	uint32_t identifier;
+};
+
 namespace
 {
 	/* The DLL calls these from whichever thread it is running on, so the logger
@@ -380,9 +390,9 @@ bool JlinkDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size)
 	return false;
 }
 
-bool JlinkDebugProbe::startRtt()
+bool JlinkDebugProbe::startRtt(uint32_t controlBlock)
 {
-	if (rttStarted)
+	if (rttStarted && rttControlBlock == controlBlock)
 		return true;
 
 	std::lock_guard<std::mutex> lock(mtx);
@@ -394,10 +404,14 @@ bool JlinkDebugProbe::startRtt()
 	   the answer is remembered: the search costs milliseconds and gives the same
 	   answer every round. A refusal is not remembered, because the target may
 	   set the block up after this first try. */
-	if (JLINK_RTTERMINAL_Control(jlinkRttStart, nullptr) < 0)
+	JlinkRttStart configuration{controlBlock, 0};
+	const int32_t result = JLINK_RTTERMINAL_Control(jlinkRttStart, controlBlock == 0 ? nullptr : &configuration);
+
+	if (result < 0)
 		return false;
 
 	rttStarted = true;
+	rttControlBlock = controlBlock;
 
 	logger->info("The target keeps an RTT buffer, and the probe is reading it.");
 

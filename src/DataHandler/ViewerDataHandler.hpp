@@ -410,8 +410,12 @@ class ViewerDataHandler : public DataHandlerBase
 	 * enough to be worth printing rather than a number that stops meaning
 	 * anything.
 	 */
-	/* Set once the probe has found the target's RTT buffer. The ring is not
-	   read while this is true: the same records would arrive twice. */
+	/* Where the target keeps its RTT control block, from the symbol file. Zero
+	   when it keeps none, or when the probe is left to search for it. */
+	uint32_t rtosRttControlAddress = 0;
+
+	/* Set once the stream has handed over a record. The ring is not read while
+	   this is true: the same records would arrive twice. */
 	bool rttActive = false;
 
 	/* Bytes of a record the target was still writing when the read came back. */

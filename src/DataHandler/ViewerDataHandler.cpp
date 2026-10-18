@@ -413,6 +413,18 @@ bool ViewerDataHandler::prepareRtos()
 		logger->info("Switch records are kept by the target, at 0x{:08X}.", rtosEventRingAddress);
 	}
 
+	/* And the RTT control block, when the target keeps one. The address is
+	   handed to the probe rather than left for it to search: the search found
+	   the block and read nothing out of it. */
+	rtosRttControlAddress = 0;
+
+	if (const auto control = symbols.find("vtrace_rtt_control"); control != symbols.end())
+	{
+		rtosRttControlAddress = control->second.address;
+
+		logger->info("The target keeps an RTT control block, at 0x{:08X}.", rtosRttControlAddress);
+	}
+
 	/* Every snapshot carries the identity of the run it came from, so a saved
 	   record can be told apart from the next one. The wall clock is the only
 	   thing at hand that is unique to this run. */
@@ -666,7 +678,7 @@ void ViewerDataHandler::pollEventStream(double nowSeconds)
 	if (!rtosEnabled.load(std::memory_order_relaxed) || rtosModel == nullptr || debugProbe == nullptr)
 		return;
 
-	if (!rttActive && !debugProbe->startRtt())
+	if (!rttActive && !debugProbe->startRtt(rtosRttControlAddress))
 		return;
 
 	std::array<uint8_t, 4096> buffer{};

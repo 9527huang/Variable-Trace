@@ -142,12 +142,18 @@ class IDebugProbe
 	 * refusal, so a probe that has no such channel needs no code to say so, and
 	 * the caller falls back to reading the ring the target keeps in its memory.
 	 *
-	 * `startRtt` looks for the control block once and remembers having found
-	 * it; a refusal is not remembered, because the target may load the block
-	 * after the first attempt.
+	 * `controlBlock` is where the target keeps its buffer's control block, or
+	 * zero to let the probe search for it. The search found the block in
+	 * testing and still read nothing out of it, so the address the symbol file
+	 * names is the way in.
+	 *
+	 * A refusal is not remembered, because the target may load the block after
+	 * the first attempt.
 	 */
-	virtual bool startRtt()
+	virtual bool startRtt(uint32_t controlBlock)
 	{
+		(void)controlBlock;
+
 		return false;
 	}
 

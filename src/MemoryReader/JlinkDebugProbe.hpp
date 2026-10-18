@@ -18,7 +18,7 @@ class JlinkDebugProbe : public IDebugProbe
 	bool stopAcqusition() override;
 	bool isValid() const override;
 
-	bool startRtt() override;
+	bool startRtt(uint32_t controlBlock) override;
 	uint32_t readRtt(uint8_t* buffer, uint32_t size) override;
 	std::string getTargetName() override;
 
@@ -61,6 +61,10 @@ class JlinkDebugProbe : public IDebugProbe
 	/* Set once the target's control block has been found. A refusal is not
 	   remembered: the target may configure the block after the first try. */
 	bool rttStarted = false;
+
+	/* Where the block was, so that a second attempt with a different address
+	   is not answered from the first one's success. */
+	uint32_t rttControlBlock = 0;
 	std::string openedLink;
 
 	std::unordered_map<uint32_t, uint8_t> addressSizeMap;
