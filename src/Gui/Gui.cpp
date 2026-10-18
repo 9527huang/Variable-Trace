@@ -342,6 +342,50 @@ void Gui::mainThread(std::string externalPath)
 		drawC2000ParserSuggestion();
 
 		/*
+		 * The moments the variable view is pointing at.
+		 *
+		 * Every visible plot carries its own cursors, so there is no single
+		 * "the" cursor to ask for. Handing over all of them costs nothing
+		 * and needs no rule about which one counts: the timeline draws a
+		 * line where each one is, and dragging any of them moves a line.
+		 * The two views already share one clock - both take their
+		 * timestamps from the sampling loop's start - so a time means the
+		 * same thing in either.
+		 *
+		 * Gathered out here rather than inside the task window, because the
+		 * timeline lives in a window of its own now: that window is drawn
+		 * whether or not the view holding the table is the one in front,
+		 * and the cursors it follows are the ones placed in the plots either
+		 * way.
+		 */
+		std::vector<double> plotCursors;
+
+		if (const std::shared_ptr<PlotGroup> group = plotGroupHandler->getActiveGroup(); group != nullptr)
+		{
+			for (const auto& [name, element] : *group)
+			{
+				if (!element.visibility || element.plot == nullptr)
+					continue;
+
+				/*
+				 * Where the cursors are, not whether they are being drawn.
+				 *
+				 * The plot puts its cursors away while samples are still
+				 * arriving - a measurement of data that is still coming in
+				 * measures nothing - but that is a rule about the readouts,
+				 * and a cursor's position still marks the moment the reader
+				 * put it on. So the position is followed whenever the
+				 * cursor has been placed at all.
+				 */
+				if (element.plot->markerX0.getState())
+					plotCursors.push_back(element.plot->markerX0.getValue());
+
+				if (element.plot->markerX1.getState())
+					plotCursors.push_back(element.plot->markerX1.getValue());
+			}
+		}
+
+		/*
 		 * A pane the layout file has never seen is docked beside the variable
 		 * view rather than left to come up loose behind it.
 		 *
@@ -370,17 +414,6 @@ void Gui::mainThread(std::string externalPath)
 			   share is the plots: its rounds run inside the sampling loop that
 			   draws them. */
 			/*
-			 * The moments the variable view is pointing at.
-			 *
-			 * Every visible plot carries its own cursors, so there is no single
-			 * "the" cursor to ask for. Handing over all of them costs nothing
-			 * and needs no rule about which one counts: the timeline draws a
-			 * line where each one is, and dragging any of them moves a line.
-			 * The two views already share one clock - both take their
-			 * timestamps from the sampling loop's start - so a time means the
-			 * same thing in either.
-			 */
-			/*
 			 * The trace clock, for the carrier that needs one.
 			 *
 			 * SWO runs from the same clock the trace view would program, so the
@@ -400,37 +433,44 @@ void Gui::mainThread(std::string externalPath)
 			else
 				viewerDataHandler->setSwoSettings({}, 0, 0);
 
-			std::vector<double> plotCursors;
-
-			if (const std::shared_ptr<PlotGroup> group = plotGroupHandler->getActiveGroup(); group != nullptr)
-			{
-				for (const auto& [name, element] : *group)
-				{
-					if (!element.visibility || element.plot == nullptr)
-						continue;
-
-					/*
-					 * Where the cursors are, not whether they are being drawn.
-					 *
-					 * The plot puts its cursors away while samples are still
-					 * arriving - a measurement of data that is still coming in
-					 * measures nothing - but that is a rule about the readouts,
-					 * and a cursor's position still marks the moment the reader
-					 * put it on. So the position is followed whenever the
-					 * cursor has been placed at all.
-					 */
-					if (element.plot->markerX0.getState())
-						plotCursors.push_back(element.plot->markerX0.getValue());
-
-					if (element.plot->markerX1.getState())
-						plotCursors.push_back(element.plot->markerX1.getValue());
-				}
-			}
-
 			GuiRtosPanel::draw(viewerDataHandler->getRtosModel(), viewerDataHandler->getRtosPrepareError(),
-			                   globalConfig->getSettings().rtosStackAlertFreePercent, plotCursors, globalConfig->getSettings().rtosView);
+			                   globalConfig->getSettings().rtosStackAlertFreePercent, globalConfig->getSettings().rtosView);
 		}
 		ImGui::End();
+
+		/*
+		 * The other half of the task view: the timeline, and in time the
+		 * objects and the details that explain what the table found.
+		 *
+		 * It is only submitted while the task view is the one in front. A
+		 * docked window that is begun again on every frame stays in its node
+		 * even when its view is not showing, and a node that is not showing
+		 * tabs draws the first window it holds - so leaving this one in the
+		 * plots' node all the time would put it in front of the plots in the
+		 * other two views. Submitting it only when it belongs on screen is
+		 * also what makes the switch: the plots window and this one take
+		 * turns in that node, the same way the two plot windows already do.
+		 */
+		if (activeView == ActiveViewType::RtosViewer)
+		{
+			if (ImGui::FindWindowSettings(ImHashStr(I18n::windowTitle("Task Analysis").c_str())) == nullptr)
+			{
+				const ImGuiWindowSettings* beside = ImGui::FindWindowSettings(ImHashStr(I18n::windowTitle("Plots").c_str()));
+
+				if (beside != nullptr && beside->DockId != 0)
+					ImGui::SetNextWindowDockID(beside->DockId, ImGuiCond_Always);
+			}
+
+			/* The plots carry this class so that a pane holding one of them
+			   shows no tab strip; the analysis area belongs to the same kind
+			   of pane and is given the same treatment. */
+			ImGui::SetNextWindowClass(&window_class);
+
+			if (ImGui::Begin(I18n::windowTitle("Task Analysis").c_str()))
+				GuiRtosPanel::drawAnalysis(viewerDataHandler->getRtosModel(), viewerDataHandler->getRtosPrepareError(), plotCursors);
+
+			ImGui::End();
+		}
 
 		if (ImGui::Begin(I18n::windowTitle("Trace Viewer").c_str()))
 		{
@@ -1389,7 +1429,14 @@ void Gui::ensureDockLayout(ImGuiID dockspaceId)
 
 	ImGuiID settingsSide = 0;
 	ImGuiID plotsSide = 0;
-	ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.27f, &settingsSide, &plotsSide);
+
+	/* Just over a third of the width for the settings and the task table, and
+	   the rest for the analysis. The task table has eight columns and the
+	   timeline has labels at both ends, and neither fits in the fifth of the
+	   window the plots alone needed. The share is where the two measured
+	   against each other: below it the task table's headers start being cut,
+	   above it the analysis area loses room it can use. */
+	ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.38f, &settingsSide, &plotsSide);
 
 	/* The three views live in the same node and are switched between with the
 	   tabs above it, and so do the plots. A view that is not here comes up as
@@ -1401,6 +1448,11 @@ void Gui::ensureDockLayout(ImGuiID dockspaceId)
 	ImGui::DockBuilderDockWindow(I18n::windowTitle("Task Viewer").c_str(), settingsSide);
 	ImGui::DockBuilderDockWindow(I18n::windowTitle("Plots").c_str(), plotsSide);
 	ImGui::DockBuilderDockWindow(I18n::windowTitle("Trace Plots").c_str(), plotsSide);
+
+	/* The task view's second half shares the node with the plots for the same
+	   reason: only one of them can be wanted at a time, and each takes the
+	   whole of it. */
+	ImGui::DockBuilderDockWindow(I18n::windowTitle("Task Analysis").c_str(), plotsSide);
 
 	ImGui::DockBuilderFinish(dockspaceId);
 }

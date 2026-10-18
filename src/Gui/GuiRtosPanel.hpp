@@ -41,8 +41,7 @@
 class GuiRtosPanel
 {
    public:
-	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation, uint32_t stackAlertFreePercent,
-	                 const std::vector<double>& plotCursors, RtosViewSettings& view)
+	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation, uint32_t stackAlertFreePercent, RtosViewSettings& view)
 	{
 		/* What the reader had set up is taken once, from the settings file, so
 		   that a run does not change under a number someone is moving in a box -
@@ -119,8 +118,53 @@ class GuiRtosPanel
 		   what is left, so that a short window does not push the objects out of
 		   sight entirely. */
 		drawTable(snapshot);
-		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, selectedTask, hoveredTask);
 		drawSyncObjects(*snapshot);
+	}
+
+	/*
+	 * The right hand half of the task view: what the tasks did over time.
+	 *
+	 * The table says what is true now and the timeline says how it got there,
+	 * so the two are read together. Side by side they are read together
+	 * without either being squeezed: stacked in one column narrow enough to
+	 * fit the settings, the timeline lost its labels and the table lost its
+	 * columns.
+	 *
+	 * It draws in a window of its own, which is why it is a method of its own
+	 * and not the tail of `draw`.
+	 */
+	static void drawAnalysis(const std::shared_ptr<RtosModel>& model, const std::string& explanation, const std::vector<double>& plotCursors)
+	{
+		/* A hovered row is a fact about this frame of the table, and the table
+		   may not have been drawn at all - the reader can be looking at
+		   another view with this one still open beside it. A stale address
+		   would leave a lane lit with nothing pointing at it. */
+		const uint32_t hovered = tableDrewThisFrame ? hoveredTask : 0u;
+
+		tableDrewThisFrame = false;
+
+		if (model == nullptr)
+		{
+			ImGui::TextUnformatted(I18n::tr("No task data yet."));
+
+			if (!explanation.empty())
+				ImGui::TextDisabled("%s", explanation.c_str());
+			else
+				ImGui::TextDisabled("%s", I18n::tr("The task view reads its rounds while an acquisition is running."));
+
+			return;
+		}
+
+		const std::shared_ptr<const RtosSnapshot> snapshot = model->current();
+
+		if (snapshot == nullptr)
+		{
+			ImGui::TextUnformatted(I18n::tr("No round has been published yet."));
+
+			return;
+		}
+
+		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, selectedTask, hovered);
 	}
 
 	/*
@@ -271,6 +315,10 @@ class GuiRtosPanel
 	inline static RtosTaskTableQuery query{};
 	inline static bool stackAlertSeeded = false;
 
+	/* Whether the address column has been put away in this run. See the note
+	   where it is hidden. */
+	inline static bool addressColumnSeeded = false;
+
 	/* What the reader is pointing at: the row they clicked, and the row they
 	   are on. Both travel to the timeline, which is the only place they mean
 	   anything to anyone else. */
@@ -281,6 +329,12 @@ class GuiRtosPanel
 	   scrolled to - scrolling every frame would fight the wheel. */
 	inline static std::string selectedObject;
 	inline static std::string scrolledObject;
+
+	/* Whether the table was drawn in this frame. The hover follows the mouse
+	   over rows, which only the table knows about; the timeline asks for it a
+	   moment later in the frame and has to be able to tell "no row under the
+	   mouse" from "the table did not run". */
+	inline static bool tableDrewThisFrame = false;
 
 	/*
 	 * The search field's buffer, kept between frames.
@@ -613,8 +667,19 @@ class GuiRtosPanel
 	{
 		const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(*snapshot, query);
 
+		/*
+		 * Every column has a width of its own, and the sideways scroll is the
+		 * fallback for a pane dragged narrow.
+		 *
+		 * A stretching column was tried first and does not work here: with
+		 * `ScrollX` in this version the stretch column is measured against
+		 * something other than what is left, and the last column pays for it -
+		 * cut off at the border, "Waiting on" arriving as "Waiting". Widths
+		 * that are stated are widths that hold, and the scrollbar appears only
+		 * when the pane really is too narrow for them.
+		 */
 		const ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY |
-		                              ImGuiTableFlags_ScrollX | ImGuiTableFlags_ContextMenuInBody;
+		                              ImGuiTableFlags_ScrollX | ImGuiTableFlags_ContextMenuInBody | ImGuiTableFlags_Hideable;
 
 		/*
 		 * The table is given a height rather than the whole window.
@@ -670,19 +735,58 @@ class GuiRtosPanel
 		 * it back. The columns between Name and Waiting object are short numbers
 		 * or short words and get a width that fits them; the two names take what
 		 * is left, because they are the two that were being cut.
+		 *
+		 * Every width carries the interface scale. The numbers below are what
+		 * a column holds at a scale of one; a window on a scaled display draws
+		 * its text at that scale too, and a width written plainly then holds
+		 * two thirds of a word - "Priori", "Task shar" - while the column
+		 * looks as if it had room to spare.
 		 */
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Name), ImGuiTableColumnFlags_WidthStretch, 1.0f);
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Address), ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultHide, 95.0f);
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Priority), ImGuiTableColumnFlags_WidthFixed, 70.0f);
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::State), ImGuiTableColumnFlags_WidthFixed, 75.0f);
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackSize), ImGuiTableColumnFlags_WidthFixed, 65.0f);
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackWatermark), ImGuiTableColumnFlags_WidthFixed, 130.0f);
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::CpuLoad), ImGuiTableColumnFlags_WidthFixed, 70.0f);
-		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::WaitingOn), ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		const float columnScale = GuiHelper::contentScale;
+
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Name), ImGuiTableColumnFlags_WidthFixed, 120.0f * columnScale);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Address), ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultHide, 95.0f * columnScale);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Priority), ImGuiTableColumnFlags_WidthFixed, 60.0f * columnScale);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::State), ImGuiTableColumnFlags_WidthFixed, 66.0f * columnScale);
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackSize), ImGuiTableColumnFlags_WidthFixed, 45.0f * columnScale);
+
+		/* Wide enough for the widest reading it can hold - "576 / 768
+		   (75.2%)" - and not for the header alone, which is the shorter of the
+		   two. */
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::StackWatermark), ImGuiTableColumnFlags_WidthFixed, 106.0f * columnScale);
+
+		/* Wide enough for the header as well as the number: "Task share" is
+		   the one name in the table that has to be read in full, because a
+		   reader who takes the column for the machine's utilisation has read
+		   the table wrong. */
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::CpuLoad), ImGuiTableColumnFlags_WidthFixed, 74.0f * columnScale);
+		/* Wide enough for the header, and for the longest object name the
+		   fixture has; the tooltip carries the rest. */
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::WaitingOn), ImGuiTableColumnFlags_WidthFixed, 90.0f * columnScale);
+
+		/*
+		 * The address starts hidden, by hand.
+		 *
+		 * It is the widest fixed thing in the table and the one least needed
+		 * at a glance, so it was given `ImGuiTableColumnFlags_DefaultHide` -
+		 * which only applies while no column settings have been saved for the
+		 * table, and stops applying the moment the layout file has any. That
+		 * is every run after the first, which makes the flag useless for this.
+		 * Hiding it once and letting the column menu bring it back is what
+		 * holds, because the choice then belongs to the table and is saved
+		 * with the rest of it. Once per run: a reader who turns the column
+		 * back on must not have it taken away again a frame later.
+		 */
+		if (!addressColumnSeeded)
+		{
+			ImGui::TableSetColumnEnabled(1, false);
+			addressColumnSeeded = true;
+		}
 
 			drawHeaderRow(snapshot);
 
 		hoveredTask = 0;
+		tableDrewThisFrame = true;
 
 		for (const RtosTaskRow& row : rows)
 		{

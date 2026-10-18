@@ -306,7 +306,13 @@ class GuiRtosPanelTimeline
 		const float nameWidth = 110.0f * scale;
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
 		const float width = ImGui::GetContentRegionAvail().x;
-		const float height = std::clamp(ImGui::GetContentRegionAvail().y * 0.9f, 90.0f * scale, 220.0f * scale);
+		const float available = ImGui::GetContentRegionAvail().y;
+
+		/* The strip takes two thirds of what is left under the header and the
+		   table below it takes the rest. It used to be capped at a fixed
+		   height, which was right in a column this strip shared with a table
+		   and a second table, and leaves most of a window of its own empty. */
+		const float height = std::clamp(available * 0.66f, 90.0f * scale, std::max(available - 2.0f, 90.0f * scale));
 		const float axisHeight = 16.0f * scale;
 		const float plotHeight = height - axisHeight;
 
@@ -793,8 +799,16 @@ class GuiRtosPanelTimeline
 		ImGui::SameLine(0.0f, 4.0f * scale);
 		ImGui::TextDisabled("%s", I18n::tr("a cursor in the variable view"));
 
-		ImGui::SameLine(0.0f, spacing);
+		/* The caveat gets a line of its own, and that line wraps.
+		 *
+		 * It is the one thing about the strip that is easy to misread, so it
+		 * stays on screen instead of moving into a tooltip; and it is a
+		 * sentence, so it is allowed to take a second line rather than having
+		 * its end cut off by the edge of the window. A row of legend entries
+		 * joined by `SameLine` has no second line to take. */
+		ImGui::PushTextWrapPos(0.0f);
 		ImGui::TextDisabled("%s", I18n::tr("- the round did not read that task, which is not the same as idle"));
+		ImGui::PopTextWrapPos();
 
 		if (ImGui::IsItemHovered())
 		{
