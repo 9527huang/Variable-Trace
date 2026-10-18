@@ -51,6 +51,7 @@ class GuiRtosPanelTimeline
 
 		drawHeader(history, plotCursors);
 		drawLegend();
+		drawSourceLine(history, plotCursors);
 
 		const double newest = history.newestSeconds();
 		const RtosTimeline::Span window = windowOf(plotCursors, newest);
@@ -150,9 +151,21 @@ class GuiRtosPanelTimeline
 		return RtosTimeline::windowFrom(plotCursors, static_cast<double>(windowSeconds), followPlotCursors, newest);
 	}
 
+	/*
+	 * The header is three rows, and it stays three rows: the controls, the
+	 * legend, and what the window is showing.
+	 *
+	 * Everything used to be on one line, so at any width the reading gave out
+	 * somewhere and the text on the right was quietly cut - "click a time to pin
+	 * it" arrived as "click a time to pin it one mar...". A row that holds only
+	 * controls has nothing to cut, and a row that holds only words can wrap.
+	 */
 	static void drawHeader(const RtosTimeline& history, const std::vector<double>& plotCursors)
 	{
 		ImGui::TextUnformatted(I18n::tr("Timeline"));
+
+		ImGui::SameLine();
+		ImGui::TextUnformatted(I18n::tr("last"));
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
@@ -167,11 +180,8 @@ class GuiRtosPanelTimeline
 			ImGui::EndTooltip();
 		}
 
-		if (followPlotCursors && !plotCursors.empty() && !manualWindow)
-		{
-			ImGui::SameLine();
-			ImGui::TextDisabled(I18n::tr("following %u plot cursor(s)"), static_cast<uint32_t>(plotCursors.size()));
-		}
+		ImGui::SameLine();
+		ImGui::TextUnformatted(I18n::tr("s"));
 
 		ImGui::SameLine();
 		ImGui::Checkbox(I18n::tr("follow plot cursors"), &followPlotCursors);
@@ -194,6 +204,22 @@ class GuiRtosPanelTimeline
 			if (ImGui::Button(I18n::tr("unpin")))
 				hasPinned = false;
 		}
+	}
+
+	/*
+	 * The third row: what the window is showing, and how to work it.
+	 *
+	 * Its own row rather than a suffix to the controls, because it is a sentence
+	 * and sentences get cut when they share a line with buttons.
+	 */
+	static void drawSourceLine(const RtosTimeline& history, const std::vector<double>& plotCursors)
+	{
+		if (followPlotCursors && !plotCursors.empty() && !manualWindow)
+		{
+			ImGui::TextDisabled(I18n::tr("following %u plot cursor(s)"), static_cast<uint32_t>(plotCursors.size()));
+
+			ImGui::SameLine();
+		}
 
 		/* What the marks are, and what they are not. A row of dots invites the
 		   reading that a task ran between two of them, and the round interval is
@@ -202,11 +228,10 @@ class GuiRtosPanelTimeline
 		const double span = history.newestSeconds() - history.oldestSeconds();
 		const double interval = kept > 1 && span > 0.0 ? span / static_cast<double>(kept - 1) : 0.0;
 
-		ImGui::SameLine();
-
 		if (!hasPinned)
 		{
 			ImGui::TextDisabled("%s", I18n::tr("click a time to pin it"));
+
 			ImGui::SameLine();
 		}
 
