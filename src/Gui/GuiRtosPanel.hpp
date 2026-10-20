@@ -1068,18 +1068,22 @@ class GuiRtosPanel
 		 * the view whatever its size.
 		 */
 		/*
-		 * The table is as tall as what is in it, within reason.
+		 * The table fills what is left of the pane, and its height has nothing
+		 * to do with how many tasks there are.
 		 *
-		 * A fixed share of the window left rows of empty table under a dozen
-		 * tasks and squeezed what came after it. The height comes from the rows
-		 * instead: six minimum, so a short list does not look like a table that
-		 * failed to load; twenty maximum, so a long one scrolls inside itself.
+		 * It used to follow the row count - six rows minimum, twenty maximum -
+		 * on the reasoning that a fixed share left empty table under a short
+		 * list. What that reasoning missed is that the count is not stable
+		 * while the target runs: a task blocks, a filter cuts the list to two,
+		 * and the table shrank and grew under the reader's eye, taking the
+		 * scroll position and the sense of "where am I" with it. Empty space at
+		 * the bottom is still empty space whether it is inside the table or
+		 * under it; a table that changes size while you read it is worse.
+		 *
+		 * `ScrollY` is on, so a list longer than the pane scrolls inside it and
+		 * the height still does not move.
 		 */
-		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
-		const size_t visibleRows = std::clamp<size_t>(rows.size(), 6, 20);
-		const float wantedHeight = ImGui::GetFrameHeight() + rowHeight * static_cast<float>(visibleRows) + ImGui::GetStyle().CellPadding.y * 2.0f;
-
-		const ImVec2 size(0.0f, std::min(wantedHeight, ImGui::GetContentRegionAvail().y * 0.9f));
+		const ImVec2 size(0.0f, ImGui::GetContentRegionAvail().y);
 
 		/*
 		 * The name carries a version. ImGui stores a table's column widths and
