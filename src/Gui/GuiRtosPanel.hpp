@@ -179,6 +179,8 @@ class GuiRtosPanel
 		   waiting for one of these, so the two are read together. */
 		drawSyncObjects(*snapshot);
 
+		drawPinnedMoment(*model, *snapshot);
+
 		drawSelectedTask(*snapshot);
 	}
 
@@ -1286,6 +1288,97 @@ class GuiRtosPanel
 		/* A dash, and not a zero. A zero is a reading; this is the absence of
 		   one, and the two must not look the same in a column of numbers. */
 		return "-";
+	}
+
+	/*
+	 * The moment the reader pinned on the strip.
+	 *
+	 * The table answers "what is it doing now". A pinned moment answers "what
+	 * was it doing then", which is what a reading that caught something
+	 * interesting needs - and the sample is already in the strip's history, so
+	 * this only says it in words.
+	 */
+	static void drawPinnedMoment(const RtosModel& model, const RtosSnapshot& snapshot)
+	{
+		if (!GuiRtosPanelTimeline::getPinned())
+			return;
+
+		ImGui::Separator();
+		ImGui::TextUnformatted(I18n::tr("Pinned moment"));
+
+		const double at = GuiRtosPanelTimeline::getPinnedAt();
+
+		/* Not `near`: Windows headers define that one as a macro, and the
+		   declaration stops meaning anything. */
+		std::vector<RtosTimeline::Sample> around;
+		model.history().copyRange(at - 0.5, at + 0.5, around);
+
+		if (around.empty())
+		{
+			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("That moment is no longer among the rounds the view keeps."));
+
+			return;
+		}
+
+		const RtosTimeline::Sample& sample = around[RtosTimeline::nearestIndex(around, at)];
+
+		uint32_t running = 0;
+		uint32_t ready = 0;
+		uint32_t blocked = 0;
+		uint32_t suspended = 0;
+		std::string runningName;
+
+		for (const RtosTimeline::Entry& entry : sample.entries)
+		{
+			switch (entry.state)
+			{
+				case RtosTaskState::Running:
+					running++;
+
+					/* The name comes from the round in hand: a task does not
+					   change its name, and the sample carries only addresses. */
+					if (runningName.empty())
+					{
+						const RtosTask* task = snapshot.find(entry.tcbAddress);
+
+						if (task != nullptr)
+							runningName = task->name;
+					}
+
+					break;
+
+				case RtosTaskState::Ready:
+					ready++;
+					break;
+
+				case RtosTaskState::Blocked:
+					blocked++;
+					break;
+
+				case RtosTaskState::Suspended:
+					suspended++;
+					break;
+
+				default:
+					break;
+			}
+		}
+
+		char time[32] = {};
+		std::snprintf(time, sizeof(time), "%+.2f s", sample.atSeconds);
+
+		detailRow(I18n::tr("Time"), time);
+
+		/* Only when there is one: a round can miss the running task, and a
+		   dash under a heading that says "Running" reads as a broken reading
+		   rather than as a round that did not see it. The counts below say what
+		   was seen. */
+		if (!runningName.empty())
+			detailRow(I18n::tr("Running"), runningName);
+
+		char counts[128] = {};
+		std::snprintf(counts, sizeof(counts), I18n::tr("%u running, %u ready, %u blocked, %u suspended"), running, ready, blocked, suspended);
+		detailRow(I18n::tr("Tasks"), counts);
 	}
 
 	/* One label and its value, with the values lined up in a column. */

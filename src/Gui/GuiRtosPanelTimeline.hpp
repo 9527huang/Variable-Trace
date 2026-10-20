@@ -164,6 +164,18 @@ class GuiRtosPanelTimeline
 		followPlotCursors = value;
 	}
 
+	/* The moment the reader pinned on the strip, if any. Read by the panel to
+	   describe that moment in words. */
+	static bool getPinned()
+	{
+		return hasPinned;
+	}
+
+	static double getPinnedAt()
+	{
+		return pinnedAt;
+	}
+
 	/* Whether the lanes follow the table's order instead of the stable one. */
 	static bool getFollowTableOrder()
 	{
