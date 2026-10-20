@@ -378,18 +378,22 @@ class GuiRtosPanel
 
 	static FindingSeverity severityOf(RtosDiagnostics::Kind kind)
 	{
+		/* Two palettes, like the rest of the interface. These are read as text
+		   on both panels, so the light column goes darker rather than lighter:
+		   the same red that reads as urgent on black turns into pink on white
+		   and stops looking like a warning at all. */
 		switch (kind)
 		{
 			case RtosDiagnostics::Kind::SuspectedDeadlock:
 			case RtosDiagnostics::Kind::UnboundedWait:
-				return {"!", ImVec4(0.90f, 0.40f, 0.35f, 1.0f)};
+				return {"!", GuiHelper::themed(ImVec4(0.90f, 0.40f, 0.35f, 1.0f), ImVec4(0.70f, 0.14f, 0.11f, 1.0f))};
 
 			case RtosDiagnostics::Kind::ReadyStarvation:
-				return {"!", ImVec4(0.85f, 0.58f, 0.20f, 1.0f)};
+				return {"!", GuiHelper::themed(ImVec4(0.85f, 0.58f, 0.20f, 1.0f), ImVec4(0.58f, 0.34f, 0.02f, 1.0f))};
 
 			case RtosDiagnostics::Kind::PriorityInheritance:
 			default:
-				return {"i", ImVec4(0.55f, 0.65f, 0.85f, 1.0f)};
+				return {"i", GuiHelper::themed(ImVec4(0.55f, 0.65f, 0.85f, 1.0f), ImVec4(0.22f, 0.33f, 0.55f, 1.0f))};
 		}
 	}
 
