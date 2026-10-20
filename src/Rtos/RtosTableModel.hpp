@@ -38,8 +38,46 @@ enum class RtosTaskColumn
 	WaitingOn,
 };
 
+/*
+ * The question the table is being asked.
+ *
+ * Four of them, because four is what a reader arrives with: everything, what
+ * is wrong, what is waiting, and what is taking the time. The filters below
+ * narrow inside whichever one is asked, which is why this is a mode of its own
+ * rather than one more checkbox among them - a row that the mode drops is not
+ * a row whose other conditions failed, it is a row that this question is not
+ * about.
+ *
+ * `Anomalies` is the one worth writing down, because it is the one the reader
+ * will test against their own idea of "wrong". It keeps a row when the stack
+ * is below the alert threshold, when the priority was raised by inheritance,
+ * or when a finding names the task - the last being how a ready task that the
+ * scheduler keeps passing over gets in, since nothing about the round in front
+ * of you says so.
+ *
+ * It deliberately does not keep every task blocked on an object. In a healthy
+ * kernel that is most of them, and a filter that answers "everything is wrong"
+ * is a filter nobody uses twice.
+ */
+enum class RtosTaskFilterMode
+{
+	All,
+	Anomalies,
+	Blocked,
+	HighShare,
+};
+
 struct RtosTaskTableQuery
 {
+	/* Which of the four questions this is. */
+	RtosTaskFilterMode mode = RtosTaskFilterMode::All;
+
+	/* What `HighShare` keeps: a share of the task time at or above this. A
+	   judgement about one target, like the stack threshold, so it is a number
+	   the reader can move rather than a constant. Zero keeps every task that
+	   has a share at all. */
+	double shareFloorPercent = 10.0;
+
 	/* Empty means every state. */
 	std::vector<RtosTaskState> states;
 
@@ -182,7 +220,6 @@ struct RtosViewSettings
 	bool hasPriorityFloor = false;
 	uint32_t priorityFloor = 0;
 	bool onlyStackAlerts = false;
-	bool showOnlyBlocked = false;
 	uint32_t stackAlertFreePercent = 20;
 	float timelineWindowSeconds = 10.0f;
 	bool followPlotCursors = true;
@@ -191,12 +228,28 @@ struct RtosViewSettings
 	   one. Off by default: a table sorted by a number that changes every round
 	   would make every lane move every round. */
 	bool timelineFollowsTable = false;
+
+	/* Which of the four questions the table is answering, as the number of the
+	   mode, and the floor `HighShare` uses. Stored as numbers rather than as
+	   names for the same reason the theme is stored as one: a value this build
+	   does not recognise has to be recognisable as such. */
+	uint32_t filterMode = 0;
+	double shareFloorPercent = 10.0;
 };
 
 class RtosTableModel
 {
    public:
-	static std::vector<RtosTaskRow> taskRows(const RtosSnapshot& snapshot, const RtosTaskTableQuery& query);
+	/*
+	 * The rows the query keeps, in the order it asks for.
+	 *
+	 * `namedByFindings` is the tasks the round's findings named. They come
+	 * from `RtosDiagnostics`, which needs the history and therefore cannot be
+	 * called from here; what arrives is the addresses, and the only mode that
+	 * looks at them is `Anomalies`.
+	 */
+	static std::vector<RtosTaskRow> taskRows(const RtosSnapshot& snapshot, const RtosTaskTableQuery& query,
+	                                         const std::vector<uint32_t>& namedByFindings = {});
 
 	/*
 	 * The task numbers a row set holds, in order.
@@ -217,8 +270,13 @@ class RtosTableModel
 	 * move between lists. A lane that moves under the reader is a lane they
 	 * cannot follow, so the order has to come from something the target does
 	 * not change from round to round.
+	 *
+	 * It takes rows rather than the snapshot so that the strip holds the same
+	 * tasks the table does. A filter that narrowed the table to three rows and
+	 * left fourteen lanes would answer half the question: which tasks are worth
+	 * watching is one question, and the lanes are where you watch them.
 	 */
-	static std::vector<uint32_t> laneOrder(const RtosSnapshot& snapshot);
+	static std::vector<uint32_t> laneOrderOf(const std::vector<RtosTaskRow>& rows);
 
 	/*
 	 * The state's name as the interface writes it.

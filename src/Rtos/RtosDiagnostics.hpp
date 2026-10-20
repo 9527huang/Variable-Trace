@@ -74,6 +74,17 @@ class RtosDiagnostics
 	   is not a fault - a switch may be about to happen. Four rounds of it is a
 	   fault. */
 	static std::vector<Finding> diagnose(const RtosSnapshot& snapshot, const RtosTimeline& history);
+
+	/*
+	 * The findings one task takes part in.
+	 *
+	 * A row can be in the table for a reason the row does not carry: a task on
+	 * a deadlock ring looks like any other blocked task, and a ready task being
+	 * passed over looks like any other ready one. This is how the detail block
+	 * answers "why is this row here" without a column that would be empty on
+	 * every row that has nothing to say.
+	 */
+	static std::vector<Finding> findingsFor(const std::vector<Finding>& findings, uint32_t taskAddress);
 };
 
 #endif

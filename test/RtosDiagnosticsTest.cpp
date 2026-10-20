@@ -60,6 +60,29 @@ namespace
 	}
 }  // namespace
 
+TEST(RtosDiagnostics, FindingsArePickedOutPerTask)
+{
+	RtosSnapshot snapshot;
+
+	/* high waits for the mutex low holds; a third task is in neither. */
+	snapshot.tasks.push_back(makeTask("high", 0x20000100, 3, 3, "mtx"));
+	snapshot.tasks.push_back(makeTask("low", 0x20000200, 3, 1, ""));
+	snapshot.tasks.push_back(makeTask("other", 0x20000300, 2, 2, ""));
+	snapshot.syncObjects.push_back(makeMutex("mtx", 0x20001000, 0x20000200));
+
+	const std::vector<RtosDiagnostics::Finding> findings = diagnoseOnly(snapshot);
+
+	/* Both ends of the chain are in it, and the object between them is not a
+	   task - which is what the detail block needs to know before it claims a
+	   task is part of a finding. */
+	EXPECT_EQ(RtosDiagnostics::findingsFor(findings, 0x20000100u).size(), 1u);
+	EXPECT_EQ(RtosDiagnostics::findingsFor(findings, 0x20000200u).size(), 1u);
+	EXPECT_EQ(RtosDiagnostics::findingsFor(findings, 0x20000300u).size(), 0u);
+
+	/* No task number at all is not a wildcard: it is "nothing is selected". */
+	EXPECT_TRUE(RtosDiagnostics::findingsFor(findings, 0u).empty());
+}
+
 TEST(RtosDiagnostics, FindsTheLockHeldWhileSomebodyWaits)
 {
 	RtosSnapshot snapshot;

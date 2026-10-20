@@ -418,23 +418,46 @@
 <p><strong>点一个计数，表格就只留下那一类任务</strong>；再点一次放开。选中的计数会有一层淡色
 填充和一圈边框，没选中的只有色点和数字——所以"这是状态的颜色"和"这个筛选生效了"是两件事。</p>
 
+<p>计数下面那一排是<strong>四个问题</strong>，一次只问一个。它决定"看哪些任务"，下面的
+筛选条件在这个范围里再收窄。</p>
+
+<table>
+  <thead><tr><th>问题</th><th>留下什么</th></tr></thead>
+  <tbody>
+    <tr><td><code>all tasks</code></td><td>这一轮读到的每个任务</td></tr>
+    <tr><td><code>problems only</code></td><td>栈剩余到或低于告警阈值的、优先级被继承抬高的，以及"发现"里点到名的任务（疑似死锁环上的人、无超时等待者、就绪却一直没被切入的）</td></tr>
+    <tr><td><code>blocked only</code></td><td>在等某个东西的任务，不管这段等待有没有超时</td></tr>
+    <tr><td><code>high share only</code></td><td>任务时间占比到或高于下限的任务。选中之后旁边出现 <code>task share &gt;= [10] %</code>，可以当场改</td></tr>
+  </tbody>
+</table>
+
+<p><code>problems only</code> <strong>故意不包含"每个阻塞在对象上的任务"</strong>：内核健康的时候那是大多数任务，
+一个回答"全都有问题"的筛选没人会用第二次。鼠标停在按钮上有这一段的原话。</p>
+
+<p>同一次只能问一个问题，所以按钮是互斥的。<code>blocked only</code> 与摘要里那个"阻塞"计数
+说的是同一件事，点其中一个，另一个跟着对。<strong>选一个状态计数或状态多选会退出 <code>blocked only</code></strong>，
+避免两个控件各说一半、表格空掉却看不出原因。</p>
+
 <table>
   <thead><tr><th>控件</th><th>作用</th></tr></thead>
   <tbody>
     <tr><td><code>search by name</code></td><td>按任务名筛</td></tr>
     <tr><td><code>states</code></td><td>多选状态，四类各带自己的色点；上面那排计数是它的快捷方式，两边改的是同一个条件</td></tr>
     <tr><td><code>stack alerts only</code></td><td>只留下栈剩余低于阈值的任务</td></tr>
-    <tr><td><code>clear filters</code></td><td>一次清掉全部条件。没有条件时它是平面的，看起来就是"没得清"</td></tr>
+    <tr><td><code>clear filters</code></td><td>一次清掉全部条件，<strong>包括上面那个问题</strong>。没有条件时它是平面的，看起来就是"没得清"</td></tr>
     <tr><td><code>stack free &lt;= 20 %</code></td><td>栈告警的阈值，<code>0</code> 关闭告警</td></tr>
     <tr><td><code>priority &gt;=</code></td><td>只有不低于这个优先级的任务留下</td></tr>
   </tbody>
 </table>
 
-<p>这一行右端写着"14 个里显示 14 个"，也就是当前筛选之下还剩多少行。</p>
+<p>这一行右端写着"14 个里显示 14 个"，也就是当前筛选之下还剩多少行。<strong>筛完一行不剩时，
+那一行改成说原因</strong>——空表格没有一句话，看起来像界面坏了。</p>
 
 <h3>发现（Findings）</h3>
 
-<p>诊断结果写在单独的一段里，标题带数量（<code>Findings 2</code>），<strong>没有问题的时候整段不出现</strong>。</p>
+<p>诊断结果写在单独的一段里，标题带数量（<code>Findings 2</code>）。<strong>这一段一直在，
+高度固定两行</strong>：有问题时是那两条最严重的，没问题时第二行写"这一轮没有发现"。
+它曾经在没有问题时整段消失，结果条数一变，下面的筛选和表格就上下挪一次。</p>
 
 <p>每条前面有一个字符表示严重程度，颜色只是重复它：</p>
 
@@ -510,6 +533,10 @@
 按当前优先级排的话，一有继承整张图就翻一遍。头部有<strong>跟随表格顺序</strong>开关，
 打开后泳道按表格当前的排序走；说明行会写明现在是哪一种。</p>
 
+<p><strong>筛选也管泳道</strong>：表格只剩三行，图上就只剩三条泳道——"哪几个任务值得看"是一个问题，
+泳道就是看的地方。说明行会写"13 个任务里有 4 个有泳道"，因为少掉的泳道很容易被读成"这些任务没在跑"。
+筛到一个不剩时它说的是"筛选之后没有任务可画"，而不是"这一轮没有任务"——那是关于目标的另一句话。</p>
+
 <h3>选中任务详情</h3>
 
 <p>右栏最下面是当前选中任务的全文。表格是横向比较的形状，读单个任务要看的是句子：</p>
@@ -522,6 +549,7 @@
     <tr><td>Priority</td><td>被继承时写成 <code>3 (was 1) - inherited while a lock is held</code></td></tr>
     <tr><td>Stack</td><td>用量、剩余百分比，以及<strong>这个读数是几秒前扫的</strong>。扫描一轮只扫几个任务，所以每行的年龄不同</td></tr>
     <tr><td>Task share</td><td>占比，以及<strong>分母是什么</strong>：任务用掉的时间里它占多少，统计窗口多长</td></tr>
+    <tr><td>Problems</td><td>这个任务被哪几条发现抓到（<code>waiting with no timeout 333.1 s</code>），没有写 <code>-</code>。表格里看不出原因的两种——死锁环上的人、就绪却被一直跳过的任务——在这里说明</td></tr>
   </tbody>
 </table>
 

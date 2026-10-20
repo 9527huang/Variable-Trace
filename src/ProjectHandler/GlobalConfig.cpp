@@ -122,7 +122,17 @@ bool GlobalConfig::load()
 			settings.rtosView.hasPriorityFloor = view.value("hasPriorityFloor", settings.rtosView.hasPriorityFloor);
 			settings.rtosView.priorityFloor = view.value("priorityFloor", settings.rtosView.priorityFloor);
 			settings.rtosView.onlyStackAlerts = view.value("onlyStackAlerts", settings.rtosView.onlyStackAlerts);
-			settings.rtosView.showOnlyBlocked = view.value("showOnlyBlocked", settings.rtosView.showOnlyBlocked);
+			settings.rtosView.filterMode = view.value("filterMode", settings.rtosView.filterMode);
+			settings.rtosView.shareFloorPercent = view.value("shareFloorPercent", settings.rtosView.shareFloorPercent);
+
+			/* A file written before the modes existed said "only blocked" with a
+			   flag of its own. The mode carries that request now, and the flag is
+			   read here rather than kept as a second way to say the same thing -
+			   two representations of one filter drift apart, and the reader is
+			   the one who finds out. */
+			if (!view.contains("filterMode") && view.value("showOnlyBlocked", false))
+				settings.rtosView.filterMode = static_cast<uint32_t>(RtosTaskFilterMode::Blocked);
+
 			settings.rtosView.timelineWindowSeconds = view.value("timelineWindowSeconds", settings.rtosView.timelineWindowSeconds);
 			settings.rtosView.followPlotCursors = view.value("followPlotCursors", settings.rtosView.followPlotCursors);
 			settings.rtosView.timelineFollowsTable = view.value("timelineFollowsTable", settings.rtosView.timelineFollowsTable);
@@ -193,7 +203,8 @@ bool GlobalConfig::save()
 	                  {"hasPriorityFloor", settings.rtosView.hasPriorityFloor},
 	                  {"priorityFloor", settings.rtosView.priorityFloor},
 	                  {"onlyStackAlerts", settings.rtosView.onlyStackAlerts},
-	                  {"showOnlyBlocked", settings.rtosView.showOnlyBlocked},
+	                  {"filterMode", settings.rtosView.filterMode},
+	                  {"shareFloorPercent", settings.rtosView.shareFloorPercent},
 	                  {"timelineWindowSeconds", settings.rtosView.timelineWindowSeconds},
 	                  {"followPlotCursors", settings.rtosView.followPlotCursors},
 	                  {"timelineFollowsTable", settings.rtosView.timelineFollowsTable}}}};

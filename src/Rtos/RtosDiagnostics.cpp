@@ -8,6 +8,9 @@
 
 namespace
 {
+	/* A task's name, or its address when the round could not read one. Objects
+	   reach the chain by the name a task says it waits on, so there is no
+	   second overload: it would be a rule with no reader. */
 	std::string describe(const RtosTask& task)
 	{
 		if (!task.name.empty())
@@ -15,17 +18,6 @@ namespace
 
 		char buffer[16] = {};
 		std::snprintf(buffer, sizeof(buffer), "0x%08X", task.tcbAddress);
-
-		return buffer;
-	}
-
-	std::string describe(const RtosSyncObject& object)
-	{
-		if (!object.name.empty())
-			return object.name;
-
-		char buffer[16] = {};
-		std::snprintf(buffer, sizeof(buffer), "0x%08X", object.address);
 
 		return buffer;
 	}
@@ -377,4 +369,20 @@ std::vector<RtosDiagnostics::Finding> RtosDiagnostics::diagnose(const RtosSnapsh
 	}
 
 	return findings;
+}
+
+std::vector<RtosDiagnostics::Finding> RtosDiagnostics::findingsFor(const std::vector<Finding>& findings, uint32_t taskAddress)
+{
+	std::vector<Finding> mine;
+
+	if (taskAddress == 0)
+		return mine;
+
+	for (const Finding& finding : findings)
+	{
+		if (std::find(finding.tasks.begin(), finding.tasks.end(), taskAddress) != finding.tasks.end())
+			mine.push_back(finding);
+	}
+
+	return mine;
 }

@@ -33,8 +33,8 @@
  * outline, blocked is hatched, suspended is dotted.
  *
  * Nothing is decided here. Which tasks have lanes and in what order comes from
- * `RtosTableModel::laneOrder`, which samples are in the window from the
- * timeline itself - both built into the test binary, which this file is not.
+ * `RtosTableModel`, which samples are in the window from the timeline itself -
+ * both built into the test binary, which this file is not.
  */
 class GuiRtosPanelTimeline
 {
@@ -45,6 +45,11 @@ class GuiRtosPanelTimeline
 	 * the table is showing, which is what the reader sorted it to. The strip
 	 * does not decide it, because both answers are legitimate and only the
 	 * caller knows which one is wanted.
+	 *
+	 * Whatever narrows the table narrows this too: the list is the table's rows,
+	 * so a filter that leaves three of them leaves three lanes. The line under
+	 * the legend says how many, because a missing lane reads as a task that did
+	 * nothing rather than as a filter.
 	 */
 	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors, const std::vector<uint32_t>& lanes,
 	                 GuiRtosSelection& selection)
@@ -60,7 +65,7 @@ class GuiRtosPanelTimeline
 
 		drawHeader(history, plotCursors);
 		drawLegend();
-		drawSourceLine(history, plotCursors);
+		drawSourceLine(history, plotCursors, lanes.size(), snapshot.tasks.size());
 
 		const double newest = history.newestSeconds();
 		const RtosTimeline::Span window = windowOf(plotCursors, newest);
@@ -297,7 +302,7 @@ class GuiRtosPanelTimeline
 	 * Its own row rather than a suffix to the controls, because it is a sentence
 	 * and sentences get cut when they share a line with buttons.
 	 */
-	static void drawSourceLine(const RtosTimeline& history, const std::vector<double>& plotCursors)
+	static void drawSourceLine(const RtosTimeline& history, const std::vector<double>& plotCursors, size_t lanes, size_t tasks)
 	{
 		/* A dot between the sentences: they are separate facts and were being
 		   read as one long line. */
@@ -373,6 +378,16 @@ class GuiRtosPanelTimeline
 		   lane. */
 		GuiHelper::drawSecondaryText("%s", I18n::tr(followTableOrder ? "lanes in table order" : "lanes in base priority order"));
 
+		/* A strip narrowed by the table's filter holds fewer lanes than the
+		   kernel has tasks, and a reader who took the missing ones for tasks
+		   that did nothing would be reading a filter as a fact about the
+		   target. */
+		if (lanes < tasks)
+		{
+			separate();
+			GuiHelper::drawSecondaryText(I18n::tr("%u of %u tasks have lanes"), static_cast<uint32_t>(lanes), static_cast<uint32_t>(tasks));
+		}
+
 		ImGui::Separator();
 	}
 
@@ -427,7 +442,14 @@ class GuiRtosPanelTimeline
 	{
 		if (lanes.empty())
 		{
-			GuiHelper::drawSecondaryText("%s", I18n::tr("No tasks in this round."));
+			/* Two causes, and they must not be said the same way: a round with
+			   no tasks at all, and a filter that kept none of the tasks the
+			   round did have. "No tasks in this round" over a kernel that is
+			   running thirteen of them is a false claim about the target. */
+			if (snapshot.tasks.empty())
+				GuiHelper::drawSecondaryText("%s", I18n::tr("No tasks in this round."));
+			else
+				GuiHelper::drawSecondaryText("%s", I18n::tr("The filters left no task to draw. Clear them to see the lanes again."));
 
 			return;
 		}

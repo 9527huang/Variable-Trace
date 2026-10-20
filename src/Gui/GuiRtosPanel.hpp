@@ -57,8 +57,8 @@ class GuiRtosPanel
 			query.priorityFloor = view.priorityFloor;
 			query.onlyStackAlerts = view.onlyStackAlerts;
 			query.stackAlertFreePercent = stackAlertFreePercent;
-
-			query.states = view.showOnlyBlocked ? std::vector<RtosTaskState>{RtosTaskState::Blocked} : std::vector<RtosTaskState>{};
+			query.mode = filterModeFrom(view.filterMode);
+			query.shareFloorPercent = view.shareFloorPercent;
 
 			GuiRtosPanelTimeline::setWindowSeconds(view.timelineWindowSeconds);
 			GuiRtosPanelTimeline::setFollowPlotCursors(view.followPlotCursors);
@@ -72,7 +72,8 @@ class GuiRtosPanel
 		view.hasPriorityFloor = query.hasPriorityFloor;
 		view.priorityFloor = query.priorityFloor;
 		view.onlyStackAlerts = query.onlyStackAlerts;
-		view.showOnlyBlocked = query.states.size() == 1 && query.states.front() == RtosTaskState::Blocked;
+		view.filterMode = static_cast<uint32_t>(query.mode);
+		view.shareFloorPercent = query.shareFloorPercent;
 		view.timelineWindowSeconds = GuiRtosPanelTimeline::getWindowSeconds();
 		view.followPlotCursors = GuiRtosPanelTimeline::getFollowPlotCursors();
 		view.timelineFollowsTable = GuiRtosPanelTimeline::getFollowTableOrder();
@@ -107,26 +108,42 @@ class GuiRtosPanel
 		drawStackScanNotice(*snapshot);
 		drawCpuLoadNotice(*snapshot);
 
-		/* The findings are worked out before the summary, because the summary
-		   quotes the longest wait from them: two readers of one answer rather
-		   than two computations that could disagree. */
-		const std::vector<RtosDiagnostics::Finding> findings = RtosDiagnostics::diagnose(*snapshot, model->history());
+		/* The findings are worked out once for the whole round and kept, because
+		   three readers want them: this half quotes them, the table's anomaly
+		   mode keeps the tasks they name, and the detail block says which of
+		   them the selected task is caught in. They are the summary's source for
+		   the longest wait too, so a summary and a findings block cannot
+		   disagree about which wait that is. */
+		const std::vector<RtosDiagnostics::Finding>& findings = findingsFor(*model, snapshot);
 
 		fixedRows(2.0f, [&] { drawSummary(*snapshot, findings); });
 
-		/* Findings, and only when there are any: a section that says "nothing
-		   is wrong" every round trains the reader to skip the place where the
-		   answer appears. */
+		/*
+		 * Always, and always the same height.
+		 *
+		 * It used to be skipped when there was nothing to report, on the
+		 * reasoning that a block which says "nothing is wrong" every round
+		 * teaches the reader to skip it. What that missed is that the number of
+		 * findings changes while the target runs, and a block that comes and
+		 * goes moves the filters and the table under the reader's eye. The
+		 * section keeps its room and says so in words when it is empty.
+		 */
+		drawDiagnostics(findings);
 
-		if (!findings.empty())
-			drawDiagnostics(findings);
+		const std::vector<RtosTaskRow> rows = drawFilters(snapshot, addressesNamedBy(findings));
 
-		drawFilters(snapshot);
-
-		/* Which order the rows are in. The header shows no arrow when the
-		   problem order is in force, and a table with no arrow on any column
-		   looks like a table that forgot to sort. */
-		if (query.problemFirst)
+		/*
+		 * One line, three things it can say, and never more than one line.
+		 *
+		 * A table with no rows and no word about why reads as a broken panel
+		 * rather than as an answer, and a table that has rows still owes the
+		 * reader which order they are in - the header shows no arrow while the
+		 * problem order is in force, and a table with no arrow on any column
+		 * looks like a table that forgot to sort.
+		 */
+		if (rows.empty())
+			GuiHelper::drawSecondaryText("%s", emptyWords(*snapshot));
+		else if (query.problemFirst)
 			GuiHelper::drawSecondaryText("%s", I18n::tr("sorted by problem: stack alerts, blocked, inherited, busiest first"));
 		else
 		{
@@ -141,7 +158,7 @@ class GuiRtosPanel
 			}
 		}
 
-		drawTable(snapshot);
+		drawTable(snapshot, rows);
 	}
 
 	/*
@@ -188,13 +205,18 @@ class GuiRtosPanel
 			return;
 		}
 
+		/* The same round the table was built from, and the same findings: the
+		   strip has to hold the tasks the table kept, or the two halves of the
+		   view would be answering different questions. */
+		const std::vector<RtosDiagnostics::Finding>& findings = findingsFor(*model, snapshot);
+		const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(*snapshot, query, addressesNamedBy(findings));
+
 		/* Which order the rows go in: the stable one, or the one the reader
 		   sorted the table to. The stable order exists because a lane that
 		   moves is a lane that cannot be followed; the table's order exists
 		   because a reader comparing a row with a lane wants them adjacent. */
-		const std::vector<uint32_t> lanes = GuiRtosPanelTimeline::getFollowTableOrder()
-		                                        ? RtosTableModel::addressesOf(RtosTableModel::taskRows(*snapshot, query))
-		                                        : RtosTableModel::laneOrder(*snapshot);
+		const std::vector<uint32_t> lanes = GuiRtosPanelTimeline::getFollowTableOrder() ? RtosTableModel::addressesOf(rows)
+		                                                                               : RtosTableModel::laneOrderOf(rows);
 
 		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, lanes, selection());
 
@@ -223,7 +245,7 @@ class GuiRtosPanel
 			ImGui::BeginChild("##rtosSelectedTask", ImVec2(0.0f, std::max(room.y, ImGui::GetTextLineHeightWithSpacing() * 4.0f)), false,
 			                  ImGuiWindowFlags_NoBackground);
 
-			drawSelectedTask(*model, *snapshot);
+			drawSelectedTask(*model, *snapshot, findings);
 
 			ImGui::EndChild();
 		}
@@ -377,6 +399,73 @@ class GuiRtosPanel
 	inline static RtosTaskTableQuery query{};
 	inline static bool stackAlertSeeded = false;
 
+	/*
+	 * The findings of the round on screen, worked out once and kept.
+	 *
+	 * Three readers want them and they are all in this class: the table's
+	 * anomaly mode keeps the tasks they name, the findings block draws the
+	 * chains, and the selected task says which of them it is caught in. Worked
+	 * out per reader they would be worked out three times a frame, and the
+	 * three answers would be from three slightly different moments.
+	 *
+	 * Keyed on the snapshot itself rather than on its sequence number: a
+	 * sequence belongs to a session and a new session starts one again, so a
+	 * number alone could match a round from an hour ago.
+	 */
+	inline static std::shared_ptr<const RtosSnapshot> findingsRound;
+	inline static std::vector<RtosDiagnostics::Finding> findingsOfRound;
+
+	static const std::vector<RtosDiagnostics::Finding>& findingsFor(const RtosModel& model, const std::shared_ptr<const RtosSnapshot>& snapshot)
+	{
+		if (findingsRound.get() != snapshot.get())
+		{
+			findingsOfRound = RtosDiagnostics::diagnose(*snapshot, model.history());
+			findingsRound = snapshot;
+		}
+
+		return findingsOfRound;
+	}
+
+	/* The tasks the findings named, which is what the anomaly mode keeps beside
+	   the two conditions a single row can answer for itself. */
+	static std::vector<uint32_t> addressesNamedBy(const std::vector<RtosDiagnostics::Finding>& findings)
+	{
+		std::vector<uint32_t> addresses;
+
+		for (const RtosDiagnostics::Finding& finding : findings)
+		{
+			for (const uint32_t address : finding.tasks)
+			{
+				if (address != 0)
+					addresses.push_back(address);
+			}
+		}
+
+		return addresses;
+	}
+
+	/* The mode as the settings file holds it. A number this build does not know
+	   reads as "all tasks" rather than as whichever question happens to share
+	   its number. */
+	static RtosTaskFilterMode filterModeFrom(uint32_t stored)
+	{
+		switch (stored)
+		{
+			case static_cast<uint32_t>(RtosTaskFilterMode::Anomalies):
+				return RtosTaskFilterMode::Anomalies;
+
+			case static_cast<uint32_t>(RtosTaskFilterMode::Blocked):
+				return RtosTaskFilterMode::Blocked;
+
+			case static_cast<uint32_t>(RtosTaskFilterMode::HighShare):
+				return RtosTaskFilterMode::HighShare;
+
+			case static_cast<uint32_t>(RtosTaskFilterMode::All):
+			default:
+				return RtosTaskFilterMode::All;
+		}
+	}
+
 	/* Whether the address column has been put away in this run. See the note
 	   where it is hidden. */
 	inline static bool addressColumnSeeded = false;
@@ -461,6 +550,29 @@ class GuiRtosPanel
 			case RtosDiagnostics::Kind::PriorityInheritance:
 			default:
 				return {"i", GuiHelper::themed(ImVec4(0.55f, 0.65f, 0.85f, 1.0f), ImVec4(0.22f, 0.33f, 0.55f, 1.0f))};
+		}
+	}
+
+	/* The finding's name as the interface writes it. One function rather than a
+	   ternary chain at each of the two places a finding is named: the findings
+	   block and the selected task's row would otherwise drift apart in wording
+	   while claiming to report the same thing. */
+	static const char* findingLabel(RtosDiagnostics::Kind kind)
+	{
+		switch (kind)
+		{
+			case RtosDiagnostics::Kind::SuspectedDeadlock:
+				return I18n::tr("suspected deadlock");
+
+			case RtosDiagnostics::Kind::ReadyStarvation:
+				return I18n::tr("ready, never switched in");
+
+			case RtosDiagnostics::Kind::UnboundedWait:
+				return I18n::tr("waiting with no timeout");
+
+			case RtosDiagnostics::Kind::PriorityInheritance:
+			default:
+				return I18n::tr("priority inheritance");
 		}
 	}
 
@@ -584,8 +696,7 @@ class GuiRtosPanel
 			const bool starvation = finding.kind == RtosDiagnostics::Kind::ReadyStarvation;
 			const bool unbounded = finding.kind == RtosDiagnostics::Kind::UnboundedWait;
 
-			const char* label = deadlock ? "suspected deadlock"
-			                              : (starvation ? "ready, never switched in" : (unbounded ? "waiting with no timeout" : "priority inheritance"));
+			const char* label = findingLabel(finding.kind);
 
 			const FindingSeverity severity = severityOf(finding.kind);
 
@@ -907,6 +1018,14 @@ class GuiRtosPanel
 				query.states.clear();
 			else
 				query.states = {state};
+
+			/* The other half of the rule in `setMode`: a chip is the same
+			   request as the blocked mode, so choosing one by hand ends that
+			   mode rather than intersecting with it. Two controls that both
+			   narrow by state and disagreed would leave a table that is empty
+			   for a reason no single control shows. */
+			if (query.mode == RtosTaskFilterMode::Blocked)
+				query.mode = RtosTaskFilterMode::All;
 		}
 
 		ImGui::PopStyleVar();
@@ -921,6 +1040,11 @@ class GuiRtosPanel
 		query.priorityFloor = 0;
 		query.onlyStackAlerts = false;
 
+		/* The mode is a filter like the others, and the button says "clear
+		   filters": leaving the narrowest of them on would make the button look
+		   as though it had not worked. */
+		query.mode = RtosTaskFilterMode::All;
+
 		/* The search field draws from its own buffer, so clearing the query alone
 		   would leave the old text in the box. */
 		std::snprintf(searchBuffer, sizeof(searchBuffer), "%s", "");
@@ -931,7 +1055,8 @@ class GuiRtosPanel
 	   lit up with nothing to do. */
 	static bool filterIsOn()
 	{
-		return !query.nameSearch.empty() || !query.states.empty() || query.onlyStackAlerts || query.hasPriorityFloor;
+		return !query.nameSearch.empty() || !query.states.empty() || query.onlyStackAlerts || query.hasPriorityFloor ||
+		       query.mode != RtosTaskFilterMode::All;
 	}
 
 	/*
@@ -1026,18 +1151,24 @@ class GuiRtosPanel
 	}
 
 	/*
-	 * What narrows the table, in two rows: what a reader changes while looking
-	 * at it, and the two thresholds that are set once.
+	 * What narrows the table, in three rows: the question, the filters that
+	 * narrow inside it, and the two thresholds that are set once.
 	 *
 	 * Every number carries its unit and every condition reads as a sentence
 	 * now. "stack alert at 20" was twenty of something the reader had to guess
 	 * at, and the button that resets the sort sat among the filters although it
 	 * is a table setting - the header already sorts, and clicking the sorted
 	 * column turns it over, so the button is gone.
+	 *
+	 * Returns the rows the query keeps, so that whoever draws them next does not
+	 * ask the same question a second time - and so that the count on the last
+	 * row and the rows under it cannot disagree.
 	 */
-	static void drawFilters(const std::shared_ptr<const RtosSnapshot>& snapshot)
+	static std::vector<RtosTaskRow> drawFilters(const std::shared_ptr<const RtosSnapshot>& snapshot, const std::vector<uint32_t>& named)
 	{
 		const float scale = GuiHelper::contentScale;
+
+		drawModes();
 
 		if (!searchBufferPrimed)
 		{
@@ -1086,9 +1217,10 @@ class GuiRtosPanel
 		/* The count goes to the far end of the row, away from the threshold
 		   beside it: written close after "priority >=" it read as part of the
 		   condition. */
+		const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(*snapshot, query, named);
+
 		char shown[64] = {};
-		std::snprintf(shown, sizeof(shown), I18n::tr("%d of %d shown"), static_cast<int>(RtosTableModel::taskRows(*snapshot, query).size()),
-		              static_cast<int>(snapshot->taskCount()));
+		std::snprintf(shown, sizeof(shown), I18n::tr("%d of %d shown"), static_cast<int>(rows.size()), static_cast<int>(snapshot->taskCount()));
 
 		const float shownWidth = ImGui::CalcTextSize(shown).x;
 
@@ -1102,6 +1234,142 @@ class GuiRtosPanel
 		GuiHelper::drawSecondaryText("%s", shown);
 
 		ImGui::Separator();
+
+		return rows;
+	}
+
+	/*
+	 * The four questions, as four buttons on one line.
+	 *
+	 * Four buttons rather than a bar that hides the ones with nothing in them:
+	 * the count behind each question changes with the target, and a row that
+	 * grew and shrank its buttons would move the one the reader is reaching for.
+	 *
+	 * The fill means what it means on the state chips below - this is the
+	 * question being asked - so the two bars cannot be read as two different
+	 * kinds of selection.
+	 */
+	static void drawModes()
+	{
+		const float scale = GuiHelper::contentScale;
+
+		modeButton(I18n::tr("all tasks"), RtosTaskFilterMode::All, I18n::tr("Every task the round read, whatever state it is in."));
+
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		modeButton(I18n::tr("problems only"), RtosTaskFilterMode::Anomalies,
+		           I18n::tr("A stack at or below the alert threshold, a priority raised by inheritance, and every task the findings above name - a deadlock ring, a wait with no timeout, a task ready and passed over. A task waiting on an object with a timeout is not one of these: in a healthy kernel that is most of them."));
+
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		modeButton(I18n::tr("blocked only"), RtosTaskFilterMode::Blocked, I18n::tr("Tasks waiting for something, whether or not the wait has a timeout."));
+
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		modeButton(I18n::tr("high share only"), RtosTaskFilterMode::HighShare,
+		           I18n::tr("The tasks whose share of the task time is at or above the floor. A share needs two rounds and a target built with run time statistics."));
+
+		if (query.mode != RtosTaskFilterMode::HighShare)
+			return;
+
+		/* The floor, beside the question it belongs to and only while that
+		   question is the one being asked: a number on screen every round that
+		   matters once a session is a number the reader has to work out the
+		   purpose of. */
+		sameLineIfFits(230.0f * scale);
+
+		ImGui::TextUnformatted(I18n::tr("task share"));
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		ImGui::TextUnformatted(">=");
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		ImGui::SetNextItemWidth(70.0f * scale);
+
+		float floor = static_cast<float>(query.shareFloorPercent);
+
+		if (ImGui::InputFloat("##rtosShareFloor", &floor, 0.0f, 0.0f, "%.0f"))
+			query.shareFloorPercent = std::clamp(static_cast<double>(floor), 0.0, 100.0);
+
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		ImGui::TextUnformatted("%");
+
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			ImGui::TextUnformatted(I18n::tr("A task whose share of the task time is at or above this is kept. Zero keeps every task that has a share. The share is of the time the tasks used, not of the wall clock."));
+			ImGui::EndTooltip();
+		}
+	}
+
+	static void modeButton(const char* label, RtosTaskFilterMode mode, const char* tooltip)
+	{
+		const bool active = query.mode == mode;
+
+		ImGui::PushStyleColor(ImGuiCol_Button, active ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive) : ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImGui::GetStyleColorVec4(ImGuiCol_Text));
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, active ? 1.0f : 0.0f);
+
+		if (ImGui::SmallButton(label))
+			setMode(mode);
+
+		ImGui::PopStyleVar();
+		ImGui::PopStyleColor(2);
+
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			ImGui::PushTextWrapPos(ImGui::GetFontSize() * 34.0f);
+			ImGui::TextUnformatted(tooltip);
+			ImGui::PopTextWrapPos();
+			ImGui::EndTooltip();
+		}
+	}
+
+	/*
+	 * Switching the question, and the one state the mode answers by itself.
+	 *
+	 * `blocked only` and the blocked chip are the same request, so the mode
+	 * carries it and the chip's list is emptied as it arrives - otherwise a
+	 * reader who had asked for the ready tasks and then for the blocked ones
+	 * would be asking for nothing and would get exactly that, with two lit
+	 * controls apparently agreeing.
+	 */
+	static void setMode(RtosTaskFilterMode mode)
+	{
+		query.mode = mode;
+
+		if (mode == RtosTaskFilterMode::Blocked)
+			query.states.clear();
+	}
+
+	/*
+	 * Why the table is empty, in the words of the question that emptied it.
+	 *
+	 * Three different things produce an empty table and they look identical: a
+	 * question with no answer in this round, a filter that kept nothing, and a
+	 * target that cannot answer the question at all. The last is what a reader
+	 * would take for a broken panel - a kernel built without run time
+	 * statistics has no shares, so nothing can be above a share floor.
+	 */
+	static const char* emptyWords(const RtosSnapshot& snapshot)
+	{
+		switch (query.mode)
+		{
+			case RtosTaskFilterMode::Anomalies:
+				return I18n::tr("Nothing in this round looks wrong: no stack at the alert threshold, no inherited priority, and no finding naming a task.");
+
+			case RtosTaskFilterMode::Blocked:
+				return I18n::tr("No task is blocked in this round.");
+
+			case RtosTaskFilterMode::HighShare:
+				for (const RtosTask& task : snapshot.tasks)
+				{
+					if (task.hasCpuShare)
+						return I18n::tr("No task is at or above that share of the task time.");
+				}
+
+				return I18n::tr("The target does not count the time each task used, so no share can be above the floor.");
+
+			case RtosTaskFilterMode::All:
+			default:
+				return I18n::tr("No task matches these filters.");
+		}
 	}
 
 	/*
@@ -1141,10 +1409,16 @@ class GuiRtosPanel
 		}
 	}
 
-	static void drawTable(const std::shared_ptr<const RtosSnapshot>& snapshot)
+	/*
+	 * The rows, drawn.
+	 *
+	 * The rows arrive rather than being asked for here: the filters decided
+	 * them a few lines above, the count under them was taken from the same set,
+	 * and asking again would be the one place where the two could disagree
+	 * about what is on screen.
+	 */
+	static void drawTable(const std::shared_ptr<const RtosSnapshot>& snapshot, const std::vector<RtosTaskRow>& rows)
 	{
-		const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(*snapshot, query);
-
 		/*
 		 * Every column has a width of its own, and the sideways scroll is the
 		 * fallback for a pane dragged narrow.
@@ -1656,7 +1930,7 @@ class GuiRtosPanel
 	 * comparing, this is for reading, and neither is what gets pasted into a
 	 * bug report.
 	 */
-	static void drawSelectedTask(const RtosModel& model, const RtosSnapshot& snapshot)
+	static void drawSelectedTask(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<RtosDiagnostics::Finding>& findings)
 	{
 		const float scale = GuiHelper::contentScale;
 
@@ -1739,6 +2013,44 @@ class GuiRtosPanel
 		}
 
 		detailRow(I18n::tr("Waiting on"), row.waitingOn.empty() ? std::string("-") : row.waitingOn);
+
+		/*
+		 * Which findings this task is caught in.
+		 *
+		 * The row is in the table whatever reason put it there, and two of the
+		 * four reasons leave no mark on the row itself: a task on a deadlock
+		 * ring is blocked like any other, and a ready task the scheduler keeps
+		 * passing over looks ready. Without this a reader who filtered to the
+		 * problems would have to guess why a plain looking row survived.
+		 */
+		const std::vector<RtosDiagnostics::Finding> involvement = RtosDiagnostics::findingsFor(findings, row.tcbAddress);
+
+		if (involvement.empty())
+			detailRow(I18n::tr("Problems"), std::string("-"));
+		else
+		{
+			std::string problems;
+
+			for (const RtosDiagnostics::Finding& finding : involvement)
+			{
+				if (!problems.empty())
+					problems += ", ";
+
+				problems += findingLabel(finding.kind);
+
+				/* How long it has held, where the finding measured it. A
+				   deadlock is a shape, not a duration. */
+				if (finding.heldSeconds > 0.0)
+				{
+					char held[32] = {};
+					std::snprintf(held, sizeof(held), I18n::tr("%.1f s"), finding.heldSeconds);
+					problems += " ";
+					problems += held;
+				}
+			}
+
+			detailRow(I18n::tr("Problems"), problems);
+		}
 
 		/* When it last had the processor. Thirty seconds back is what the query
 		   asks the history for: further than that and "not in the last 30 s" is

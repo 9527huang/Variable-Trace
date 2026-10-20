@@ -62,6 +62,14 @@ namespace
 
 		return names;
 	}
+
+	/* The lanes of a snapshot with nothing narrowed, in the order the strip
+	   draws them. The order used to be asked of the snapshot directly; it is
+	   asked of the rows now, because the strip shows the tasks the table kept. */
+	std::vector<uint32_t> lanesOf(const RtosSnapshot& snapshot)
+	{
+		return RtosTableModel::laneOrderOf(RtosTableModel::taskRows(snapshot, {}));
+	}
 }  // namespace
 
 TEST(RtosTableModel, ReturnsEveryTaskWhenNothingIsAskedFor)
@@ -422,7 +430,7 @@ TEST(RtosTableModel, TheLanesAreOrderedByBasePriorityAndNotByTheCurrentOne)
 
 	snapshot.tasks = {middle, boosted, high};
 
-	const std::vector<uint32_t> lanes = RtosTableModel::laneOrder(snapshot);
+	const std::vector<uint32_t> lanes = lanesOf(snapshot);
 
 	/* Highest base priority first. Sorted by the current priority instead, the
 	   boosted task would be somewhere in the top group and would move there and
@@ -449,7 +457,7 @@ TEST(RtosTableModel, ATaskWithNoPriorityGoesToTheBottomLane)
 
 	snapshot.tasks = {unread, known};
 
-	const std::vector<uint32_t> lanes = RtosTableModel::laneOrder(snapshot);
+	const std::vector<uint32_t> lanes = lanesOf(snapshot);
 
 	ASSERT_EQ(lanes.size(), 2u);
 	EXPECT_EQ(lanes[0], 0x20000200u);
@@ -539,4 +547,114 @@ TEST(RtosTableModel, TheStackAlertFilterKeepsOnlyTheMarkedRows)
 	ASSERT_EQ(rows.size(), 1u);
 	EXPECT_EQ(rows.front().name, "IDLE");
 	EXPECT_TRUE(rows.front().stackIsLow);
+}
+
+TEST(RtosTableModel, OnlyBlockedKeepsTheTasksThatAreWaiting)
+{
+	const RtosSnapshot snapshot = makeSnapshot();
+
+	RtosTaskTableQuery query;
+	query.mode = RtosTaskFilterMode::Blocked;
+
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"deep", "prod"}));
+}
+
+TEST(RtosTableModel, ProblemsOnlyKeepsStacksInheritanceAndWhateverTheFindingsName)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+
+	/* IDLE's stack is nearly full, and work has had a priority lent to it. */
+	snapshot.tasks[0].hasStackWatermark = true;
+	snapshot.tasks[0].stackFreeBytes = 90;
+	snapshot.tasks[0].stackWatermarkStackBytes = 504;
+
+	snapshot.tasks[3].basePriority = 1;
+	snapshot.tasks[3].hasBasePriority = true;
+	snapshot.tasks[3].rawPriority = 2;
+
+	RtosTaskTableQuery query;
+	query.mode = RtosTaskFilterMode::Anomalies;
+
+	/* The order is the problem order: the stack first, then the inheritance. */
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"IDLE", "work"}));
+
+	/* And a task the findings named gets in on that alone - a ready task the
+	   scheduler keeps passing over carries nothing on its own row that says so,
+	   which is why the addresses are handed in. */
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query, {0x20000100u})), (std::vector<std::string>{"IDLE", "work", "led"}));
+}
+
+TEST(RtosTableModel, ProblemsOnlyDoesNotKeepEveryTaskWaitingOnAnObject)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+
+	/* Waiting on a queue is what most tasks do most of the time. Only a wait
+	   with no timeout, a ring, or an inheritance is a problem, and none of them
+	   is a field on a row - a filter that kept every blocked task would answer
+	   "everything is wrong", which is an answer nobody reads twice. */
+	snapshot.tasks[2].waitingOn = "queue_prod";
+
+	RtosTaskTableQuery query;
+	query.mode = RtosTaskFilterMode::Anomalies;
+
+	EXPECT_TRUE(RtosTableModel::taskRows(snapshot, query).empty());
+}
+
+TEST(RtosTableModel, HighShareKeepsTheRowsAtOrAboveTheFloorAndNothingUnmeasured)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+
+	snapshot.tasks[1].hasCpuShare = true;  /* led */
+	snapshot.tasks[1].cpuSharePercent = 42.0;
+	snapshot.tasks[2].hasCpuShare = true;  /* prod */
+	snapshot.tasks[2].cpuSharePercent = 10.0;
+	snapshot.tasks[3].hasCpuShare = true;  /* work */
+	snapshot.tasks[3].cpuSharePercent = 9.9;
+
+	RtosTaskTableQuery query;
+	query.mode = RtosTaskFilterMode::HighShare;
+	query.shareFloorPercent = 10.0;
+
+	/* At the floor counts: a reader who typed ten means ten and above. The two
+	   tasks with no share at all are not small, they are unmeasured. */
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"led", "prod"}));
+
+	/* Zero is the switch: every task that has a share, however little. */
+	query.shareFloorPercent = 0.0;
+
+	EXPECT_EQ(RtosTableModel::taskRows(snapshot, query).size(), 3u);
+}
+
+TEST(RtosTableModel, TheModeNarrowsFirstAndTheFiltersNarrowInsideIt)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+
+	snapshot.tasks[1].hasCpuShare = true;  /* led, ready */
+	snapshot.tasks[1].cpuSharePercent = 40.0;
+	snapshot.tasks[2].hasCpuShare = true;  /* prod, blocked */
+	snapshot.tasks[2].cpuSharePercent = 30.0;
+
+	RtosTaskTableQuery query;
+	query.mode = RtosTaskFilterMode::HighShare;
+	query.shareFloorPercent = 10.0;
+	query.states = {RtosTaskState::Blocked};
+
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"prod"}));
+}
+
+TEST(RtosTableModel, TheLanesAreOnlyTheRowsTheFilterKept)
+{
+	const RtosSnapshot snapshot = makeSnapshot();
+
+	RtosTaskTableQuery query;
+	query.mode = RtosTaskFilterMode::Blocked;
+
+	const std::vector<uint32_t> lanes = RtosTableModel::laneOrderOf(RtosTableModel::taskRows(snapshot, query));
+
+	/* prod at 3 and deep at 1, so prod keeps the top lane; the three tasks the
+	   filter dropped have no lane at all - a strip of fourteen lanes over a
+	   three row table would leave the reader counting. */
+	ASSERT_EQ(lanes.size(), 2u);
+	EXPECT_EQ(lanes[0], 0x20000300u);
+	EXPECT_EQ(lanes[1], 0x20000500u);
 }

@@ -49,6 +49,63 @@ namespace
 		return left.compare(right);
 	}
 
+	/*
+	 * Whether the kernel lent this task a priority.
+	 *
+	 * One rule, three readers: the mode that keeps the anomalies, the summary
+	 * count, and the order the table is put in. Written out three times it
+	 * would sooner or later be written three slightly different ways, and the
+	 * table would disagree with its own summary - the one disagreement a
+	 * reader cannot see the cause of.
+	 *
+	 * Both flags have to be there. A zero priority is a real priority, so
+	 * "nothing was read" cannot be spelled with a zero; without the flags every
+	 * task whose control block was skipped would look as though it had been
+	 * created at zero and inherited up to where it is.
+	 */
+	bool priorityIsInherited(bool hasPriority, bool hasBasePriority, uint32_t priority, uint32_t basePriority)
+	{
+		return hasPriority && hasBasePriority && priority != basePriority;
+	}
+
+	/*
+	 * Whether the question being asked is about this task at all.
+	 *
+	 * Ahead of the filters rather than after them, because the two are not the
+	 * same kind of condition: a filter narrows what the mode kept, and a row the
+	 * mode drops was never part of the answer.
+	 */
+	bool keepsForMode(const RtosTask& task, const RtosTaskTableQuery& query, const std::vector<uint32_t>& namedByFindings)
+	{
+		switch (query.mode)
+		{
+			case RtosTaskFilterMode::Blocked:
+				return task.state == RtosTaskState::Blocked;
+
+			case RtosTaskFilterMode::HighShare:
+				/* A task with no share is not a small one: nothing was measured
+				   for it, and a column of them under a heading about the
+				   busiest tasks would be the answer to a different question. */
+				return task.hasCpuShare && task.cpuSharePercent >= query.shareFloorPercent;
+
+			case RtosTaskFilterMode::Anomalies:
+				if (stackIsBelowAlert(task, query.stackAlertFreePercent))
+					return true;
+
+				if (priorityIsInherited(task.hasPriority, task.hasBasePriority, task.rawPriority, task.basePriority))
+					return true;
+
+				/* The findings are the only source for a task that is ready and
+				   being passed over: nothing in the round in front of you says
+				   so, and a deadlock ring is a shape rather than a field. */
+				return std::find(namedByFindings.begin(), namedByFindings.end(), task.tcbAddress) != namedByFindings.end();
+
+			case RtosTaskFilterMode::All:
+			default:
+				return true;
+		}
+	}
+
 	int signOf(int64_t left, int64_t right)
 	{
 		return left < right ? -1 : (left > right ? 1 : 0);
@@ -141,7 +198,8 @@ namespace
 	}
 }  // namespace
 
-std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, const RtosTaskTableQuery& query)
+std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, const RtosTaskTableQuery& query,
+                                                  const std::vector<uint32_t>& namedByFindings)
 {
 	std::vector<RtosTaskRow> rows;
 
@@ -149,6 +207,9 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 
 	for (const RtosTask& task : snapshot.tasks)
 	{
+		if (!keepsForMode(task, query, namedByFindings))
+			continue;
+
 		if (!matchesState(task.state, query.states))
 			continue;
 
@@ -205,6 +266,12 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 	 * then priority inheritance, then whoever is using the processor most, and
 	 * the name last as a tie-break. Stable, so equal rows keep the order the
 	 * round found them in rather than swapping on every redraw.
+	 *
+	 * The blocked rank is not a list of the anomalies - `Anomalies` does not
+	 * keep every task waiting on an object, because in a healthy kernel that is
+	 * most of them. It is here because the order is asked once and answered by
+	 * everything that might matter, while the filter is asked again and again
+	 * and cannot afford to be generous.
 	 */
 	const auto problemRank = [](const RtosTaskRow& row)
 	{
@@ -214,7 +281,7 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 		if (row.state == RtosTaskState::Blocked && !row.waitingOn.empty())
 			return 1;
 
-		if (row.hasBasePriority && row.hasPriority && row.priority != row.basePriority)
+		if (priorityIsInherited(row.hasPriority, row.hasBasePriority, row.priority, row.basePriority))
 			return 2;
 
 		return 3;
@@ -310,7 +377,7 @@ RtosTableModel::Summary RtosTableModel::summaryOf(const RtosSnapshot& snapshot, 
 		if (stackIsBelowAlert(task, stackAlertFreePercent))
 			summary.stackAlerts++;
 
-		if (task.hasBasePriority && task.hasPriority && task.rawPriority != task.basePriority)
+		if (priorityIsInherited(task.hasPriority, task.hasBasePriority, task.rawPriority, task.basePriority))
 			summary.inherited++;
 	}
 
@@ -345,13 +412,13 @@ const char* RtosTableModel::taskStateLabel(RtosTaskState state)
 	}
 }
 
-std::vector<uint32_t> RtosTableModel::laneOrder(const RtosSnapshot& snapshot)
+std::vector<uint32_t> RtosTableModel::laneOrderOf(const std::vector<RtosTaskRow>& rows)
 {
-	std::vector<const RtosTask*> ordered;
-	ordered.reserve(snapshot.tasks.size());
+	std::vector<const RtosTaskRow*> ordered;
+	ordered.reserve(rows.size());
 
-	for (const RtosTask& task : snapshot.tasks)
-		ordered.push_back(&task);
+	for (const RtosTaskRow& row : rows)
+		ordered.push_back(&row);
 
 	/*
 	 * The base priority, where the target keeps one.
@@ -367,19 +434,19 @@ std::vector<uint32_t> RtosTableModel::laneOrder(const RtosSnapshot& snapshot)
 	 * enumeration carries is of the current priority, which is why it is not
 	 * used here.
 	 */
-	const auto lanePriority = [](const RtosTask& task)
+	const auto lanePriority = [](const RtosTaskRow& row)
 	{
-		if (task.hasBasePriority)
-			return static_cast<int64_t>(task.basePriority);
+		if (row.hasBasePriority)
+			return static_cast<int64_t>(row.basePriority);
 
-		if (task.hasPriority)
-			return static_cast<int64_t>(task.rawPriority);
+		if (row.hasPriority)
+			return static_cast<int64_t>(row.priority);
 
 		/* Nothing was read for it, which is not the lowest priority. */
 		return static_cast<int64_t>(-1);
 	};
 
-	std::stable_sort(ordered.begin(), ordered.end(), [&](const RtosTask* left, const RtosTask* right)
+	std::stable_sort(ordered.begin(), ordered.end(), [&](const RtosTaskRow* left, const RtosTaskRow* right)
 	{
 		if (lanePriority(*left) != lanePriority(*right))
 			return lanePriority(*left) > lanePriority(*right);
@@ -393,8 +460,8 @@ std::vector<uint32_t> RtosTableModel::laneOrder(const RtosSnapshot& snapshot)
 	std::vector<uint32_t> addresses;
 	addresses.reserve(ordered.size());
 
-	for (const RtosTask* task : ordered)
-		addresses.push_back(task->tcbAddress);
+	for (const RtosTaskRow* row : ordered)
+		addresses.push_back(row->tcbAddress);
 
 	return addresses;
 }
