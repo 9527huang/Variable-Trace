@@ -1215,6 +1215,11 @@ void ViewerDataHandler::updateVariables(double timestamp, const std::vector<doub
 
 void ViewerDataHandler::dataHandler()
 {
+	/* Named so that a thread dump says which of the fifty threads this is. The
+	   J-Link DLL brings its own along; ours have no names unless they are given
+	   one, and a hung sampling thread is exactly when the name is needed. */
+	SetThreadDescription(GetCurrentThread(), L"Variable-Trace sampling");
+
 	using Clock = std::chrono::steady_clock;
 	constexpr auto maximumWaitSlice = std::chrono::milliseconds(50);
 	Clock::time_point start;

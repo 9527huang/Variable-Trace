@@ -1,7 +1,10 @@
 #include "RtosSampler.hpp"
 
+#include <cstdio>
 #include <cstring>
 #include <utility>
+
+#include <spdlog/spdlog.h>
 
 #include "RtosSyncEnumerator.hpp"
 
@@ -14,6 +17,23 @@ namespace
 	/* Enough for a control block on any kernel this is likely to meet, and
 	   small enough to live on the stack of the acquisition thread. */
 	constexpr uint32_t controlBlockBufferSize = 512;
+
+	/*
+	 * Which part of a round is running.
+	 *
+	 * A round that never comes back leaves nothing behind - no error, no
+	 * partial snapshot - and the sampling thread stops with it. These four
+	 * lines are the only thing that says where it went in: once per stage per
+	 * run, because the round happens many times a second and anything chattier
+	 * would bury the file it is meant to be read from.
+	 */
+	void noteStage(const char* stage)
+	{
+		const auto logger = spdlog::get("logger");
+
+		if (logger != nullptr)
+			logger->info("Task view round: {}.", stage);
+	}
 
 	uint32_t wordAt(const uint8_t* buffer, uint32_t offset)
 	{
@@ -301,6 +321,13 @@ RtosSampler::Round RtosSampler::collect(IRtosMemory& memory, const std::string& 
 	   every round because the kernel swaps them at a tick boundary; reusing
 	   one round's answer would follow a list the kernel had already left. */
 	std::vector<uint32_t> values;
+	static bool saidGlobals = false;
+
+	if (!saidGlobals)
+	{
+		noteStage("reading the three globals");
+		saidGlobals = true;
+	}
 
 	if (!readWords(memory, {currentTaskSymbol, delayedListPointerSymbol, overflowDelayedListPointerSymbol}, values) || values.size() != 3)
 	{
@@ -321,7 +348,23 @@ RtosSampler::Round RtosSampler::collect(IRtosMemory& memory, const std::string& 
 	if (overflowDelayedList != 0 && overflowDelayedList != delayedList)
 		sources.push_back({"overflow delayed", overflowDelayedList, RtosTaskState::Blocked, false, true});
 
+	static bool saidLists = false;
+
+	if (!saidLists)
+	{
+		noteStage("walking the kernel lists");
+		saidLists = true;
+	}
+
 	RtosTaskEnumeration enumeration = RtosTaskEnumerator::enumerate(memory, resolved, sources, currentTcb, profile->higherNumberIsHigherPriority(), settings.walkLimits);
+
+	static bool saidListsDone = false;
+
+	if (!saidListsDone)
+	{
+		noteStage("the kernel lists are walked");
+		saidListsDone = true;
+	}
 
 	/*
 	 * The objects first, then their wait lists.
@@ -339,7 +382,23 @@ RtosSampler::Round RtosSampler::collect(IRtosMemory& memory, const std::string& 
 
 	if (queueRegistryAddress != 0 && settings.queueRegistryCapacity > 0)
 	{
+		static bool saidObjects = false;
+
+		if (!saidObjects)
+		{
+			noteStage("walking the object registry");
+			saidObjects = true;
+		}
+
 		objects = RtosSyncEnumerator::enumerate(memory, resolved, {queueRegistryAddress, settings.queueRegistryCapacity}, settings.walkLimits);
+
+		static bool saidObjectsDone = false;
+
+		if (!saidObjectsDone)
+		{
+			noteStage("the object registry is walked");
+			saidObjectsDone = true;
+		}
 
 		if (!objects.objects.empty())
 		{
@@ -355,9 +414,25 @@ RtosSampler::Round RtosSampler::collect(IRtosMemory& memory, const std::string& 
 				waitSources.push_back({name + " (waiting to receive)", object.waitingToReceiveList, RtosTaskState::Blocked, false, false});
 			}
 
+			static bool saidWaits = false;
+
+			if (!saidWaits)
+			{
+				noteStage("walking the object wait lists");
+				saidWaits = true;
+			}
+
 			/* No current task pointer this time: a task blocked on an object
 			   is not running, so nothing here can be promoted to running. */
 			RtosTaskEnumerator::absorb(enumeration, RtosTaskEnumerator::enumerate(memory, resolved, waitSources, 0u, profile->higherNumberIsHigherPriority(), settings.walkLimits));
+
+			static bool saidWaitsDone = false;
+
+			if (!saidWaitsDone)
+			{
+				noteStage("the object wait lists are walked");
+				saidWaitsDone = true;
+			}
 		}
 	}
 
@@ -398,6 +473,20 @@ RtosSampler::Round RtosSampler::collect(IRtosMemory& memory, const std::string& 
 			/* One control block that could not be read costs that task its
 			   names and numbers, not the round. Whoever ran under a failing
 			   read is still a task with a state and an address. */
+			/* The first addresses, so that a round which never comes back says
+			   which control block it was reading. A cap rather than a switch:
+			   fourteen lines once is a diagnosis, fourteen lines ten times a
+			   second is a log nobody can read. */
+			static int blocksLogged = 0;
+
+			if (blocksLogged < 32)
+			{
+				char stage[64] = {};
+				std::snprintf(stage, sizeof(stage), "reading the control block at 0x%08X", task.tcbAddress);
+				noteStage(stage);
+				++blocksLogged;
+			}
+
 			if (!readTaskDetail(memory, task.tcbAddress, controlBlockSize, task))
 			{
 				round.problems.push_back("the control block of the task at 0x" + std::to_string(task.tcbAddress) + " could not be read");
