@@ -139,7 +139,8 @@ class GuiRtosPanel
 		   may not have been drawn at all - the reader can be looking at
 		   another view with this one still open beside it. A stale address
 		   would leave a lane lit with nothing pointing at it. */
-		const uint32_t hovered = selection().tableDrewThisFrame ? selection().hoveredTask : 0u;
+		if (!selection().tableDrewThisFrame)
+			selection().hoveredTask = 0;
 
 		selection().tableDrewThisFrame = false;
 
@@ -172,7 +173,7 @@ class GuiRtosPanel
 		                                        ? RtosTableModel::addressesOf(RtosTableModel::taskRows(*snapshot, query))
 		                                        : RtosTableModel::laneOrder(*snapshot);
 
-		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, lanes, selection().task, hovered);
+		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, lanes, selection());
 
 		/* Under the strip, and in the same window: a task that is waiting is
 		   waiting for one of these, so the two are read together. */

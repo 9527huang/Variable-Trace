@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "GuiHelper.hpp"
+#include "GuiRtosSelection.hpp"
 #include "I18n.hpp"
 #include "RtosModel.hpp"
 #include "RtosEventRing.hpp"
@@ -46,7 +47,7 @@ class GuiRtosPanelTimeline
 	 * caller knows which one is wanted.
 	 */
 	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors, const std::vector<uint32_t>& lanes,
-	                 uint32_t selectedTask, uint32_t hoveredTask)
+	                 GuiRtosSelection& selection)
 	{
 		const RtosTimeline& history = model.history();
 
@@ -91,13 +92,13 @@ class GuiRtosPanelTimeline
 		{
 			drawCounts(history, samples, true);
 
-			drawGrid(snapshot, lanes, samples, runs, plotCursors, selectedTask, hoveredTask);
+			drawGrid(snapshot, lanes, samples, runs, plotCursors, selection);
 		}
 		else
 		{
 			drawCounts(history, samples, false);
 
-			drawGrid(snapshot, lanes, samples, {}, plotCursors, selectedTask, hoveredTask);
+			drawGrid(snapshot, lanes, samples, {}, plotCursors, selection);
 		}
 	}
 
@@ -339,8 +340,7 @@ class GuiRtosPanelTimeline
 	}
 
 	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<uint32_t>& lanes, const std::vector<RtosTimeline::Sample>& samples,
-	                     const std::vector<RtosEventRing::Interval>& runs, const std::vector<double>& plotCursors, uint32_t selectedTask,
-	                     uint32_t hoveredTask)
+	                     const std::vector<RtosEventRing::Interval>& runs, const std::vector<double>& plotCursors, GuiRtosSelection& selection)
 	{
 		if (lanes.empty())
 		{
@@ -383,6 +383,31 @@ class GuiRtosPanelTimeline
 
 		const bool hovered = ImGui::IsItemHovered();
 		const bool focused = ImGui::IsItemFocused();
+
+		/*
+		 * The name column is the one place a click means "this task" rather
+		 * than "this moment".
+		 *
+		 * The strip is a chart of time and a list of tasks at once, and the two
+		 * read the same rectangle. Splitting it by the name column is what
+		 * keeps both meanings: a click on a name picks the lane, a click in the
+		 * plot pins the time - and neither has to be guessed at from a
+		 * modifier key.
+		 */
+		if (hovered && ImGui::GetIO().MousePos.x < plotLeft)
+		{
+			ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			{
+				const float offset = std::max(ImGui::GetIO().MousePos.y - origin.y, 0.0f);
+				const size_t lane = std::min(static_cast<size_t>(offset / rowHeight), lanes.size() - 1);
+				const RtosTask* task = snapshot.find(lanes[lane]);
+
+				selection.task = lanes[lane];
+				selection.object = task != nullptr ? task->waitingOn : std::string();
+			}
+		}
 
 		const auto timeAtX = [&](float x)
 		{
@@ -491,8 +516,8 @@ class GuiRtosPanelTimeline
 			}
 		};
 
-		highlightLane(hoveredTask, ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.22f));
-		highlightLane(selectedTask, ImGui::GetColorU32(ImGuiCol_Header, 0.55f));
+		highlightLane(selection.hoveredTask, ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.22f));
+		highlightLane(selection.task, ImGui::GetColorU32(ImGuiCol_Header, 0.55f));
 
 		/*
 		 * The marks, when there are no runs.
@@ -619,7 +644,7 @@ class GuiRtosPanelTimeline
 		/* A click pins the moment the mouse is over, and a second click on the
 		   same strip moves it. Nothing is pinned until someone asks, so the
 		   strip shows the whole window by default. */
-		if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		if (hovered && io.MousePos.x >= plotLeft && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 		{
 			const double oldest = samples.front().atSeconds;
 			const double newest = samples.back().atSeconds;
