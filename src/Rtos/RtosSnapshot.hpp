@@ -156,6 +156,14 @@ struct RtosSnapshot
 	 * queues, and one whose registry is simply empty because nothing was
 	 * registered. A caller that showed the first as "no objects" would be
 	 * reporting a build option as a fact about the target. */
+	/* Whether this round read the tasks' control blocks. What the table shows
+	   for priorities depends on it - see RtosTableModel.
+	 *
+	 * True by default: a snapshot built by hand - in a test, or by a future
+	 * caller that reads the blocks its own way - carries what it carries, and
+	 * the round that leaves the blocks alone is the one that says so. */
+	bool controlBlocksRead = true;
+
 	bool queueRegistryAvailable = false;
 
 	std::vector<RtosLayerAge> layerAges;
