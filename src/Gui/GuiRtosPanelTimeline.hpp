@@ -119,6 +119,36 @@ class GuiRtosPanelTimeline
 		return followPlotCursors;
 	}
 
+	/*
+	 * A name that fits the column, with its tail replaced by dots.
+	 *
+	 * Cut on character boundaries rather than on bytes: a Chinese task name cut
+	 * in the middle of a character draws as boxes, and those boxes are wider
+	 * than the column it was trying to fit into.
+	 */
+	static std::string fittedLabel(const std::string& text, float width)
+	{
+		if (width <= 0.0f || ImGui::CalcTextSize(text.c_str()).x <= width)
+			return text;
+
+		size_t end = text.size();
+
+		while (end > 0)
+		{
+			while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80)
+				--end;
+
+			const std::string candidate = text.substr(0, end) + "...";
+
+			if (ImGui::CalcTextSize(candidate.c_str()).x <= width)
+				return candidate;
+
+			--end;
+		}
+
+		return "...";
+	}
+
 	/* The hue a state is drawn with.
 	 *
 	 * The summary counts the same four states the strip does, and a reader
@@ -350,7 +380,21 @@ class GuiRtosPanelTimeline
 		}
 
 		const float scale = GuiHelper::contentScale;
-		const float nameWidth = 110.0f * scale;
+		/* The name column is as wide as the longest name, within bounds: a
+		   column fixed at 110 units is the right width for `led` and cuts
+		   `xQueueReceiveTask` in half, and a column that grows without a limit
+		   eats the plot when a target names a task a paragraph long. */
+		float widestName = 0.0f;
+
+		for (const uint32_t address : lanes)
+		{
+			const RtosTask* task = snapshot.find(address);
+
+			if (task != nullptr && !task->name.empty())
+				widestName = std::max(widestName, ImGui::CalcTextSize(task->name.c_str()).x * 0.85f);
+		}
+
+		const float nameWidth = std::clamp(widestName + 12.0f * scale, 110.0f * scale, 210.0f * scale);
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
 		const float width = ImGui::GetContentRegionAvail().x;
 		const float available = ImGui::GetContentRegionAvail().y;
@@ -488,8 +532,23 @@ class GuiRtosPanelTimeline
 
 			if (task != nullptr && !task->name.empty())
 			{
+				const float labelRoom = plotLeft - origin.x - 6.0f * scale;
+				const std::string label = fittedLabel(task->name, labelRoom);
+				const bool clipped = label != task->name;
+
 				draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.85f, ImVec2(origin.x + 4 * scale, top + rowHeight * 0.1f),
-				              ImGui::GetColorU32(ImGuiCol_Text), task->name.c_str(), nullptr, plotLeft - origin.x - 6 * scale);
+				              ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
+
+				/* The whole name, for the one that did not fit. Asked for by
+				   rectangle rather than by item, because the labels are drawn
+				   before the strip's own item is submitted. */
+				if (clipped && ImGui::IsMouseHoveringRect(ImVec2(origin.x, top), ImVec2(plotLeft, top + rowHeight)))
+				{
+					ImGui::BeginTooltip();
+					ImGui::TextUnformatted(task->name.c_str());
+					ImGui::TextDisabled("0x%08X", task->tcbAddress);
+					ImGui::EndTooltip();
+				}
 			}
 		}
 

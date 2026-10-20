@@ -1356,8 +1356,19 @@ void Gui::drawStartButton(DataHandlerBase* activeDataHandler)
 
 	/* The space bar is the same switch, and it is read here rather than in a
 	   shortcut table because this is the one place that knows what pressing it
-	   would mean right now. */
-	if (!noProbe && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopup) && ImGui::IsKeyPressed(ImGuiKey_Space, false))
+	   would mean right now.
+	 *
+	 * Not while a text field has the keyboard, though: space is a character
+	 * there, and typing a space into the name search used to stop the run.
+	 *
+	 * The narrow condition is deliberate. `NavActive` was tried and is too
+	 * much: it stays true after the reader has once pressed Tab, so the
+	 * shortcut would stop working for the rest of the session with no way to
+	 * tell why. A focused button does also act on space, and the two together
+	 * are a wart - but a wart the reader can cause only by pressing the
+	 * shortcut while deliberately sitting on a button, which is not the trap
+	 * that a search field is. */
+	if (!noProbe && !ImGui::GetIO().WantTextInput && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopup) && ImGui::IsKeyPressed(ImGuiKey_Space, false))
 		toggled = true;
 
 	if (!toggled)
