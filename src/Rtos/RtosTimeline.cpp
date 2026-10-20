@@ -103,6 +103,20 @@ RtosTimeline::Span RtosTimeline::windowFrom(const std::vector<double>& cursors, 
 	return {low - margin, high + margin};
 }
 
+double RtosTimeline::lastRunningAt(const std::vector<Sample>& samples, uint32_t tcbAddress)
+{
+	for (auto sample = samples.rbegin(); sample != samples.rend(); ++sample)
+	{
+		for (const Entry& entry : sample->entries)
+		{
+			if (entry.tcbAddress == tcbAddress && entry.state == RtosTaskState::Running)
+				return sample->atSeconds;
+		}
+	}
+
+	return -1.0;
+}
+
 std::vector<RtosTimeline::StateInterval> RtosTimeline::stateIntervals(const std::vector<Sample>& samples, double untilSeconds)
 {
 	std::vector<StateInterval> intervals;

@@ -88,6 +88,16 @@ class RtosTimeline
 	 */
 	static std::vector<StateInterval> stateIntervals(const std::vector<Sample>& samples, double untilSeconds);
 
+	/*
+	 * The newest moment this task was seen running, or -1 when no sample in
+	 * hand saw it run.
+	 *
+	 * A task that is not running right now has a "how long since" that no
+	 * column carries: the table has its state, and the lanes have its history,
+	 * and the number a reader wants sits between them.
+	 */
+	static double lastRunningAt(const std::vector<Sample>& samples, uint32_t tcbAddress);
+
 	/* How many rounds are remembered. At the round interval the task view
 	   runs at, the default is about half an hour. */
 	static constexpr size_t defaultCapacity = 4096;

@@ -315,3 +315,19 @@ TEST(RtosTimeline, NoSamplesMakeNoIntervals)
 
 	EXPECT_TRUE(intervals.empty());
 }
+
+TEST(RtosTimeline, TheNewestRunIsTheAnswer)
+{
+	const std::vector<RtosTimeline::Sample> samples = {
+		sampleAt(0.0, {{0x1000, RtosTaskState::Ready}}),
+		sampleAt(1.0, {{0x1000, RtosTaskState::Running}}),
+		sampleAt(2.0, {{0x1000, RtosTaskState::Blocked}}),
+		sampleAt(3.0, {{0x1000, RtosTaskState::Running}}),
+		sampleAt(4.0, {{0x1000, RtosTaskState::Blocked}}),
+	};
+
+	EXPECT_DOUBLE_EQ(RtosTimeline::lastRunningAt(samples, 0x1000), 3.0);
+
+	/* A task that never ran is not the same as one that ran at time zero. */
+	EXPECT_LT(RtosTimeline::lastRunningAt(samples, 0x2000), 0.0);
+}

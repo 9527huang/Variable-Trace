@@ -452,11 +452,17 @@ class GuiRtosPanelTimeline
 		const float width = ImGui::GetContentRegionAvail().x;
 		const float available = ImGui::GetContentRegionAvail().y;
 
-		/* The strip takes two thirds of what is left under the header and the
-		   table below it takes the rest. It used to be capped at a fixed
-		   height, which was right in a column this strip shared with a table
-		   and a second table, and leaves most of a window of its own empty. */
-		const float height = std::clamp(available * 0.66f, 90.0f * scale, std::max(available - 2.0f, 90.0f * scale));
+		/*
+		 * A little over half, not two thirds.
+		 *
+		 * Under the strip there are three blocks that are now written to fixed
+		 * heights - the objects, the pinned moment, the selected task - and at
+		 * two thirds their last rows were pushed past the bottom of the pane:
+		 * the detail stopped at Priority and the reader never saw the rest. The
+		 * strip is the part that can give, because it scrolls and zooms; the
+		 * blocks under it cannot.
+		 */
+		const float height = std::clamp(available * 0.52f, 90.0f * scale, std::max(available - 2.0f, 90.0f * scale));
 		const float axisHeight = 16.0f * scale;
 		const float plotHeight = height - axisHeight;
 

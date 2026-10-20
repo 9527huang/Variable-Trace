@@ -187,7 +187,28 @@ class GuiRtosPanel
 		   Four for the pinned moment. What they do not use is left blank. */
 		fixedRows(7.0f, [&] { drawSyncObjects(*snapshot); });
 		fixedRows(4.0f, [&] { drawPinnedMoment(*model, *snapshot); });
-		fixedRows(12.0f, [&] { drawSelectedTask(*snapshot); });
+
+		/*
+		 * The detail takes what is left rather than a fixed number of rows.
+		 *
+		 * It is the last block in the pane, and the only one that can hold more
+		 * than fits: a task with everything read fills twelve lines, and on a
+		 * window that is not tall enough those twelve would push the last two -
+		 * Waiting on and Last ran - past the bottom edge, where no amount of
+		 * scrolling on the reader's part would reach them. Given the remaining
+		 * space and its own scrollbar, the block still does not move, and
+		 * nothing is unreachable.
+		 */
+		{
+			const ImVec2 room = ImGui::GetContentRegionAvail();
+
+			ImGui::BeginChild("##rtosSelectedTask", ImVec2(0.0f, std::max(room.y, ImGui::GetTextLineHeightWithSpacing() * 4.0f)), false,
+			                  ImGuiWindowFlags_NoBackground);
+
+			drawSelectedTask(*model, *snapshot);
+
+			ImGui::EndChild();
+		}
 	}
 
 	/*
@@ -1613,7 +1634,7 @@ class GuiRtosPanel
 	 * comparing, this is for reading, and neither is what gets pasted into a
 	 * bug report.
 	 */
-	static void drawSelectedTask(const RtosSnapshot& snapshot)
+	static void drawSelectedTask(const RtosModel& model, const RtosSnapshot& snapshot)
 	{
 		const float scale = GuiHelper::contentScale;
 
@@ -1696,6 +1717,36 @@ class GuiRtosPanel
 		}
 
 		detailRow(I18n::tr("Waiting on"), row.waitingOn.empty() ? std::string("-") : row.waitingOn);
+
+		/* When it last had the processor. Thirty seconds back is what the query
+		   asks the history for: further than that and "not in the last 30 s" is
+		   the honest answer for a task that is not running. */
+		const double newest = model.history().newestSeconds();
+
+		if (row.state == RtosTaskState::Running)
+			detailRow(I18n::tr("Last ran"), I18n::tr("right now"));
+		else
+		{
+			std::vector<RtosTimeline::Sample> recent;
+			model.history().copyRange(std::max(0.0, newest - 30.0), newest, recent);
+
+			const double lastRun = RtosTimeline::lastRunningAt(recent, row.tcbAddress);
+
+			if (lastRun >= 0.0)
+			{
+				char elapsed[48] = {};
+				std::snprintf(elapsed, sizeof(elapsed), I18n::tr("%.2f s ago"), newest - lastRun);
+
+				detailRow(I18n::tr("Last ran"), elapsed);
+			}
+			else
+			{
+				char never[64] = {};
+				std::snprintf(never, sizeof(never), I18n::tr("not in the last %.0f s"), 30.0);
+
+				detailRow(I18n::tr("Last ran"), never);
+			}
+		}
 	}
 
 	/*
