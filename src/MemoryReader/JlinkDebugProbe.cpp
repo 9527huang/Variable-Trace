@@ -387,14 +387,53 @@ std::optional<IDebugProbe::varEntryType> JlinkDebugProbe::readSingleEntry()
 	return varTable.pop();
 }
 
+namespace
+{
+	/*
+	 * What the J-Link answers with.
+	 *
+	 * `JLINKARM_ReadMemEx` returns the number of bytes it moved, not a status:
+	 * zero is success for the whole range, a negative number is an error, and
+	 * anything in between is a short read. Treating every non-negative answer
+	 * as success is what made list items look like four bytes of data followed
+	 * by sixteen bytes of zero - the caller zero-initialises its buffer, and
+	 * the tail that was never written reads exactly like a run of zeroes in
+	 * the target.
+	 *
+	 * A short read is reported as a failure here rather than retried: the
+	 * caller checks the answer, and a caller that is told "no" records a round
+	 * that did not read instead of publishing zeroes as data.
+	 */
+	bool readExactly(uint32_t address, uint32_t size, uint8_t* buf, int32_t moved)
+	{
+		if (moved >= 0 && static_cast<uint32_t>(moved) == size)
+			return true;
+
+		if (moved >= 0)
+		{
+			const auto logger = spdlog::get("logger");
+
+			if (logger != nullptr)
+				logger->warn("J-Link moved {} of {} bytes from 0x{:08X}; the rest of the buffer was not written.", moved, size, address);
+		}
+
+		return false;
+	}
+}  // namespace
+
 bool JlinkDebugProbe::readMemory(uint32_t address, uint8_t* buf, uint32_t size)
 {
 	std::scoped_lock lock(mtx);
 	if (!isRunning)
 		return false;
 
-	if (JLINKARM_ReadMemEx(address, size, buf, 0) >= 0)
+	const int32_t moved = JLINKARM_ReadMemEx(address, size, buf, 0);
+
+	if (readExactly(address, size, buf, moved))
 		return true;
+
+	if (moved >= 0)
+		return false;
 
 	invalidateLink("reading target memory");
 	return false;
@@ -465,8 +504,13 @@ bool JlinkDebugProbe::readBlock(uint32_t address, uint8_t* buf, uint32_t size)
 	if (!isRunning || size == 0)
 		return false;
 
-	if (JLINKARM_ReadMemEx(address, size, buf, 0) >= 0)
+	const int32_t moved = JLINKARM_ReadMemEx(address, size, buf, 0);
+
+	if (readExactly(address, size, buf, moved))
 		return true;
+
+	if (moved >= 0)
+		return false;
 
 	invalidateLink("reading a target memory block");
 	return false;
