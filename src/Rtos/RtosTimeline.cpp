@@ -1,5 +1,9 @@
 #include "RtosTimeline.hpp"
 
+#include <unordered_set>
+
+#include <unordered_map>
+
 #include <algorithm>
 
 RtosTimeline::RtosTimeline(size_t capacity) : capacity(capacity < 1 ? 1 : capacity)
@@ -97,6 +101,78 @@ RtosTimeline::Span RtosTimeline::windowFrom(const std::vector<double>& cursors, 
 	const double margin = std::max((high - low) * 0.08, 0.2);
 
 	return {low - margin, high + margin};
+}
+
+std::vector<RtosTimeline::StateInterval> RtosTimeline::stateIntervals(const std::vector<Sample>& samples, double untilSeconds)
+{
+	std::vector<StateInterval> intervals;
+
+	if (samples.empty())
+		return intervals;
+
+	/* What each task is in the middle of saying. */
+	std::unordered_map<uint32_t, StateInterval> open;
+
+	for (size_t index = 0; index < samples.size(); index++)
+	{
+		const double at = samples[index].atSeconds;
+		const double until = index + 1 < samples.size() ? samples[index + 1].atSeconds : untilSeconds;
+
+		if (!(until > at))
+			continue;
+
+		std::unordered_set<uint32_t> seen;
+		seen.reserve(samples[index].entries.size());
+
+		for (const Entry& entry : samples[index].entries)
+		{
+			seen.insert(entry.tcbAddress);
+
+			const auto found = open.find(entry.tcbAddress);
+
+			if (found != open.end() && found->second.state == entry.state)
+			{
+				/* The same state again: the interval grows rather than
+				   starting over, which is what turns a dotted line into a
+				   band. */
+				found->second.to = until;
+
+				continue;
+			}
+
+			if (found != open.end())
+				intervals.push_back(found->second);
+
+			open[entry.tcbAddress] = StateInterval{entry.tcbAddress, entry.state, at, until};
+		}
+
+		/* A task this round did not mention has left the lane: close it here
+		   rather than stretching it over a round that never saw it. */
+		for (auto it = open.begin(); it != open.end();)
+		{
+			if (seen.count(it->first) == 0)
+			{
+				intervals.push_back(it->second);
+				it = open.erase(it);
+			}
+			else
+				++it;
+		}
+	}
+
+	for (const auto& [address, interval] : open)
+		intervals.push_back(interval);
+
+	/* Oldest first, so a caller that draws in order draws left to right. */
+	std::sort(intervals.begin(), intervals.end(), [](const StateInterval& left, const StateInterval& right)
+	{
+		if (left.from != right.from)
+			return left.from < right.from;
+
+		return left.tcbAddress < right.tcbAddress;
+	});
+
+	return intervals;
 }
 
 size_t RtosTimeline::nearestIndex(const std::vector<Sample>& samples, double atSeconds)

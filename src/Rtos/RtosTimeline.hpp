@@ -52,6 +52,42 @@ class RtosTimeline
 		std::vector<Entry> entries;
 	};
 
+	/*
+	 * One task holding one state from one moment to another.
+	 *
+	 * The strip used to draw a mark per sample, which reads as a row of dots:
+	 * a dot says "at this instant it was ready", and the time between two dots
+	 * was left blank. Blank is what the eye reads as "nothing happened", so a
+	 * task waiting for two seconds looked like a task that was not there.
+	 *
+	 * An interval says the same thing with a length: from `from` to `to`, this
+	 * task was in this state. Adjacent samples that agree become one interval,
+	 * so a lane is a continuous band of colour rather than a dotted line, and
+	 * the one thing a picture is good at - showing how much - is available.
+	 */
+	struct StateInterval
+	{
+		uint32_t tcbAddress = 0;
+		RtosTaskState state = RtosTaskState::Unknown;
+		double from = 0.0;
+		double to = 0.0;
+	};
+
+	/*
+	 * Turns samples into intervals, one task at a time.
+	 *
+	 * A sample stands for the time from itself until the next sample: the round
+	 * saw the task in that state, and nothing said otherwise until the next
+	 * look. The last sample is given no length of its own - there is no next
+	 * look to bound it - so callers pass the window end through `untilSeconds`
+	 * when they want the band to reach the right edge.
+	 *
+	 * A task missing from a round ends its interval there. Missing is not a
+	 * state: it means the round did not read that task, and the strip has a
+	 * separate way to say so.
+	 */
+	static std::vector<StateInterval> stateIntervals(const std::vector<Sample>& samples, double untilSeconds);
+
 	/* How many rounds are remembered. At the round interval the task view
 	   runs at, the default is about half an hour. */
 	static constexpr size_t defaultCapacity = 4096;

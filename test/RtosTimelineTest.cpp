@@ -220,3 +220,98 @@ TEST(RtosTimeline, TheWindowFollowsThePlotCursorsWhenThereAreAny)
 	EXPECT_DOUBLE_EQ(span.from, -5.0);
 	EXPECT_DOUBLE_EQ(span.to, 5.0);
 }
+
+/*
+ * Samples into bands.
+ *
+ * The strip used to draw these as separate marks and leave the time between
+ * them blank, which is what made a busy target look like a strip of noise.
+ */
+namespace
+{
+	RtosTimeline::Sample sampleAt(double at, std::vector<std::pair<uint32_t, RtosTaskState>> entries)
+	{
+		RtosTimeline::Sample sample;
+		sample.atSeconds = at;
+
+		for (const auto& [address, state] : entries)
+			sample.entries.push_back({address, state, false, 0.0});
+
+		return sample;
+	}
+}  // namespace
+
+TEST(RtosTimeline, TheSameStateTwiceBecomesOneInterval)
+{
+	const std::vector<RtosTimeline::Sample> samples = {
+		sampleAt(0.0, {{0x1000, RtosTaskState::Ready}}),
+		sampleAt(1.0, {{0x1000, RtosTaskState::Ready}}),
+		sampleAt(2.0, {{0x1000, RtosTaskState::Ready}}),
+	};
+
+	const std::vector<RtosTimeline::StateInterval> intervals = RtosTimeline::stateIntervals(samples, 3.0);
+
+	ASSERT_EQ(intervals.size(), 1u);
+	EXPECT_EQ(intervals[0].tcbAddress, 0x1000u);
+	EXPECT_EQ(intervals[0].state, RtosTaskState::Ready);
+	EXPECT_DOUBLE_EQ(intervals[0].from, 0.0);
+	EXPECT_DOUBLE_EQ(intervals[0].to, 3.0);
+}
+
+TEST(RtosTimeline, AChangeOfStateBreaksTheInterval)
+{
+	const std::vector<RtosTimeline::Sample> samples = {
+		sampleAt(0.0, {{0x1000, RtosTaskState::Ready}}),
+		sampleAt(1.0, {{0x1000, RtosTaskState::Running}}),
+		sampleAt(2.0, {{0x1000, RtosTaskState::Blocked}}),
+	};
+
+	const std::vector<RtosTimeline::StateInterval> intervals = RtosTimeline::stateIntervals(samples, 3.0);
+
+	ASSERT_EQ(intervals.size(), 3u);
+	EXPECT_DOUBLE_EQ(intervals[0].to, 1.0);
+	EXPECT_DOUBLE_EQ(intervals[1].from, 1.0);
+	EXPECT_DOUBLE_EQ(intervals[1].to, 2.0);
+	EXPECT_DOUBLE_EQ(intervals[2].from, 2.0);
+	EXPECT_DOUBLE_EQ(intervals[2].to, 3.0);
+}
+
+TEST(RtosTimeline, ARoundThatMissedTheTaskEndsItsIntervalThere)
+{
+	/* The middle round did not read the task. Missing is not a state, so the
+	   band stops where the reading stopped instead of being stretched over a
+	   round that never mentioned it. */
+	const std::vector<RtosTimeline::Sample> samples = {
+		sampleAt(0.0, {{0x1000, RtosTaskState::Ready}}),
+		sampleAt(1.0, {}),
+		sampleAt(2.0, {{0x1000, RtosTaskState::Ready}}),
+	};
+
+	const std::vector<RtosTimeline::StateInterval> intervals = RtosTimeline::stateIntervals(samples, 3.0);
+
+	ASSERT_EQ(intervals.size(), 2u);
+	EXPECT_DOUBLE_EQ(intervals[0].from, 0.0);
+	EXPECT_DOUBLE_EQ(intervals[0].to, 1.0);
+	EXPECT_DOUBLE_EQ(intervals[1].from, 2.0);
+	EXPECT_DOUBLE_EQ(intervals[1].to, 3.0);
+}
+
+TEST(RtosTimeline, TwoTasksDoNotShareTheirBands)
+{
+	const std::vector<RtosTimeline::Sample> samples = {
+		sampleAt(0.0, {{0x1000, RtosTaskState::Running}, {0x2000, RtosTaskState::Ready}}),
+		sampleAt(1.0, {{0x1000, RtosTaskState::Ready}, {0x2000, RtosTaskState::Running}}),
+	};
+
+	const std::vector<RtosTimeline::StateInterval> intervals = RtosTimeline::stateIntervals(samples, 2.0);
+
+	ASSERT_EQ(intervals.size(), 4u);
+	EXPECT_NE(intervals[0].tcbAddress, intervals[1].tcbAddress);
+}
+
+TEST(RtosTimeline, NoSamplesMakeNoIntervals)
+{
+	const std::vector<RtosTimeline::StateInterval> intervals = RtosTimeline::stateIntervals({}, 5.0);
+
+	EXPECT_TRUE(intervals.empty());
+}

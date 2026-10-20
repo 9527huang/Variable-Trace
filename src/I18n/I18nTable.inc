@@ -548,6 +548,8 @@ static const Entry table[] = {
 	{"shift right:", "右移:"},
 	{"should reset", "复位条件"},
 	{"show every state", "显示全部状态"},
+	{"showing %.2f s of %.0f s asked, %u rounds", "显示 %.2f 秒（请求 %.0f 秒）共 %u 轮"},
+	{"showing %.2f s, %u rounds", "显示 %.2f 秒, 共 %u 轮"},
 	{"single", "单次"},
 	{"sleep cycles:           ", "休眠周期:"},
 	{"specify tracked name:", "指定跟踪名:"},

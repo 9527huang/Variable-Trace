@@ -313,6 +313,30 @@ class GuiRtosPanelTimeline
 		const double span = history.newestSeconds() - history.oldestSeconds();
 		const double interval = kept > 1 && span > 0.0 ? span / static_cast<double>(kept - 1) : 0.0;
 
+		/*
+		 * The window that was asked for, and the window that is on screen.
+		 *
+		 * They are not the same number and the difference is not the reader's
+		 * fault: a plot cursor cut the window down, or the history does not
+		 * reach back that far yet. The axis can only say what it spans - it was
+		 * showing 0.2 s under a heading that said ten, and nothing on screen
+		 * explained why. Said in words, with the count behind it.
+		 */
+		const RtosTimeline::Span shown = windowOf(plotCursors, history.newestSeconds());
+		const double shownSeconds = shown.to - shown.from;
+
+		/* The comparison is only worth making when the window really is short:
+		   the newest window can be a round or two longer than asked for, and
+		   "showing 10.80 s of 10 s asked" reads like a bug rather than a
+		   measurement. */
+		if (shownSeconds < static_cast<double>(windowSeconds) * 0.9)
+			GuiHelper::drawSecondaryText(I18n::tr("showing %.2f s of %.0f s asked, %u rounds"), shownSeconds, static_cast<double>(windowSeconds),
+			                             static_cast<uint32_t>(kept));
+		else
+			GuiHelper::drawSecondaryText(I18n::tr("showing %.2f s, %u rounds"), shownSeconds, static_cast<uint32_t>(kept));
+
+		ImGui::SameLine();
+
 		if (!hasPinned)
 		{
 			GuiHelper::drawSecondaryText("%s", I18n::tr("click a time to pin it"));
@@ -591,34 +615,44 @@ class GuiRtosPanelTimeline
 		highlightLane(selection.task, ImGui::GetColorU32(ImGuiCol_Header, 0.55f));
 
 		/*
-		 * The marks, when there are no runs.
+		 * The lanes as bands, not as marks.
 		 *
-		 * A mark is as wide as one row is tall, so a column of marks reads as a
-		 * column and not as a bar. With runs drawn the marks would only repeat
-		 * what the bands already say, less precisely.
+		 * A mark says what one round saw, and the time between two rounds was
+		 * left blank - and blank is what the eye reads as "nothing happened".
+		 * A task blocked for two seconds looked like a task that was not
+		 * there. Every state the samples agree on is drawn as a span instead,
+		 * so a lane is a band of colour and the one thing a picture is good at -
+		 * comparing lengths - is available.
+		 *
+		 * Faded, because the whole lane is now coloured: the runs below are
+		 * drawn on top in full strength, and running has to stay the thing the
+		 * eye lands on. The shortest band is held at two pixels; anything
+		 * shorter is real and would otherwise vanish, and the reading underneath
+		 * carries the true duration.
 		 */
-		const float markSize = std::max(std::min(rowHeight - 2.0f * scale, 10.0f * scale), 3.0f * scale);
+		const std::vector<RtosTimeline::StateInterval> bands = RtosTimeline::stateIntervals(samples, newest);
+		const float bandHeight = std::max(rowHeight - 2.0f * scale, 2.0f * scale);
 
-		for (const RtosTimeline::Sample& sample : runs.empty() ? samples : std::vector<RtosTimeline::Sample>{})
+		for (const RtosTimeline::StateInterval& band : bands)
 		{
-			const float x = timeToX(sample.atSeconds);
+			const auto lane = std::find(lanes.begin(), lanes.end(), band.tcbAddress);
 
-			if (x < plotLeft - 1.0f || x > plotLeft + plotWidth + 1.0f)
+			if (lane == lanes.end())
 				continue;
 
-			for (size_t lane = 0; lane < lanes.size(); lane++)
-			{
-				const auto entry = std::find_if(sample.entries.begin(), sample.entries.end(),
-				                                [&](const RtosTimeline::Entry& candidate) { return candidate.tcbAddress == lanes[lane]; });
+			const float from = timeToX(std::max(band.from, oldest));
+			const float to = timeToX(std::min(band.to, newest));
 
-				if (entry == sample.entries.end())
-					continue;
+			if (to < plotLeft || from > plotLeft + plotWidth)
+				continue;
 
-				const float top = origin.y + static_cast<float>(lane) * rowHeight + (rowHeight - markSize) * 0.5f;
+			ImVec4 colour = ImGui::ColorConvertU32ToFloat4(markOf(band.state).colour);
+			colour.w = band.state == RtosTaskState::Running ? 0.55f : 0.30f;
 
-				if (hasMark(entry->state))
-					drawMark(draw, ImVec2(x - markSize * 0.5f, top), markSize, markOf(entry->state), scale);
-			}
+			const float top = origin.y + static_cast<float>(lane - lanes.begin()) * rowHeight + 1.0f * scale;
+			const float width = std::max(to - from, 2.0f * scale);
+
+			draw->AddRectFilled(ImVec2(from, top), ImVec2(from + width, top + bandHeight), ImGui::GetColorU32(colour));
 		}
 
 		/*
