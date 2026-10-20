@@ -98,6 +98,7 @@ static const Entry table[] = {
 	{"Clear list", "清空列表"},
 	{"Click a row in the table, a finding or a lane to read one task here.", "点表格里的一行、一条发现或一条泳道,在这里读单个任务。"},
 	{"Click the button above to test the flash command.", "点击上方按钮测试烧录命令。"},
+	{"Click the strip above to pin a moment.", "点上面那条色带钉住一个时刻。"},
 	{"Click to open the acquisition settings.", "点击打开采集设置。"},
 	{"Click to reload *.elf/*.axf changes!", "点击重新加载 *.elf/*.axf 的变更！"},
 	{"Command channel", "命令通道"},

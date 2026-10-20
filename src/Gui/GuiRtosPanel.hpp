@@ -177,11 +177,12 @@ class GuiRtosPanel
 
 		/* Under the strip, and in the same window: a task that is waiting is
 		   waiting for one of these, so the two are read together. */
-		drawSyncObjects(*snapshot);
-
-		drawPinnedMoment(*model, *snapshot);
-
-		drawSelectedTask(*snapshot);
+		/* Seven rows: a heading, a table header and four objects. Twelve for the
+		   detail, which is the tallest it gets on a task with everything read.
+		   Four for the pinned moment. What they do not use is left blank. */
+		fixedRows(7.0f, [&] { drawSyncObjects(*snapshot); });
+		fixedRows(4.0f, [&] { drawPinnedMoment(*model, *snapshot); });
+		fixedRows(12.0f, [&] { drawSelectedTask(*snapshot); });
 	}
 
 	/*
@@ -1374,11 +1375,17 @@ class GuiRtosPanel
 	 */
 	static void drawPinnedMoment(const RtosModel& model, const RtosSnapshot& snapshot)
 	{
-		if (!GuiRtosPanelTimeline::getPinned())
-			return;
-
 		ImGui::Separator();
 		ImGui::TextUnformatted(I18n::tr("Pinned moment"));
+
+		/* The heading stays when there is no moment: the block keeps its room,
+		   and the sentence says how to fill it. */
+		if (!GuiRtosPanelTimeline::getPinned())
+		{
+			GuiHelper::drawSecondaryText("%s", I18n::tr("Click the strip above to pin a moment."));
+
+			return;
+		}
 
 		const double at = GuiRtosPanelTimeline::getPinnedAt();
 
@@ -1453,6 +1460,33 @@ class GuiRtosPanel
 		char counts[128] = {};
 		std::snprintf(counts, sizeof(counts), I18n::tr("%u running, %u ready, %u blocked, %u suspended"), running, ready, blocked, suspended);
 		detailRow(I18n::tr("Tasks"), counts);
+	}
+
+	/*
+	 * A block whose height does not depend on what is in it.
+	 *
+	 * The right side is four blocks stacked in one window, and three of them
+	 * change on their own: the objects come and go with the target, a pinned
+	 * moment exists only after a click, a selected task only after a choice.
+	 * Each change moved the block below it, so the pane shifted under the
+	 * reader at moments they did not choose. Every block is now written into a
+	 * fixed number of rows, and the leftover is filled with nothing.
+	 *
+	 * The block is expected to draw its own heading: an empty block still says
+	 * what it would have held.
+	 */
+	template <typename Block>
+	static void fixedRows(float rows, Block&& block)
+	{
+		const float top = ImGui::GetCursorPosY();
+
+		block();
+
+		const float height = ImGui::GetTextLineHeightWithSpacing() * rows;
+		const float used = ImGui::GetCursorPosY() - top;
+
+		if (used < height)
+			ImGui::Dummy(ImVec2(0.0f, height - used));
 	}
 
 	/* One label and its value, with the values lined up in a column. */
@@ -1642,9 +1676,9 @@ class GuiRtosPanel
 		   table given no height with `ScrollY` takes everything that remains,
 		   which would put the objects under the bottom of the window. */
 		const float objectRowHeight = ImGui::GetTextLineHeightWithSpacing();
-		const size_t objectRows = std::clamp<size_t>(snapshot.syncObjects.size(), 3, 12);
+		constexpr size_t objectRows = 4;
 		const float objectHeight = ImGui::GetFrameHeight() + objectRowHeight * static_cast<float>(objectRows) + ImGui::GetStyle().CellPadding.y * 2.0f;
-		const ImVec2 objectSize(0.0f, std::min(objectHeight, ImGui::GetContentRegionAvail().y));
+		const ImVec2 objectSize(0.0f, objectHeight);
 
 		if (!ImGui::BeginTable("rtosSyncObjects-v2", 6, flags, objectSize))
 			return;

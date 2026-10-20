@@ -777,6 +777,7 @@ EXTRA = {
     # what an empty round looks like.
     "the most serious": "最严重的在列",
     "nothing in this round": "这一轮没有发现",
+    "Click the strip above to pin a moment.": "点上面那条色带钉住一个时刻。",
     "That moment is no longer among the rounds the view keeps.": "那一刻已经不在视图保留的轮次里了。",
     "%u running, %u ready, %u blocked, %u suspended": "%u 个运行, %u 个就绪, %u 个阻塞, %u 个挂起",
     "Off leaves the task table with the states and addresses the kernel's lists give: no names, priorities or stack ranges. Turn it off when a run stops by itself a second or two after it starts - that is a probe hanging on those reads, and it takes the variable view down with it.": "关掉后任务表只剩内核链表给出的状态和地址,没有名字、优先级和栈范围。采集启动一两秒后自己停住时就关它:那是探针卡在这些读上,连变量视图一起停。",
