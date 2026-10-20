@@ -2,6 +2,7 @@ build/*
 build_test/*
 build_dbg/*
 build_rel/*
+build-release/*
 .cache/*
 src/gitversion.hpp
 

@@ -22,12 +22,21 @@ set(VARIABLE_TRACE_VERSION 1.2.0)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
+# The build type is only chosen here when nothing else chose it.
+#
+# `set(CMAKE_BUILD_TYPE Debug)` ran unconditionally, which silently threw away
+# `-DCMAKE_BUILD_TYPE=Release` on the command line: the build came out as a
+# 294 MB binary with `-g` and no optimisation, and looked like a release until
+# someone put it next to a file explorer. `-DPRODUCTION=ON` is still the way a
+# release is made, and it still wins.
 if(PRODUCTION)
     set(CMAKE_BUILD_TYPE Release)
     message("Building for production!")
-else()
+elseif(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
+
+message("Build type: ${CMAKE_BUILD_TYPE}")
 
 if(WIN32 AND "${PLATFORM}" STREQUAL "native")
     set(LLVM_DIR "C:/msys64/mingw64/bin")
