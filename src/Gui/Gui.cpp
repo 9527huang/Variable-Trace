@@ -703,6 +703,32 @@ static std::string percentageText(double ratio)
 	return text;
 }
 
+/*
+ * Why the run is not at the rate it was asked for.
+ *
+ * The segment in the menu bar has room for two words, and two words say which
+ * limit was hit and nothing about what to do. Three numbers answer the rest:
+ * what was asked for, what arrived, and how much was missed - and with the
+ * misses stated, the reader can tell a run that is merely slower from one that
+ * is dropping work.
+ *
+ * It also says what is not wrong. "Deadline limited" next to a connected probe
+ * invites the reading that something failed, when in fact the reader asked for
+ * more than the link can carry.
+ */
+static void drawBottleneckTooltip(const PerformanceDiagnosis& diagnosis)
+{
+	ImGui::BeginTooltip();
+	ImGui::TextUnformatted(performanceBottleneckText(diagnosis.bottleneck));
+	ImGui::Separator();
+	ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
+	ImGui::Text(I18n::tr("Asking for %.1f Hz; over the last measurement window the run is getting %.1f Hz, with %.1f%% of the sample periods missed."),
+	            static_cast<double>(diagnosis.requestedSamplingHz), diagnosis.actualSamplingHz, diagnosis.deadlineMissRatio * 100.0);
+	ImGui::TextDisabled("%s", I18n::tr("Asking for a lower rate, or reading fewer bytes each round, closes the gap. Nothing is wrong with the target."));
+	ImGui::PopTextWrapPos();
+	ImGui::EndTooltip();
+}
+
 void Gui::drawConnectionIndicator()
 {
 	const bool isVariableView = readsThroughViewer(activeView);
@@ -889,6 +915,10 @@ void Gui::drawConnectionIndicator()
 	bool hovered = false;
 	bool pressed = false;
 
+	/* Set when the pointer is on the diagnosis segment, which has a tooltip of
+	   its own: two tooltips begun in one frame draw one over the other. */
+	bool overDiagnosis = false;
+
 	ImGui::PushStyleColor(ImGuiCol_Button, stateFace);
 	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, stateFaceHovered);
 	ImGui::PushStyleColor(ImGuiCol_ButtonActive, stateFaceActive);
@@ -931,6 +961,12 @@ void Gui::drawConnectionIndicator()
 		ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::orangeLightDim());
 		pressed |= ImGui::Button(performanceBottleneckText(diagnosis.bottleneck), ImVec2(diagnosisWidth, height));
 		hovered |= ImGui::IsItemHovered();
+
+		overDiagnosis = ImGui::IsItemHovered();
+
+		if (overDiagnosis)
+			drawBottleneckTooltip(diagnosis);
+
 		ImGui::PopStyleColor(3);
 	}
 
@@ -948,7 +984,7 @@ void Gui::drawConnectionIndicator()
 		ImGui::TextUnformatted(samplingText);
 	}
 
-	if (!hovered)
+	if (!hovered || overDiagnosis)
 		return;
 
 	ImGui::BeginTooltip();
@@ -1204,62 +1240,147 @@ void Gui::applyTracePlots(const std::vector<ProjectTracePlot>& tracePlots)
 	}
 }
 
+/* The first line of a message, cut to something that fits beside the state.
+ *
+ * The cut is made on a character boundary rather than on a byte count: a
+ * Chinese error message cut in the middle of a character draws as a row of
+ * replacement glyphs, which reads as a worse failure than the one it reports.
+ * The whole of the message is in the tooltip.
+ */
+static std::string shortenedLine(const std::string& text, size_t limit)
+{
+	std::string line = text.substr(0, text.find('\n'));
+
+	if (line.size() <= limit)
+		return line;
+
+	line.resize(limit);
+
+	while (!line.empty() && (static_cast<unsigned char>(line.back()) & 0xC0) == 0x80)
+		line.pop_back();
+
+	return line + "...";
+}
+
+/*
+ * The state of the acquisition, and the one control that changes it.
+ *
+ * This used to be a single button the width of the pane and fifty pixels tall,
+ * coloured all over with the state: green while reading, amber when stopped,
+ * red when the last read failed. A run that is working is the normal case, and
+ * a block that size makes the normal case the loudest thing in a window whose
+ * point is the table underneath it.
+ *
+ * So the state is a dot and a word, and the button says what pressing it does
+ * rather than repeating what the state says. The colour is still there, on
+ * eight pixels rather than fifty, and the word carries the same meaning for a
+ * reader who cannot separate the hues.
+ */
 void Gui::drawStartButton(DataHandlerBase* activeDataHandler)
 {
-	bool shouldDisableButton = (!devicesList.empty() && devicesList.front() == noDevices);
-	ImGui::BeginDisabled(shouldDisableButton);
+	const float scale = GuiHelper::contentScale;
+
+	/* No probe at all is a different thing from a probe that failed: the
+	   button is there, it just has nothing to point at. */
+	const bool noProbe = (!devicesList.empty() && devicesList.front() == noDevices);
 
 	DataHandlerBase::State state = activeDataHandler->getStateImmediate();
 
-	if (state == DataHandlerBase::State::RUN)
+	const bool running = state == DataHandlerBase::State::RUN;
+	const std::string error = activeDataHandler->getLastReaderError();
+
+	const ImVec4 dotColour = running ? GuiHelper::greenLight() : (error.empty() ? GuiHelper::orangeLight() : GuiHelper::redLight());
+
+	const float lineHeight = ImGui::GetFrameHeight();
+	const float dotSize = 8.0f * scale;
+	const ImVec2 start = ImGui::GetCursorScreenPos();
+
+	/* The dot is drawn rather than printed: the interface font carries no
+	   bullet, and a missing glyph comes out as a box. The dummy reserves the
+	   room for it and puts the rest of the line at its right. */
+	ImGui::Dummy(ImVec2(dotSize + 8.0f * scale, lineHeight));
+	ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(start.x + dotSize * 0.5f, start.y + lineHeight * 0.5f), dotSize * 0.5f,
+	                                            ImGui::GetColorU32(dotColour), 12);
+
+	ImGui::SameLine();
+	ImGui::TextUnformatted(I18n::tr(viewerStateMap.at(state).c_str()));
+
+	/* The rate belongs to the variable side's sampling loop; the trace side
+	   has its own clock and reports nothing here. */
+	if (running && activeDataHandler == viewerDataHandler)
 	{
-		ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::green());
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::greenLight());
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::greenLightDim());
+		ImGui::SameLine();
+		ImGui::TextDisabled("%.2f Hz", viewerDataHandler->getAverageSamplingFrequency());
 	}
-	else if (state == DataHandlerBase::State::STOP)
+
+	if (!error.empty())
 	{
-		if (activeDataHandler->getLastReaderError() != "")
-		{
-			ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::red());
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::redLight());
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::redLightDim());
-		}
-		else
-		{
-			ImGui::PushStyleColor(ImGuiCol_Button, GuiHelper::orange());
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, GuiHelper::orangeLight());
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive, GuiHelper::orangeLightDim());
-		}
-	}
+		ImGui::SameLine();
+		ImGui::TextColored(GuiHelper::redLight(), "%s", shortenedLine(error, 70).c_str());
 
-	if ((ImGui::Button((std::string(I18n::tr(viewerStateMap.at(state).c_str())) + " " + activeDataHandler->getLastReaderError()).c_str(), ImVec2(-1, 50 * GuiHelper::contentScale)) ||
-		 (ImGui::IsKeyPressed(ImGuiKey_Space, false) && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopup))) &&
-		!shouldDisableButton)
-	{
-		if (state == DataHandlerBase::State::STOP)
+		if (ImGui::IsItemHovered())
 		{
-			logger->info("Start clicked!");
-			plotHandler->eraseAllPlotData();
-			tracePlotHandler->eraseAllPlotData();
-
-			/* A run started after a different project was opened has to read
-			   that project's symbol file, so the switch is restated here. It
-			   only clears what was prepared; the sampling loop does the work
-			   on its first pass. */
-			viewerDataHandler->setRtosEnabled(globalConfig->getSettings().rtosEnabled);
-
-			activeDataHandler->setState(DataHandlerBase::State::RUN);
-		}
-		else
-		{
-			logger->info("Stop clicked!");
-			activeDataHandler->setState(DataHandlerBase::State::STOP);
+			ImGui::BeginTooltip();
+			ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+			ImGui::TextUnformatted(error.c_str());
+			ImGui::PopTextWrapPos();
+			ImGui::EndTooltip();
 		}
 	}
 
-	ImGui::PopStyleColor(3);
+	const std::string label = I18n::tr(running ? "Stop" : "Start");
+	const float buttonWidth = ImGui::CalcTextSize(label.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+
+	/* At the far end of the line, so the eye finds it in the same place
+	   whether the state word beside it is long or short. */
+	ImGui::SameLine();
+
+	const float remaining = ImGui::GetContentRegionAvail().x;
+
+	if (remaining > buttonWidth + 8.0f * scale)
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + remaining - buttonWidth);
+
+	ImGui::BeginDisabled(noProbe);
+
+	bool toggled = ImGui::Button(label.c_str());
+
+	if (ImGui::IsItemHovered())
+	{
+		ImGui::BeginTooltip();
+		ImGui::TextUnformatted(I18n::tr(running ? "Stops the acquisition. The space bar does the same."
+		                                       : "Starts the acquisition. The space bar does the same."));
+		ImGui::EndTooltip();
+	}
+
 	ImGui::EndDisabled();
+
+	/* The space bar is the same switch, and it is read here rather than in a
+	   shortcut table because this is the one place that knows what pressing it
+	   would mean right now. */
+	if (!noProbe && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopup) && ImGui::IsKeyPressed(ImGuiKey_Space, false))
+		toggled = true;
+
+	if (!toggled)
+		return;
+
+	if (running)
+	{
+		logger->info("Stop clicked!");
+		activeDataHandler->setState(DataHandlerBase::State::STOP);
+
+		return;
+	}
+
+	logger->info("Start clicked!");
+	plotHandler->eraseAllPlotData();
+	tracePlotHandler->eraseAllPlotData();
+
+	/* A run started after a different project was opened has to read that
+	   project's symbol file, so the switch is restated here. It only clears
+	   what was prepared; the sampling loop does the work on its first pass. */
+	viewerDataHandler->setRtosEnabled(globalConfig->getSettings().rtosEnabled);
+
+	activeDataHandler->setState(DataHandlerBase::State::RUN);
 }
 
 void Gui::drawAcqusitionSettingsWindow(ActiveViewType type)
