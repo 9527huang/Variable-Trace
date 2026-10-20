@@ -299,11 +299,20 @@ class GuiRtosPanelTimeline
 	 */
 	static void drawSourceLine(const RtosTimeline& history, const std::vector<double>& plotCursors)
 	{
+		/* A dot between the sentences: they are separate facts and were being
+		   read as one long line. */
+		const auto separate = []()
+		{
+			ImGui::SameLine();
+			GuiHelper::drawSecondaryText("%s", "\xc2\xb7");
+			ImGui::SameLine();
+		};
+
 		if (followPlotCursors && !plotCursors.empty() && !manualWindow)
 		{
 			GuiHelper::drawSecondaryText(I18n::tr("following %u plot cursor(s)"), static_cast<uint32_t>(plotCursors.size()));
 
-			ImGui::SameLine();
+			separate();
 		}
 
 		/* What the marks are, and what they are not. A row of dots invites the
@@ -341,13 +350,21 @@ class GuiRtosPanelTimeline
 		{
 			GuiHelper::drawSecondaryText("%s", I18n::tr("click a time to pin it"));
 
-			ImGui::SameLine();
+			separate();
 		}
 
+		/* The rounds are what the bands are built from now, not marks: each
+		   band holds from one round until the next look. */
 		if (interval > 0.0)
-			GuiHelper::drawSecondaryText(I18n::tr("one mark per round, %.2f s apart"), interval);
+			GuiHelper::drawSecondaryText(I18n::tr("rounds %.2f s apart"), interval);
 		else
-			GuiHelper::drawSecondaryText("%s", I18n::tr("one mark per round"));
+			GuiHelper::drawSecondaryText("%s", I18n::tr("one band per state held until the next round"));
+
+		/* Said after the marks, because it is about what the picture cannot
+		   show: a gap is a round that did not read the task, not a task that
+		   did nothing. */
+		separate();
+		GuiHelper::drawSecondaryText("%s", I18n::tr("not read is not the same as idle"));
 
 		/* Which order the rows are in, said in words. The two orders are both
 		   defensible and a reader cannot tell them apart by looking: one keeps
@@ -633,6 +650,32 @@ class GuiRtosPanelTimeline
 		const std::vector<RtosTimeline::StateInterval> bands = RtosTimeline::stateIntervals(samples, newest);
 		const float bandHeight = std::max(rowHeight - 2.0f * scale, 2.0f * scale);
 
+		/*
+		 * The colour a gap gets.
+		 *
+		 * Every lane is first filled with "not read" over the stretch the
+		 * history covers, and the bands are drawn on top. Whatever is left is
+		 * exactly the rounds that missed that task, so a hole in a lane is now
+		 * a colour that the legend explains rather than an absence that the
+		 * reader has to interpret. Outside the covered stretch there is no
+		 * colour at all - that part of the window is simply before the data.
+		 */
+		const float coveredFrom = std::clamp(timeToX(oldest), plotLeft, plotLeft + plotWidth);
+		const float coveredTo = std::clamp(timeToX(newest), plotLeft, plotLeft + plotWidth);
+
+		if (coveredTo > coveredFrom)
+		{
+			ImVec4 gap = ImGui::ColorConvertU32ToFloat4(unsampledColour);
+			gap.w = 0.32f;
+
+			for (size_t lane = 0; lane < lanes.size(); lane++)
+			{
+				const float top = origin.y + static_cast<float>(lane) * rowHeight + 1.0f * scale;
+
+				draw->AddRectFilled(ImVec2(coveredFrom, top), ImVec2(coveredTo, top + bandHeight), ImGui::GetColorU32(gap));
+			}
+		}
+
 		for (const RtosTimeline::StateInterval& band : bands)
 		{
 			const auto lane = std::find(lanes.begin(), lanes.end(), band.tcbAddress);
@@ -647,7 +690,10 @@ class GuiRtosPanelTimeline
 				continue;
 
 			ImVec4 colour = ImGui::ColorConvertU32ToFloat4(markOf(band.state).colour);
-			colour.w = band.state == RtosTaskState::Running ? 0.55f : 0.30f;
+			/* Enough body for the hue to survive the dark background: at 0.30
+			   the blocked orange mixed into the pane's own colour and read as
+			   brown, which is nobody's state. */
+			colour.w = band.state == RtosTaskState::Running ? 0.62f : 0.45f;
 
 			const float top = origin.y + static_cast<float>(lane - lanes.begin()) * rowHeight + 1.0f * scale;
 			const float width = std::max(to - from, 2.0f * scale);
@@ -958,17 +1004,20 @@ class GuiRtosPanelTimeline
 			ImGui::SameLine(0.0f, spacing);
 		}
 
-		/* The blank, drawn as an empty slot so that the legend has a hole where
-		   the grid has one. */
+		/* A gap is a reading now, not an absence: the one colour that means
+		   "this round could not say" rather than "nothing happened". */
 		{
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			const ImVec2 topLeft(origin.x, origin.y + (ImGui::GetTextLineHeight() - size) * 0.5f);
 
-			draw->AddRect(topLeft, ImVec2(topLeft.x + size, topLeft.y + size), ImGui::GetColorU32(ImGuiCol_TextDisabled, 0.5f));
+			ImVec4 gap = ImGui::ColorConvertU32ToFloat4(unsampledColour);
+			gap.w = 0.75f;
+
+			draw->AddRectFilled(topLeft, ImVec2(topLeft.x + size, topLeft.y + size), ImGui::GetColorU32(gap));
 
 			ImGui::Dummy(ImVec2(size + 4.0f * scale, 0.0f));
 			ImGui::SameLine(0.0f, 4.0f * scale);
-			GuiHelper::drawSecondaryText("%s", I18n::tr("blank"));
+			GuiHelper::drawSecondaryText("%s", I18n::tr("not read"));
 		}
 
 		ImGui::SameLine(0.0f, spacing);
@@ -1008,6 +1057,12 @@ class GuiRtosPanelTimeline
 	inline static const ImU32 readyColour = IM_COL32(70, 130, 210, 255);
 	inline static const ImU32 blockedColour = IM_COL32(210, 140, 55, 255);
 	inline static const ImU32 suspendedColour = IM_COL32(140, 140, 145, 255);
+
+	/* A task a round did not read.
+	   Its own hue, because a gap in a lane has two possible meanings - the task
+	   was not there, or the round could not look - and until now the picture
+	   left both of them blank. */
+	inline static const ImU32 unsampledColour = IM_COL32(150, 110, 200, 255);
 
 	/* The variable view's cursors: a hue of their own, so that a thin line is
 	   never mistaken for one of the state marks. */
