@@ -381,26 +381,79 @@
     <tr><td>Task</td><td>任务名</td></tr>
     <tr><td>Priority</td><td>当前优先级。显示成 <code>3 (1)</code> 表示<strong>当前 3、创建时 1</strong>——这叫优先级继承：它持着一把别人想要的锁，内核临时把优先级借给它。这一列着色时也是这个意思</td></tr>
     <tr><td>State</td><td>Running / Ready / Blocked / Suspended / Terminated</td></tr>
+    <tr><td>Stack</td><td>声明大小：<code>pxEndOfStack − pxStack</code></td></tr>
+    <tr><td>Stack used</td><td>已用多少，以及剩余百分比。数字后面带 <code>!</code> 表示低于告警阈值（默认 20%，<code>rtos.stackAlertFreePercent</code>，设为 0 关闭）</td></tr>
+    <tr><td>Task share</td><td>最近窗口内这个任务占的处理器时间。目标没开 <code>configGENERATE_RUN_TIME_STATS</code> 时这一列显示"未启用"，这是目标的选择，不是软件的故障</td></tr>
     <tr><td>Waiting on</td><td>阻塞时等的对象名；读的是内核的<strong>对象等待表</strong>，不是任务表</td></tr>
-    <tr><td>Stack</td><td>已用 / 声明大小，以及剩余百分比。数字后面带 <code>!</code> 表示低于告警阈值（默认 20%，<code>rtos.stackAlertFreePercent</code>，设为 0 关闭）</td></tr>
-    <tr><td>CPU</td><td>最近窗口内的处理器占用。目标没开 <code>configGENERATE_RUN_TIME_STATS</code> 时这一列显示"未启用"，这是目标的选择，不是软件的故障</td></tr>
   </tbody>
 </table>
 
 <p>表里一行都读不到数据时显示 <code>-</code>，那是"没有读数"，不是"零"。
-栈水位靠宿主扫栈里的 <code>0xa5</code> 填充，一轮扫不完所有任务，所以每行的读数各带年龄。</p>
+栈水位靠宿主扫栈里的 <code>0xa5</code> 填充，一轮扫不完所有任务，所以每行的读数各带年龄——这一点在下面的"选中任务详情"里能看到具体秒数。</p>
 
-<h3>同步对象与时间线</h3>
+<p>点任意一行都会选中那个任务：时间线里对应的泳道高亮，对象表指向它在等的对象，
+右栏的详情跟着换。列可以拖动改宽，也可以在表头上右键显示/隐藏。</p>
 
-<p><strong>同步对象表</strong>列出内核里注册过的队列、信号量、互斥量：类型、容量、当前计数、各有几个任务在等、谁持着。
-点了任务行，相关的对象会跟着高亮。</p>
+<h3>采集状态条</h3>
 
-<p><strong>时间线</strong>把每个任务画成一条泳道，横轴与变量视图共用。<strong>跟随光标</strong>打开时，窗口跟着变量视图的光标走：
-双光标是区间，单光标是居中。缺某一轮读数的任务画成"没有读数"，不画成"没在跑"——这两件事不一样。</p>
+<p>任务表和变量视图共用同一条状态条，从左到右是：一个色点、状态词、采样率、以及右端的
+<strong>Start / Stop</strong>。</p>
 
-<h3>四条诊断</h3>
+<table>
+  <thead><tr><th>色点</th><th>含义</th></tr></thead>
+  <tbody>
+    <tr><td>绿</td><td>正在采集</td></tr>
+    <tr><td>橙</td><td>停着，没有故障</td></tr>
+    <tr><td>红</td><td>上一次读失败了；失败原因显示在状态词右边，鼠标停上去看全文</td></tr>
+  </tbody>
+</table>
 
-<p>面板顶部会出现几条诊断，<strong>没有问题的时候整段不出现</strong>。每条都带一小段链子，点链子里的任务名会选中表里对应的行。</p>
+<p><code>空格</code> 是同一个开关。它在文本框里有焦点时不管用——那时空格是文字。</p>
+
+<h3>摘要与筛选</h3>
+
+<p>状态条下面一行是摘要：任务总数，接着四个带色点的计数（运行 / 就绪 / 阻塞 / 挂起），
+后面可能有"栈告警"与"优先级被继承"两个计数。色点的颜色与时间线图例是同一套。</p>
+
+<p><strong>点一个计数，表格就只留下那一类任务</strong>；再点一次放开。选中的计数会有一层淡色
+填充和一圈边框，没选中的只有色点和数字——所以"这是状态的颜色"和"这个筛选生效了"是两件事。</p>
+
+<table>
+  <thead><tr><th>控件</th><th>作用</th></tr></thead>
+  <tbody>
+    <tr><td><code>search by name</code></td><td>按任务名筛</td></tr>
+    <tr><td><code>states</code></td><td>多选状态，四类各带自己的色点；上面那排计数是它的快捷方式，两边改的是同一个条件</td></tr>
+    <tr><td><code>stack alerts only</code></td><td>只留下栈剩余低于阈值的任务</td></tr>
+    <tr><td><code>clear filters</code></td><td>一次清掉全部条件。没有条件时它是平面的，看起来就是"没得清"</td></tr>
+    <tr><td><code>stack free &lt;= 20 %</code></td><td>栈告警的阈值，<code>0</code> 关闭告警</td></tr>
+    <tr><td><code>priority &gt;=</code></td><td>只有不低于这个优先级的任务留下</td></tr>
+  </tbody>
+</table>
+
+<p>这一行右端写着"14 个里显示 14 个"，也就是当前筛选之下还剩多少行。</p>
+
+<h3>发现（Findings）</h3>
+
+<p>诊断结果写在单独的一段里，标题带数量（<code>Findings 2</code>），<strong>没有问题的时候整段不出现</strong>。</p>
+
+<p>每条前面有一个字符表示严重程度，颜色只是重复它：</p>
+
+<table>
+  <thead><tr><th>标记</th><th>意思</th><th>哪几条</th></tr></thead>
+  <tbody>
+    <tr><td><code>!</code> 红</td><td>会卡住：这条不解决，任务就不往前走</td><td>疑似死锁、无超时等待</td></tr>
+    <tr><td><code>!</code> 橙</td><td>警告：调度器在做不该做的事</td><td>就绪但从未被切入</td></tr>
+    <tr><td><code>i</code> 蓝灰</td><td>提示：内核在做它该做的事，只是值得知道</td><td>优先级继承</td></tr>
+  </tbody>
+</table>
+
+<p>每条都带一小段链子，读作<em>等待者 → 对象 → 持有者</em>。<strong>整行都可以点</strong>：
+点它会选中链子上的第一个任务、它等的对象，表格、泳道、对象表同时定位过去。
+点的时候会先清掉筛选——目标被筛掉时"定位"落在空处，看起来像点了没反应。</p>
+
+<p>右键一条发现可以<strong>复制整条链</strong>（<code>inv_high -> mtx_inv -> inv_low</code>），
+贴进报告比"优先级继承"四个字说明得多。时长在每行右端，列对齐，便于比较。</p>
+
 
 <table>
   <thead><tr><th>诊断</th><th>它说明什么</th><th>什么情况下<em>不</em>报</th></tr></thead>
@@ -434,6 +487,47 @@
   所以只有当一个任务的优先级<strong>高于实际在跑的那个</strong>时才算异常。判断时用的是它<strong>创建时</strong>的优先级，
   因为被继承的那个号码是等待者的，不是它自己的。
 </div>
+
+<h3>同步对象与时间线</h3>
+
+<p><strong>同步对象表</strong>列出内核里注册过的队列、信号量、互斥量：类型、容量、当前计数、各有几个任务在等、谁持着。
+点了任务行，相关的对象会跟着高亮。</p>
+
+<p><strong>时间线</strong>把每个任务画成一条泳道，横轴与变量视图共用。<strong>跟随光标</strong>打开时，窗口跟着变量视图的光标走：
+双光标是区间，单光标是居中。缺某一轮读数的任务画成"没有读数"，不画成"没在跑"——这两件事不一样。</p>
+
+<p>这块矩形有两层意思，用位置分开，不需要记修饰键：</p>
+
+<table>
+  <thead><tr><th>点在哪里</th><th>做什么</th></tr></thead>
+  <tbody>
+    <tr><td>泳道<strong>名字</strong>那一列</td><td>选中这个任务，和点表格里那一行同义；它在等的对象也一起选上</td></tr>
+    <tr><td><strong>绘图区</strong>（右边的彩色带）</td><td>钉住这个时刻，右栏出现"Pinned moment"，说那一刻在跑谁、四类各几个</td></tr>
+  </tbody>
+</table>
+
+<p>泳道的顺序默认按<strong>基础优先级</strong>（创建时的那个），这样一条泳道在轮次之间不会移动——
+按当前优先级排的话，一有继承整张图就翻一遍。头部有<strong>跟随表格顺序</strong>开关，
+打开后泳道按表格当前的排序走；说明行会写明现在是哪一种。</p>
+
+<h3>选中任务详情</h3>
+
+<p>右栏最下面是当前选中任务的全文。表格是横向比较的形状，读单个任务要看的是句子：</p>
+
+<table>
+  <thead><tr><th>行</th><th>为什么单列一行</th></tr></thead>
+  <tbody>
+    <tr><td>Address</td><td>控制块的地址，贴进报告或脚本里用</td></tr>
+    <tr><td>Found on</td><td>这条状态是从内核哪张表上读到的。它和 State 不是一回事：挂在 <code>suspended</code> 表上、事件项却是空的，那就是"无超时等待"</td></tr>
+    <tr><td>Priority</td><td>被继承时写成 <code>3 (was 1) - inherited while a lock is held</code></td></tr>
+    <tr><td>Stack</td><td>用量、剩余百分比，以及<strong>这个读数是几秒前扫的</strong>。扫描一轮只扫几个任务，所以每行的年龄不同</td></tr>
+    <tr><td>Task share</td><td>占比，以及<strong>分母是什么</strong>：任务用掉的时间里它占多少，统计窗口多长</td></tr>
+  </tbody>
+</table>
+
+<p>标题右边的 <code>copy</code> 把同样的信息压成一行放进剪贴板，例如
+<code>stuck 0x20001B60 blocked priority 1 stack 136/504 (26% used) share 0.0% waiting sem_stuck</code>。
+鼠标停在按钮上能先看到这一行。</p>
 
 <h3>切换记录：时间线是怎么来的</h3>
 
@@ -516,6 +610,7 @@
     <tr><td>采样率有上限</td><td>上限取决于探针、地址布局和消费者负载；连续 RAM 变量可合并读取，稀疏或外设地址仍可能随事务数明显下降</td></tr>
     <tr><td>SWD 速度并非越快越好</td><td>从 1 MHz 提到 4 MHz 提升明显，4 MHz 往上收益递减</td></tr>
     <tr><td>记录器需要目标侧代码</td><td>固件里必须集成配套的参考实现</td></tr>
+    <tr><td>个别探针会在读任务控制块时卡住</td><td>表现是采集启动一两秒后自己停住，界面还在，数据不再更新。原因是探针的一次同步 USB 读等不到应答。到"采集设置"里取消 <code>Task view: read control blocks</code>（存进工程文件）——任务表会只剩状态和地址，但变量视图继续工作</td></tr>
     <tr><td>任务视图只能看到被调度过的东西</td><td>内核不维护"切换次数"，所以没有这一列；统计的是当前状态与最近的历史</td></tr>
     <tr><td>SWO 与任务视图的读数不能共存（J-Link）</td><td>一颗 J-Link 同时只服务一条连接。调试连接占着它时，SWO 那条连接连不上；跟踪视图能用 SWO，正是因为它独占连接。要改用 <code>rtos.eventsTransport</code> 时必须接受"任务视图读不到内核"</td></tr>
     <tr><td>RTT 通路当前不可用</td><td>目标侧已就绪，但 J-Link 的 DLL 能找到控制块、读不出数据。默认的数据通路是内存环形缓冲，不受影响</td></tr>
