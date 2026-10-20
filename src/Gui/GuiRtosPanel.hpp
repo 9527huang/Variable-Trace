@@ -378,6 +378,26 @@ class GuiRtosPanel
 		ImVec4 colour;
 	};
 
+	/* Lower is more urgent, and it is the order the two visible rows appear in. */
+	static int severityRank(RtosDiagnostics::Kind kind)
+	{
+		switch (kind)
+		{
+			case RtosDiagnostics::Kind::SuspectedDeadlock:
+				return 0;
+
+			case RtosDiagnostics::Kind::UnboundedWait:
+				return 1;
+
+			case RtosDiagnostics::Kind::ReadyStarvation:
+				return 2;
+
+			case RtosDiagnostics::Kind::PriorityInheritance:
+			default:
+				return 3;
+		}
+	}
+
 	static FindingSeverity severityOf(RtosDiagnostics::Kind kind)
 	{
 		/* Two palettes, like the rest of the interface. These are read as text
@@ -463,12 +483,56 @@ class GuiRtosPanel
 	{
 		const float scale = GuiHelper::contentScale;
 
+		/*
+		 * A fixed two rows, whatever arrives.
+		 *
+		 * The set of findings changes as the target moves - inheritance comes
+		 * and goes with a lock being held - and a block that grows by a line
+		 * pushes the filters and the table below it down, then lets them back
+		 * up. The reader is watching a running system; movement in the chrome
+		 * is movement they did not ask for and cannot stop.
+		 *
+		 * Two rows rather than three: the two that mean "this run is stuck"
+		 * are the ones worth the space, and a third was never seen on a target
+		 * that has findings worth showing.
+		 */
+		constexpr size_t visibleRows = 2;
+
 		ImGui::TextUnformatted(I18n::tr("Findings"));
 		ImGui::SameLine(0.0f, 6.0f * scale);
 		ImGui::TextDisabled("%d", static_cast<int>(findings.size()));
 
-		for (const RtosDiagnostics::Finding& finding : findings)
+		/* What is not on screen is not dropped: the count says how many there
+		   are, and this says which ones these are. */
+		if (findings.size() > visibleRows)
 		{
+			ImGui::SameLine(0.0f, 6.0f * scale);
+			GuiHelper::drawSecondaryText("%s", I18n::tr("the most serious"));
+		}
+
+		/* Most serious first, so that the two visible rows are the two worth
+		   reading when there are more. */
+		std::vector<const RtosDiagnostics::Finding*> ordered;
+		ordered.reserve(findings.size());
+
+		for (const RtosDiagnostics::Finding& finding : findings)
+			ordered.push_back(&finding);
+
+		std::stable_sort(ordered.begin(), ordered.end(), [](const RtosDiagnostics::Finding* left, const RtosDiagnostics::Finding* right)
+		{
+			return severityRank(left->kind) < severityRank(right->kind);
+		});
+
+		const float rowsTop = ImGui::GetCursorPosY();
+		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
+
+		if (ordered.empty())
+			GuiHelper::drawSecondaryText("%s", I18n::tr("nothing in this round"));
+
+		for (size_t index = 0; index < ordered.size() && index < visibleRows; index++)
+		{
+			const RtosDiagnostics::Finding& finding = *ordered[index];
+
 			ImGui::PushID(&finding);
 
 			const bool deadlock = finding.kind == RtosDiagnostics::Kind::SuspectedDeadlock;
@@ -490,7 +554,6 @@ class GuiRtosPanel
 			   button is the plainer thing and does what it says. */
 			const ImVec2 rowStart = ImGui::GetCursorScreenPos();
 			const float rowWidth = ImGui::GetContentRegionAvail().x;
-			const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 
 			ImGui::InvisibleButton("##findingRow", ImVec2(rowWidth, rowHeight));
 
@@ -606,6 +669,13 @@ class GuiRtosPanel
 
 			ImGui::PopID();
 		}
+
+		/* Pad to the two rows, so that an empty or single row leaves the same
+		   gap every round instead of a different one. */
+		const float used = ImGui::GetCursorPosY() - rowsTop;
+
+		if (used < rowHeight * static_cast<float>(visibleRows))
+			ImGui::Dummy(ImVec2(0.0f, rowHeight * static_cast<float>(visibleRows) - used));
 
 		ImGui::Separator();
 	}
