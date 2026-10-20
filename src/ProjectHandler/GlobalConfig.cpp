@@ -125,6 +125,7 @@ bool GlobalConfig::load()
 			settings.rtosView.showOnlyBlocked = view.value("showOnlyBlocked", settings.rtosView.showOnlyBlocked);
 			settings.rtosView.timelineWindowSeconds = view.value("timelineWindowSeconds", settings.rtosView.timelineWindowSeconds);
 			settings.rtosView.followPlotCursors = view.value("followPlotCursors", settings.rtosView.followPlotCursors);
+			settings.rtosView.timelineFollowsTable = view.value("timelineFollowsTable", settings.rtosView.timelineFollowsTable);
 		}
 	}
 
@@ -194,7 +195,8 @@ bool GlobalConfig::save()
 	                  {"onlyStackAlerts", settings.rtosView.onlyStackAlerts},
 	                  {"showOnlyBlocked", settings.rtosView.showOnlyBlocked},
 	                  {"timelineWindowSeconds", settings.rtosView.timelineWindowSeconds},
-	                  {"followPlotCursors", settings.rtosView.followPlotCursors}}}};
+	                  {"followPlotCursors", settings.rtosView.followPlotCursors},
+	                  {"timelineFollowsTable", settings.rtosView.timelineFollowsTable}}}};
 	root["api"] = {{"enabled", settings.mcpEnabled},
 				   {"preferredPort", settings.mcpPreferredPort},
 				   {"writesEnabled", settings.apiWritesEnabled},

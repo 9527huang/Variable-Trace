@@ -38,7 +38,15 @@
 class GuiRtosPanelTimeline
 {
    public:
-	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors, uint32_t selectedTask, uint32_t hoveredTask)
+	/*
+	 * `lanes` is the order to draw the rows in, handed in by the panel: either
+	 * the stable one - base priority, then name, then address - or the order
+	 * the table is showing, which is what the reader sorted it to. The strip
+	 * does not decide it, because both answers are legitimate and only the
+	 * caller knows which one is wanted.
+	 */
+	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors, const std::vector<uint32_t>& lanes,
+	                 uint32_t selectedTask, uint32_t hoveredTask)
 	{
 		const RtosTimeline& history = model.history();
 
@@ -83,13 +91,13 @@ class GuiRtosPanelTimeline
 		{
 			drawCounts(history, samples, true);
 
-			drawGrid(snapshot, samples, runs, plotCursors, selectedTask, hoveredTask);
+			drawGrid(snapshot, lanes, samples, runs, plotCursors, selectedTask, hoveredTask);
 		}
 		else
 		{
 			drawCounts(history, samples, false);
 
-			drawGrid(snapshot, samples, {}, plotCursors, selectedTask, hoveredTask);
+			drawGrid(snapshot, lanes, samples, {}, plotCursors, selectedTask, hoveredTask);
 		}
 	}
 
@@ -125,6 +133,17 @@ class GuiRtosPanelTimeline
 		followPlotCursors = value;
 	}
 
+	/* Whether the lanes follow the table's order instead of the stable one. */
+	static bool getFollowTableOrder()
+	{
+		return followTableOrder;
+	}
+
+	static void setFollowTableOrder(bool value)
+	{
+		followTableOrder = value;
+	}
+
    private:
 	/* How much time the strip shows. Short enough that a round is a visible
 	   mark, long enough to see a pattern. */
@@ -139,6 +158,12 @@ class GuiRtosPanelTimeline
 	 * reader looking at an old measurement still wants to watch the live rounds.
 	 */
 	inline static bool followPlotCursors = true;
+
+	/* Off by default: the stable order is what keeps a lane under the same row
+	 * from round to round, and a table sorted by stack use would make every
+	 * lane jump as the numbers change. On when the reader is comparing the
+	 * strip against a particular row order. */
+	inline static bool followTableOrder = false;
 
 	/*
 	 * The window the reader has zoomed or panned to, if they have.
@@ -214,6 +239,13 @@ class GuiRtosPanelTimeline
 			if (ImGui::Button(I18n::tr("unpin")))
 				hasPinned = false;
 		}
+
+		/* Beside the window length, because it answers the same kind of
+		   question: what the strip shows, not what the target did. */
+		if (ImGui::GetContentRegionAvail().x > 175.0f * GuiHelper::contentScale)
+			ImGui::SameLine();
+
+		ImGui::Checkbox(I18n::tr("follow table order"), &followTableOrder);
 	}
 
 	/*
@@ -249,6 +281,13 @@ class GuiRtosPanelTimeline
 			GuiHelper::drawSecondaryText(I18n::tr("one mark per round, %.2f s apart"), interval);
 		else
 			GuiHelper::drawSecondaryText("%s", I18n::tr("one mark per round"));
+
+		/* Which order the rows are in, said in words. The two orders are both
+		   defensible and a reader cannot tell them apart by looking: one keeps
+		   a lane where it was between rounds, the other puts it where its row
+		   is in the table. Getting them confused means reading the wrong
+		   lane. */
+		GuiHelper::drawSecondaryText("%s", I18n::tr(followTableOrder ? "lanes in table order" : "lanes in base priority order"));
 
 		ImGui::Separator();
 	}
@@ -299,12 +338,10 @@ class GuiRtosPanelTimeline
 		}
 	}
 
-	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTimeline::Sample>& samples,
+	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<uint32_t>& lanes, const std::vector<RtosTimeline::Sample>& samples,
 	                     const std::vector<RtosEventRing::Interval>& runs, const std::vector<double>& plotCursors, uint32_t selectedTask,
 	                     uint32_t hoveredTask)
 	{
-		const std::vector<uint32_t> lanes = RtosTableModel::laneOrder(snapshot);
-
 		if (lanes.empty())
 		{
 			GuiHelper::drawSecondaryText("%s", I18n::tr("No tasks in this round."));

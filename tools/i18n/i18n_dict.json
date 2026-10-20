@@ -562,6 +562,9 @@
   "%u (was %u) - inherited while a lock is held": "%u(原为 %u)——持有锁期间被继承",
   "%s%u / %u B, %u%% free - read %.1f s ago": "%s%u / %u 字节,剩余 %u%%,读数距今 %.1f 秒",
   "%.1f%% of the time the tasks used, over the last %.2f s": "占任务总时间的 %.1f%%,窗口为最近 %.2f 秒",
+  "follow table order": "跟随表格顺序",
+  "lanes in table order": "泳道按表格顺序排列",
+  "lanes in base priority order": "泳道按基础优先级排列",
   "Reset layout": "重置界面布局",
   "last": "最近",
   "s": "秒"

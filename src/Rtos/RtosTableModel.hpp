@@ -169,6 +169,11 @@ struct RtosViewSettings
 	uint32_t stackAlertFreePercent = 20;
 	float timelineWindowSeconds = 10.0f;
 	bool followPlotCursors = true;
+
+	/* Whether the strip's rows follow the table's order rather than the stable
+	   one. Off by default: a table sorted by a number that changes every round
+	   would make every lane move every round. */
+	bool timelineFollowsTable = false;
 };
 
 class RtosTableModel

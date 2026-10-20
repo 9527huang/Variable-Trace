@@ -62,6 +62,7 @@ class GuiRtosPanel
 
 			GuiRtosPanelTimeline::setWindowSeconds(view.timelineWindowSeconds);
 			GuiRtosPanelTimeline::setFollowPlotCursors(view.followPlotCursors);
+			GuiRtosPanelTimeline::setFollowTableOrder(view.timelineFollowsTable);
 
 			stackAlertSeeded = true;
 		}
@@ -74,6 +75,7 @@ class GuiRtosPanel
 		view.showOnlyBlocked = query.states.size() == 1 && query.states.front() == RtosTaskState::Blocked;
 		view.timelineWindowSeconds = GuiRtosPanelTimeline::getWindowSeconds();
 		view.followPlotCursors = GuiRtosPanelTimeline::getFollowPlotCursors();
+		view.timelineFollowsTable = GuiRtosPanelTimeline::getFollowTableOrder();
 
 		if (model == nullptr)
 		{
@@ -162,7 +164,15 @@ class GuiRtosPanel
 			return;
 		}
 
-		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, selection().task, hovered);
+		/* Which order the rows go in: the stable one, or the one the reader
+		   sorted the table to. The stable order exists because a lane that
+		   moves is a lane that cannot be followed; the table's order exists
+		   because a reader comparing a row with a lane wants them adjacent. */
+		const std::vector<uint32_t> lanes = GuiRtosPanelTimeline::getFollowTableOrder()
+		                                        ? RtosTableModel::addressesOf(RtosTableModel::taskRows(*snapshot, query))
+		                                        : RtosTableModel::laneOrder(*snapshot);
+
+		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, lanes, selection().task, hovered);
 
 		/* Under the strip, and in the same window: a task that is waiting is
 		   waiting for one of these, so the two are read together. */
