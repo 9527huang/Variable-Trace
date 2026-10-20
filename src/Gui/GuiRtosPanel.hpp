@@ -106,12 +106,17 @@ class GuiRtosPanel
 		drawConsistencyLine(*snapshot);
 		drawStackScanNotice(*snapshot);
 		drawCpuLoadNotice(*snapshot);
-		drawSummary(*snapshot);
+
+		/* The findings are worked out before the summary, because the summary
+		   quotes the longest wait from them: two readers of one answer rather
+		   than two computations that could disagree. */
+		const std::vector<RtosDiagnostics::Finding> findings = RtosDiagnostics::diagnose(*snapshot, model->history());
+
+		fixedRows(2.0f, [&] { drawSummary(*snapshot, findings); });
 
 		/* Findings, and only when there are any: a section that says "nothing
 		   is wrong" every round trains the reader to skip the place where the
 		   answer appears. */
-		const std::vector<RtosDiagnostics::Finding> findings = RtosDiagnostics::diagnose(*snapshot, model->history());
 
 		if (!findings.empty())
 			drawDiagnostics(findings);
@@ -700,7 +705,7 @@ class GuiRtosPanel
 	 * The counts are also the filters: a reader who sees seven blocked tasks and
 	 * wants to know which ones should not have to type into a search box first.
 	 */
-	static void drawSummary(const RtosSnapshot& snapshot)
+	static void drawSummary(const RtosSnapshot& snapshot, const std::vector<RtosDiagnostics::Finding>& findings)
 	{
 		const float scale = GuiHelper::contentScale;
 
@@ -755,6 +760,62 @@ class GuiRtosPanel
 				ImGui::EndTooltip();
 			}
 		}
+
+		/*
+		 * The three questions the lanes cannot answer without being counted.
+		 *
+		 * A strip of colour says which task was in which state; it does not say
+		 * that one task used 38 % of the time or that another has been waiting
+		 * two minutes. Those are the answers a reader comes for, and they are
+		 * one subtraction away from data already in hand.
+		 */
+		const RtosTask* busiest = nullptr;
+
+		for (const RtosTask& task : snapshot.tasks)
+		{
+			if (!task.hasCpuShare)
+				continue;
+
+			if (busiest == nullptr || task.cpuSharePercent > busiest->cpuSharePercent)
+				busiest = &task;
+		}
+
+		if (busiest != nullptr && busiest->cpuSharePercent > 0.0)
+		{
+			sameLineIfFits(190.0f * scale);
+			GuiHelper::drawSecondaryText(I18n::tr("busiest %s %.1f%%"), busiest->name.empty() ? unknown() : busiest->name.c_str(),
+			                             busiest->cpuSharePercent);
+		}
+
+		/* The longest wait comes from the findings rather than from a column:
+		   a task that has been blocked for two minutes is already named there,
+		   with the object it waits for. */
+		const RtosDiagnostics::Finding* longestWait = nullptr;
+
+		for (const RtosDiagnostics::Finding& finding : findings)
+		{
+			if (finding.kind != RtosDiagnostics::Kind::UnboundedWait)
+				continue;
+
+			if (longestWait == nullptr || finding.heldSeconds > longestWait->heldSeconds)
+				longestWait = &finding;
+		}
+
+		/* The second row, deliberately: the first one is full by the time the
+		   busiest task is named, and a width estimate that lets this through
+		   anyway cuts the answer in half - "longes" is not an answer. */
+		if (longestWait != nullptr && !longestWait->chain.empty())
+		{
+			GuiHelper::drawSecondaryText(I18n::tr("longest wait %s %.0f s"), longestWait->chain.front().c_str(), longestWait->heldSeconds);
+
+			if (summary.unread > 0)
+			{
+				ImGui::SameLine(0.0f, 12.0f * scale);
+				GuiHelper::drawSecondaryText("%s %u", I18n::tr("not read"), summary.unread);
+			}
+		}
+		else if (summary.unread > 0)
+			GuiHelper::drawSecondaryText("%s %u", I18n::tr("not read"), summary.unread);
 
 		ImGui::Separator();
 	}

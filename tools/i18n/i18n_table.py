@@ -781,6 +781,8 @@ EXTRA = {
     "showing %.2f s of %.0f s asked, %u rounds": "显示 %.2f 秒（请求 %.0f 秒）共 %u 轮",
     "showing %.2f s, %u rounds": "显示 %.2f 秒, 共 %u 轮",
     "not read": "未采样",
+    "busiest %s %.1f%%": "最忙 %s %.1f%%",
+    "longest wait %s %.0f s": "最长等待 %s %.0f 秒",
     "not read is not the same as idle": "未采样不等于没在跑",
     "rounds %.2f s apart": "每 %.2f 秒一轮",
     "one band per state held until the next round": "每一段状态保持到下一轮",
