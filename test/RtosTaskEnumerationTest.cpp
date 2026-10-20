@@ -393,12 +393,16 @@ TEST(RtosTaskEnumerator, PriorityComesFromTheReadyListAndNowhereElse)
 	ListBuilder ready(memory, listA);
 	ListBuilder blocked(memory, listB);
 
-	ready.append(ready.itemAddressAt(0), 3, 0x20008000u);
+	/* The item's own value is deliberately not a priority: a task is put on a
+	   ready list with `vListInsertEnd`, which never writes `xItemValue`, so
+	   what sits there is whatever the control block's allocation left behind.
+	   A reader that takes it is reading litter. */
+	ready.append(ready.itemAddressAt(0), 0x01A2B3C4u, 0x20008000u);
 	blocked.append(blocked.itemAddressAt(0), 0x1234u, 0x20008020u);
 
 	const std::vector<RtosTaskEnumerator::ListSource> sources = {
-		{"ready.3", listA, RtosTaskState::Ready, true, false},
-		{"delayed", listB, RtosTaskState::Blocked, false, true},
+		{"ready.3", listA, RtosTaskState::Ready, true, 3u, false},
+		{"delayed", listB, RtosTaskState::Blocked, false, 0u, true},
 	};
 
 	const RtosTaskEnumeration result = RtosTaskEnumerator::enumerate(memory, layoutRef(), sources, 0u, true);
@@ -409,6 +413,7 @@ TEST(RtosTaskEnumerator, PriorityComesFromTheReadyListAndNowhereElse)
 	ASSERT_NE(running, nullptr);
 	ASSERT_NE(waiting, nullptr);
 
+	/* From the list, not from the item: the ready list *is* one priority. */
 	EXPECT_TRUE(running->hasPriority);
 	EXPECT_EQ(running->rawPriority, 3u);
 

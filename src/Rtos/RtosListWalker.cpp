@@ -1,6 +1,8 @@
 #include "RtosListWalker.hpp"
 
 #include <algorithm>
+#include <cstdio>
+#include <string>
 #include <cstring>
 #include <unordered_set>
 

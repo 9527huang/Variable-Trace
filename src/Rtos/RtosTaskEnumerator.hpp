@@ -209,9 +209,22 @@ class RtosTaskEnumerator
 		std::string key;
 		uint32_t address = 0;
 		RtosTaskState state = RtosTaskState::Unknown;
-		/* A ready list keeps the priority in the item value. */
+
+		/*
+		 * The priority the list itself stands for, for the ready lists.
+		 *
+		 * Not read out of the item. A ready list is one priority by
+		 * construction - the kernel keeps an array of them, one per priority -
+		 * and a task is put on it with `vListInsertEnd`, which does not write
+		 * `xItemValue` at all. What that field holds for a task on a ready
+		 * list is whatever the control block's memory happened to contain when
+		 * it was allocated: on this target, an eight digit number that climbs
+		 * by one per task. Taking the index is both simpler and true.
+		 */
 		bool carriesPriority = false;
-		/* A delay list keeps the wake tick there. */
+		uint32_t priority = 0;
+
+		/* A delay list keeps the wake tick in the item value. */
 		bool carriesWaitTime = false;
 	};
 

@@ -167,7 +167,7 @@ RtosTaskEnumeration RtosTaskEnumerator::enumerate(IRtosMemory& memory,
 
 			if (source.carriesPriority)
 			{
-				task.rawPriority = item.value;
+				task.rawPriority = source.priority;
 				task.hasPriority = true;
 				task.priorityRank = normalizedPriority(task.rawPriority, higherNumberIsHigherPriority);
 			}

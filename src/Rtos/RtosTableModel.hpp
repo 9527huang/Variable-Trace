@@ -86,7 +86,13 @@ struct RtosTaskRow
 
 	bool hasPriority = false;
 	uint32_t priority = 0;
+
+	/* The priority the task was created with, and whether it was read. Zero is
+	   a real priority, so "no reading" has to be its own flag or every task
+	   without a control block looks like it was created at zero and has been
+	   inherited up to where it is. */
 	uint32_t basePriority = 0;
+	bool hasBasePriority = false;
 	int64_t priorityRank = 0;
 
 	bool hasStack = false;

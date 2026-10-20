@@ -169,21 +169,13 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 		row.tcbAddress = task.tcbAddress;
 		row.name = task.name;
 		row.state = task.state;
-		/*
-		 * A priority is only shown when the round read the control blocks.
-		 *
-		 * The ready lists carry one of their own, and on some firmware that
-		 * field holds something else entirely - this target puts a number there
-		 * that climbs by one per task. The kernel's own field is the answer
-		 * that can be trusted, and a round without the blocks does not have it.
-		 *
-		 * The model keeps what the lists said (`RtosTask::hasPriority`), because
-		 * it is right about what the kernel promises; it is this table that
-		 * decides not to print a value it cannot vouch for.
-		 */
-		row.hasPriority = task.hasPriority && snapshot.controlBlocksRead;
+		/* A ready list states its own priority - it is one priority by
+		   construction - so this needs no control block to be sound. See
+		   `RtosTaskEnumerator::ListSource`. */
+		row.hasPriority = task.hasPriority;
 		row.priority = task.rawPriority;
 		row.basePriority = task.basePriority;
+		row.hasBasePriority = task.hasBasePriority;
 		row.priorityRank = task.priorityRank;
 		row.hasStack = task.hasStack;
 		row.stackBytes = (task.hasStack && task.stackTop > task.stackBase) ? task.stackTop - task.stackBase : 0;

@@ -161,6 +161,7 @@ bool RtosSampler::prepare(const IElfParser::SymbolMap& symbols, const RtosLayout
 		source.address = readyListsAddress + priority * readyListsStride;
 		source.state = RtosTaskState::Ready;
 		source.carriesPriority = true;
+		source.priority = priority;
 
 		fixedListSources.push_back(std::move(source));
 	}

@@ -1134,7 +1134,7 @@ class GuiRtosPanel
 
 			if (!row.hasPriority)
 				ImGui::TextUnformatted(unknown());
-			else if (row.basePriority != row.priority)
+			else if (row.hasBasePriority && row.basePriority != row.priority)
 			{
 				ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, ImGui::GetColorU32(ImVec4(0.55f, 0.35f, 0.10f, 0.55f)));
 				ImGui::Text("%u (%u)", row.priority, row.basePriority);
@@ -1405,7 +1405,7 @@ class GuiRtosPanel
 
 		if (row.hasPriority)
 		{
-			if (row.basePriority != row.priority)
+			if (row.hasBasePriority && row.basePriority != row.priority)
 				std::snprintf(text, sizeof(text), " priority %u (was %u)", row.priority, row.basePriority);
 			else
 				std::snprintf(text, sizeof(text), " priority %u", row.priority);
@@ -1497,7 +1497,7 @@ class GuiRtosPanel
 
 		if (!row.hasPriority)
 			detailRow(I18n::tr("Priority"), unknown());
-		else if (row.basePriority != row.priority)
+		else if (row.hasBasePriority && row.basePriority != row.priority)
 		{
 			char text[48] = {};
 			std::snprintf(text, sizeof(text), I18n::tr("%u (was %u) - inherited while a lock is held"), row.priority, row.basePriority);
