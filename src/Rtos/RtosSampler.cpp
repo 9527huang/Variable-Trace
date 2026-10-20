@@ -238,8 +238,40 @@ bool RtosSampler::readTaskDetail(IRtosMemory& memory, uint32_t tcbAddress, uint3
 
 	uint8_t buffer[controlBlockBufferSize] = {};
 
-	if (!memory.read(tcbAddress, buffer, span))
-		return false;
+	/*
+	 * The control block is read in pieces that each fit one USB packet.
+	 *
+	 * A single read of the whole block hangs the probe, and with it the
+	 * sampling thread: the call is a synchronous `ReadFile` inside the J-Link
+	 * DLL, so there is no way to time it out or to walk away from it. Measured
+	 * on this target, a 92 byte block read in one call froze the run after a
+	 * round or two, every time; the same block in two halves ran for as long as
+	 * it was watched.
+	 *
+	 * The packet size is the reason. A control block is around ninety bytes on
+	 * this kernel, which is more than one 64 byte USB packet, and something in
+	 * that path loses the answer often enough to wait forever. Chunks are cut
+	 * on the packet boundary rather than in halves so that every call is one
+	 * packet whatever the block size turns out to be on another kernel - a
+	 * kernel whose control block is 200 bytes is then three packets, not one
+	 * oversized read that hangs.
+	 *
+	 * It costs one extra round trip per task. That is the price of the round
+	 * coming back at all.
+	 */
+	constexpr uint32_t packetSize = 64;
+	uint32_t done = 0;
+
+	while (done < span)
+	{
+		const uint32_t room = packetSize - ((tcbAddress + done) % packetSize);
+		const uint32_t chunk = room < (span - done) ? room : (span - done);
+
+		if (!memory.read(tcbAddress + done, buffer + done, chunk))
+			return false;
+
+		done += chunk;
+	}
 
 	if (nameOffset + nameCapacity <= span)
 	{

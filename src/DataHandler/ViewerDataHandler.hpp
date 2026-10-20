@@ -102,6 +102,20 @@ class ViewerDataHandler : public DataHandlerBase
 		uint32_t viewportWidthMs = 50000;
 		bool refreshAddressesOnElfChange = false;
 		bool stopAcqusitionOnElfChange = false;
+		/*
+		 * Whether a task round reads each task's control block.
+		 *
+		 * Off leaves the table with the states and addresses the kernel's own
+		 * lists give, and takes away the names, priorities and stack ranges
+		 * that only the control block holds. It exists because a J-Link can
+		 * hang on those reads: the call is a synchronous USB read inside the
+		 * DLL, nothing on this side can time it out, and a round that hangs
+		 * takes the whole sampling thread with it - the variable view stops
+		 * too. Stored with the project, because which probe hangs is a
+		 * property of the bench.
+		 */
+		bool rtosReadControlBlocks = true;
+
 		bool shouldLog = false;
 		std::string logFilePath = "";
 		std::string gdbCommand = "gdb";

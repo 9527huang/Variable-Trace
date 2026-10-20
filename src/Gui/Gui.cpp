@@ -1134,6 +1134,7 @@ ProjectData Gui::collectProjectData()
 	data.viewer.viewportWidthMs = viewerSettings.viewportWidthMs;
 	data.viewer.refreshAddressesOnElfChange = viewerSettings.refreshAddressesOnElfChange;
 	data.viewer.stopAcquisitionOnElfChange = viewerSettings.stopAcqusitionOnElfChange;
+	data.viewer.rtosReadControlBlocks = viewerSettings.rtosReadControlBlocks;
 	data.viewer.loggingEnabled = viewerSettings.shouldLog;
 	data.viewer.logDirectory = viewerSettings.logFilePath;
 	data.viewer.gdbCommand = viewerSettings.gdbCommand;
@@ -2089,6 +2090,7 @@ void Gui::applyProjectData(const ProjectData& data)
 	viewerSettings.viewportWidthMs = data.viewer.viewportWidthMs;
 	viewerSettings.refreshAddressesOnElfChange = data.viewer.refreshAddressesOnElfChange;
 	viewerSettings.stopAcqusitionOnElfChange = data.viewer.stopAcquisitionOnElfChange;
+	viewerSettings.rtosReadControlBlocks = data.viewer.rtosReadControlBlocks;
 	viewerSettings.shouldLog = data.viewer.loggingEnabled;
 	viewerSettings.logFilePath = data.viewer.logDirectory;
 	viewerSettings.gdbCommand = data.viewer.gdbCommand;

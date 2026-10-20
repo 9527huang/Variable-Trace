@@ -565,6 +565,8 @@
   "follow table order": "跟随表格顺序",
   "lanes in table order": "泳道按表格顺序排列",
   "lanes in base priority order": "泳道按基础优先级排列",
+  "Task view: read control blocks:": "任务视图:读取任务控制块:",
+  "Off leaves the task table with the states and addresses the kernel's lists give: no names, priorities or stack ranges. Turn it off when a run stops by itself a second or two after it starts - that is a probe hanging on those reads, and it takes the variable view down with it.": "关掉后任务表只剩内核链表给出的状态和地址,没有名字、优先级和栈范围。采集启动一两秒后自己停住时就关它:那是探针卡在这些读上,连变量视图一起停。",
   "Reset layout": "重置界面布局",
   "last": "最近",
   "s": "秒"

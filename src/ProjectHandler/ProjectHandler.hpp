@@ -52,6 +52,11 @@ struct ProjectViewerSettings
 	bool refreshAddressesOnElfChange = false;
 	bool stopAcquisitionOnElfChange = false;
 	bool loggingEnabled = false;
+
+	/* Whether the task view reads each control block. Travels with the project
+	   because which probe hangs on those reads is a property of the bench. */
+	bool rtosReadControlBlocks = true;
+
 	std::string logDirectory = "";
 	std::string gdbCommand = "gdb";
 	/* Which program reads the symbol file, and where the C2000 one lives. Both

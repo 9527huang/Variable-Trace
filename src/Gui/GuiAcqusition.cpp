@@ -170,6 +170,14 @@ void Gui::acqusitionSettingsViewer()
 	ImGui::HelpMarker(I18n::tr("How much time the viewport shows while acquisition is running. What can be shown is bounded by the samples that are kept: Max points at the sampling frequency."));
 	settings.viewportWidthMs = std::clamp(settings.viewportWidthMs, ViewerDataHandler::minViewportWidthMs, ViewerDataHandler::maxViewportWidthMs);
 
+	/* The way out of a probe that hangs on the task view's reads. Last, because
+	   it is the answer to a problem rather than a setting anyone tunes. */
+	GuiHelper::drawTextAlignedToSize(I18n::tr("Task view: read control blocks:"), alignment);
+	ImGui::SameLine();
+	ImGui::Checkbox("##rtosReadControlBlocks", &settings.rtosReadControlBlocks);
+	ImGui::SameLine();
+	ImGui::HelpMarker(I18n::tr("Off leaves the task table with the states and addresses the kernel's lists give: no names, priorities or stack ranges. Turn it off when a run stops by itself a second or two after it starts - that is a probe hanging on those reads, and it takes the variable view down with it."));
+
 	drawDebugProbes();
 	drawLoggingSettings(viewerDataHandler, settings);
 	drawElfSettings(settings);

@@ -219,6 +219,7 @@ std::string ProjectHandler::serialize(const ProjectData& data) const
 		 {"viewportWidthMs", data.viewer.viewportWidthMs},
 		 {"refreshAddressesOnElfChange", data.viewer.refreshAddressesOnElfChange},
 		 {"stopAcquisitionOnElfChange", data.viewer.stopAcquisitionOnElfChange},
+		 {"rtosReadControlBlocks", data.viewer.rtosReadControlBlocks},
 		 {"logging", json::object({{"enabled", data.viewer.loggingEnabled}, {"directory", data.viewer.logDirectory}})},
 		 {"gdbCommand", data.viewer.gdbCommand},
 		 {"elfParser", data.viewer.elfParser},
@@ -666,6 +667,7 @@ bool ProjectHandler::deserialize(const json& root, ProjectData& data)
 		}
 		data.viewer.refreshAddressesOnElfChange = acquisition.value("refreshAddressesOnElfChange", data.viewer.refreshAddressesOnElfChange);
 		data.viewer.stopAcquisitionOnElfChange = acquisition.value("stopAcquisitionOnElfChange", data.viewer.stopAcquisitionOnElfChange);
+		data.viewer.rtosReadControlBlocks = acquisition.value("rtosReadControlBlocks", data.viewer.rtosReadControlBlocks);
 		data.viewer.gdbCommand = acquisition.value("gdbCommand", data.viewer.gdbCommand);
 		data.viewer.elfParser = acquisition.value("elfParser", data.viewer.elfParser);
 		data.viewer.ofd2000Command = acquisition.value("ofd2000Command", data.viewer.ofd2000Command);

@@ -117,6 +117,10 @@ void ViewerDataHandler::setSettings(const Settings& newSettings)
 	settings = newSettings;
 	mergeContiguousReadsEnabled.store(settings.mergeContiguousReads, std::memory_order_relaxed);
 
+	/* Read by every round rather than at prepare time, so that turning it off
+	   takes effect on the next round instead of after a restart. */
+	rtosSettings.readControlBlocks = settings.rtosReadControlBlocks;
+
 	/* What is kept here is what the buffers can hold. A capacity that does not
 	   fit the memory the buffers are allowed is refused by the plot handler,
 	   so both are cut down to it here rather than in each caller - a project
