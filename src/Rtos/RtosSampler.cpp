@@ -499,9 +499,6 @@ RtosSampler::Round RtosSampler::collect(IRtosMemory& memory, const std::string& 
 	   rounds and so cannot happen in here. */
 	snapshot->cpuLoad.supported = (runTimeCounterOffset != absentOffset);
 
-	/* Told apart, because a column fed from the lists alone is not the same
-	   column: see what the table does with it. */
-	snapshot->controlBlocksRead = settings.readControlBlocks;
 
 	if (settings.readControlBlocks)
 	{
