@@ -44,6 +44,48 @@ TEST(GdbParserTest, theNameIsTheOneTheSettingStores)
 	EXPECT_EQ(parser.getDescription(), "GDB: reliable, default.");
 }
 
+/*
+ * What gdb answers, and what we make of it.
+ *
+ * The line end arrives as a backslash and an n rather than a newline, which is
+ * why the strings below read the way they do.
+ */
+TEST(GdbParserTest, anAddressAboveIntMaxIsAnAddress)
+{
+	/* 0xE0000000, the Cortex-M system region. `stoi` threw on it, and the
+	   throw was caught and turned into address zero. */
+	const auto address = GdbParser::parseAddressOutput("$1 = 3758096384\\n");
+
+	ASSERT_TRUE(address.has_value());
+	EXPECT_EQ(*address, 3758096384u);
+}
+
+TEST(GdbParserTest, anOrdinaryAddressComesThrough)
+{
+	const auto address = GdbParser::parseAddressOutput("$2 = 538976288\\n");
+
+	ASSERT_TRUE(address.has_value());
+	EXPECT_EQ(*address, 538976288u);
+}
+
+TEST(GdbParserTest, aNameGdbDoesNotKnowIsNotAddressZero)
+{
+	const auto address = GdbParser::parseAddressOutput("No symbol \"not_there\" in current context.\\n");
+
+	EXPECT_FALSE(address.has_value());
+}
+
+TEST(GdbParserTest, somethingThatIsNotANumberIsNotAddressZero)
+{
+	EXPECT_FALSE(GdbParser::parseAddressOutput("$3 = <optimized out>\\n").has_value());
+	EXPECT_FALSE(GdbParser::parseAddressOutput("$4 = 0x20000000\\n").has_value());
+}
+
+TEST(GdbParserTest, aNumberTooLargeForAnAddressIsRefused)
+{
+	EXPECT_FALSE(GdbParser::parseAddressOutput("$5 = 4294967296\\n").has_value());
+}
+
 TEST(GdbParserTest, theCommandIsASetting)
 {
 	const auto logger = makeSilentLogger();

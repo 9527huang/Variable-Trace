@@ -52,6 +52,16 @@ class GdbParser : public IElfParser
 	/* What `-v` has to contain for the program to be accepted as GDB. */
 	static constexpr const char* versionProbe = " -v";
 
+	/*
+	 * The address out of what `p /d &name` printed, or nothing.
+	 *
+	 * Public because the answers that mattered - a name gdb does not know, a
+	 * number that does not fit in 32 bits - used to be swallowed and turned
+	 * into address zero, and there is no way to test that without a gdb
+	 * session unless the parsing is a function of its own.
+	 */
+	static std::optional<uint32_t> parseAddressOutput(const std::string& output);
+
    private:
 	/* The parser runs on a worker thread while the interface reads the error
 	   text, so every write of it goes through this and takes the lock. */

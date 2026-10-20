@@ -1,6 +1,8 @@
 #include "GdbParser.hpp"
 
 #include <filesystem>
+#include <limits>
+#include <stdexcept>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -401,43 +403,74 @@ Variable::Type GdbParser::checkType(const std::string& name, std::string* output
 	return typeNames.at(line);
 }
 
-std::optional<uint32_t> GdbParser::checkAddress(const std::string& name)
+std::optional<uint32_t> GdbParser::parseAddressOutput(const std::string& output)
 {
-	auto out = process.executeCmd(std::string("p /d &") + name + std::string("\n"), "(gdb)");
+	const size_t dollarSignPos = output.find('$');
 
-	size_t dolarSignPos = out.find('$');
-
-	if (dolarSignPos == std::string::npos)
+	if (dollarSignPos == std::string::npos)
 		return std::nullopt;
 
-	auto out2 = out.substr(dolarSignPos + 1);
-
-	size_t equalSignPos = out2.find('=');
+	const std::string rest = output.substr(dollarSignPos + 1);
+	const size_t equalSignPos = rest.find('=');
 
 	if (equalSignPos == std::string::npos)
 		return std::nullopt;
 
-	/* this finds the \n as a string consting of '\' and 'n' not '\n' */
-	size_t eol = out2.find("\\n");
+	/* The line end arrives as a backslash and an n, not as a newline. */
+	const size_t eol = rest.find("\\n");
 
 	if (eol == std::string::npos || eol < equalSignPos + 2)
 		return std::nullopt;
 
-	/* +2 is to skip = and a space */
-	auto address = out2.substr(equalSignPos + 2, eol - equalSignPos - 2);
+	/* +2 skips "= ". */
+	const std::string text = rest.substr(equalSignPos + 2, eol - equalSignPos - 2);
 
-	uint32_t addressValue = 0;
-
+	/*
+	 * Unsigned, and bounded.
+	 *
+	 * `stoi` was the original, and it threw for anything above INT_MAX - which
+	 * an address on this side of the debugger routinely is: 0xE0000000 is the
+	 * Cortex-M system region. The throw was caught and the function returned
+	 * the zero it had initialised, so "could not parse" and "the address is
+	 * zero" came out the same.
+	 */
 	try
 	{
-		addressValue = stoi(address);
-	}
-	catch (...)
-	{
-		logger->warn("stoi incorect argument: {}", address);
-	}
+		size_t used = 0;
+		const unsigned long value = std::stoul(text, &used);
 
-	return addressValue;
+		/*
+		 * The whole field, or nothing.
+		 *
+		 * `stoul` stops at the first character it cannot use, so `0x20000000`
+		 * parses as 0 - which is the one answer this function must never
+		 * invent. Demanding that it consumed everything turns that case, and
+		 * every other half-parsed one, into "no address".
+		 */
+		if (used != text.size() || value > std::numeric_limits<uint32_t>::max())
+			return std::nullopt;
+
+		return static_cast<uint32_t>(value);
+	}
+	catch (const std::exception&)
+	{
+		return std::nullopt;
+	}
+}
+
+std::optional<uint32_t> GdbParser::checkAddress(const std::string& name)
+{
+	const std::string output = process.executeCmd(std::string("p /d &") + name + std::string("\n"), "(gdb)");
+	const std::optional<uint32_t> address = parseAddressOutput(output);
+
+	/* Nothing here is fatal: a name gdb does not know is an ordinary answer
+	   while the reader is typing one in. Said once per name, at warning level,
+	   because the address it would otherwise become is zero and that reads as
+	   a real address in every window that shows it. */
+	if (!address.has_value())
+		logger->warn("No address came back for '{}'; the answer was: {}", name, output);
+
+	return address;
 }
 
 IElfParser::SymbolMap GdbParser::getParsedData() const
