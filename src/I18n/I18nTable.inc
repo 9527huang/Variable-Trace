@@ -105,6 +105,7 @@ static const Entry table[] = {
 	{"Connection:", "连接方式:"},
 	{"Copies the whole buffer out of the target and rebuilds the samples from the ring state. The sampling loop pauses for the duration of the copy.", "把整个缓冲区从目标读出，并依据环形状态重建采样。复制期间采样循环会暂停。"},
 	{"Copy", "复制"},
+	{"Copy the chain", "复制这条链"},
 	{"Copy to recorder group", "复制到记录器组"},
 	{"Copy to sampling group", "复制到采样组"},
 	{"Cursors:", "光标:"},

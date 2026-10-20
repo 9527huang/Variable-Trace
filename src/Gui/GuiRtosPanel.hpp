@@ -397,6 +397,21 @@ class GuiRtosPanel
 		}
 	}
 
+	/* The chain as one line, with the arrows the row draws between the nodes.
+	 *
+	 * What gets pasted into a message is the shape of the problem, and the shape
+	 * is the chain: `inv_high -> mtx_inv -> inv_low` says what "priority
+	 * inheritance" means here without any of the surrounding table. */
+	static std::string chainOf(const RtosDiagnostics::Finding& finding)
+	{
+		std::string text;
+
+		for (const std::string& node : finding.chain)
+			text += (text.empty() ? "" : " -> ") + node;
+
+		return text;
+	}
+
 	/*
 	 * What clicking a finding selects: the first task on its chain, and the
 	 * object the chain passes through.
@@ -476,6 +491,27 @@ class GuiRtosPanel
 			const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 
 			ImGui::InvisibleButton("##findingRow", ImVec2(rowWidth, rowHeight));
+
+			/* The chain on the clipboard, for a bug report or a message. The
+			   row already reads as one thing; the menu is the second thing it
+			   can do.
+			   
+			   Opened by rectangle rather than through the row's item: an
+			   invisible button handles the left button only, and by the time a
+			   right click lands the row has already opened its tooltip - which
+			   is a window of its own and takes the hover with it. Asking where
+			   the mouse is sidesteps both. */
+			if (ImGui::IsMouseHoveringRect(rowStart, ImVec2(rowStart.x + rowWidth, rowStart.y + rowHeight)) &&
+			    ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+				ImGui::OpenPopup("##findingMenu");
+
+			if (ImGui::BeginPopup("##findingMenu"))
+			{
+				if (ImGui::MenuItem(I18n::tr("Copy the chain")))
+					ImGui::SetClipboardText(chainOf(finding).c_str());
+
+				ImGui::EndPopup();
+			}
 
 			const bool rowHovered = ImGui::IsItemHovered();
 
