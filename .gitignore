@@ -70,3 +70,6 @@ test/MCUViewer_test/.settings/
 # it targets ubuntu-20.04 (retired by GitHub), the upstream author's build
 # container and the upstream /__w/MCUViewer workspace paths.
 .github/workflows/build.yaml
+
+# 发布包
+dist/
