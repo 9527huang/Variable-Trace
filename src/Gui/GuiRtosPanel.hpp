@@ -1,6 +1,7 @@
 #ifndef _GUIRTOSPANEL_HPP
 #define _GUIRTOSPANEL_HPP
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
@@ -166,6 +167,8 @@ class GuiRtosPanel
 		/* Under the strip, and in the same window: a task that is waiting is
 		   waiting for one of these, so the two are read together. */
 		drawSyncObjects(*snapshot);
+
+		drawSelectedTask(*snapshot);
 	}
 
 	/*
@@ -1232,6 +1235,154 @@ class GuiRtosPanel
 		/* A dash, and not a zero. A zero is a reading; this is the absence of
 		   one, and the two must not look the same in a column of numbers. */
 		return "-";
+	}
+
+	/* One label and its value, with the values lined up in a column. */
+	static void detailRow(const char* label, const std::string& value)
+	{
+		ImGui::TextUnformatted(label);
+		ImGui::SameLine(120.0f * GuiHelper::contentScale);
+		ImGui::TextUnformatted(value.c_str());
+	}
+
+	/* One line about a task, for the clipboard.
+	 *
+	 * The table is for comparing and the detail is for reading; what gets
+	 * pasted into a bug report is neither. This is the form that stays
+	 * readable in a message: name, address, state, the numbers that are worth
+	 * quoting, and what it waits on. */
+	static std::string taskSummary(const RtosTaskRow& row)
+	{
+		std::string summary = row.name.empty() ? std::string("?") : row.name;
+		char text[192] = {};
+
+		std::snprintf(text, sizeof(text), " 0x%08X %s", row.tcbAddress, RtosTableModel::taskStateLabel(row.state));
+		summary += text;
+
+		if (row.hasPriority)
+		{
+			if (row.basePriority != row.priority)
+				std::snprintf(text, sizeof(text), " priority %u (was %u)", row.priority, row.basePriority);
+			else
+				std::snprintf(text, sizeof(text), " priority %u", row.priority);
+
+			summary += text;
+		}
+
+		if (row.hasStackWatermark)
+		{
+			std::snprintf(text, sizeof(text), " stack %u/%u (%u%% used)", row.stackUsedBytes(), row.stackWatermarkStackBytes, row.stackUsedPercent());
+			summary += text;
+		}
+
+		if (row.hasCpuShare)
+		{
+			std::snprintf(text, sizeof(text), " share %.1f%%", row.cpuSharePercent);
+			summary += text;
+		}
+
+		if (!row.waitingOn.empty())
+			summary += " waiting " + row.waitingOn;
+
+		return summary;
+	}
+
+	/*
+	 * The task the reader picked, in full.
+	 *
+	 * The table shows the same eight columns for every task, which is the right
+	 * shape for comparing them and the wrong shape for reading one. How old the
+	 * stack reading is, whether the priority shown is inherited, which of the
+	 * kernel's lists the state came from, and what a share is a share of - all
+	 * of that is a sentence, not a cell.
+	 *
+	 * The copy button is the same facts as one line: the table is for
+	 * comparing, this is for reading, and neither is what gets pasted into a
+	 * bug report.
+	 */
+	static void drawSelectedTask(const RtosSnapshot& snapshot)
+	{
+		const float scale = GuiHelper::contentScale;
+
+		ImGui::Separator();
+		ImGui::TextUnformatted(I18n::tr("Selected task"));
+
+		if (selection().task == 0)
+		{
+			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("Click a row in the table, a finding or a lane to read one task here."));
+
+			return;
+		}
+
+		/* Built with an empty query: the detail is about the task, not about
+		   whether the current filter would let it into the table. */
+		const RtosTaskTableQuery unfiltered;
+		const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(snapshot, unfiltered);
+		const auto found = std::find_if(rows.begin(), rows.end(), [](const RtosTaskRow& row) { return row.tcbAddress == selection().task; });
+
+		if (found == rows.end())
+		{
+			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("The task that was selected is not in this round."));
+
+			return;
+		}
+
+		const RtosTaskRow& row = *found;
+
+		ImGui::SameLine(0.0f, 12.0f * scale);
+
+		if (ImGui::SmallButton(I18n::tr("copy")))
+			ImGui::SetClipboardText(taskSummary(row).c_str());
+
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::BeginTooltip();
+			ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
+			ImGui::TextUnformatted(taskSummary(row).c_str());
+			ImGui::PopTextWrapPos();
+			ImGui::EndTooltip();
+		}
+
+		char address[16] = {};
+		std::snprintf(address, sizeof(address), "0x%08X", row.tcbAddress);
+
+		detailRow(I18n::tr("Name"), row.name.empty() ? unknown() : row.name);
+		detailRow(I18n::tr("Address"), address);
+		detailRow(I18n::tr("State"), RtosTableModel::taskStateLabel(row.state));
+		detailRow(I18n::tr("Found on"), row.sourceList.empty() ? unknown() : row.sourceList);
+
+		if (!row.hasPriority)
+			detailRow(I18n::tr("Priority"), unknown());
+		else if (row.basePriority != row.priority)
+		{
+			char text[48] = {};
+			std::snprintf(text, sizeof(text), I18n::tr("%u (was %u) - inherited while a lock is held"), row.priority, row.basePriority);
+			detailRow(I18n::tr("Priority"), text);
+		}
+		else
+			detailRow(I18n::tr("Priority"), std::to_string(row.priority));
+
+		if (!row.hasStackWatermark)
+			detailRow(I18n::tr("Stack"), unknown());
+		else
+		{
+			char text[128] = {};
+			std::snprintf(text, sizeof(text), I18n::tr("%s%u / %u B, %u%% free - read %.1f s ago"), row.stackWatermarkReachedCap ? "<= " : "",
+			              row.stackUsedBytes(), row.stackWatermarkStackBytes, row.stackFreePercent(), row.stackWatermarkAgeSeconds);
+			detailRow(I18n::tr("Stack"), text);
+		}
+
+		if (!row.hasCpuShare)
+			detailRow(I18n::tr("Task share"), unknown());
+		else
+		{
+			char text[128] = {};
+			std::snprintf(text, sizeof(text), I18n::tr("%.1f%% of the time the tasks used, over the last %.2f s"), row.cpuSharePercent,
+			              snapshot.cpuLoad.windowSeconds);
+			detailRow(I18n::tr("Task share"), text);
+		}
+
+		detailRow(I18n::tr("Waiting on"), row.waitingOn.empty() ? std::string("-") : row.waitingOn);
 	}
 
 	/*

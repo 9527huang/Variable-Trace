@@ -749,6 +749,16 @@ EXTRA = {
     "show every state": "显示全部状态",
     "stack free": "栈剩余",
     "priority >=": "优先级 >=",
+
+    # The selected-task panel and its copy button.
+    "Selected task": "选中任务",
+    "Click a row in the table, a finding or a lane to read one task here.": "点表格里的一行、一条发现或一条泳道,在这里读单个任务。",
+    "copy": "复制",
+    "The task that was selected is not in this round.": "选中的任务不在这一轮读数里。",
+    "Found on": "所在链表",
+    "%u (was %u) - inherited while a lock is held": "%u(原为 %u)——持有锁期间被继承",
+    "%s%u / %u B, %u%% free - read %.1f s ago": "%s%u / %u 字节,剩余 %u%%,读数距今 %.1f 秒",
+    "%.1f%% of the time the tasks used, over the last %.2f s": "占任务总时间的 %.1f%%,窗口为最近 %.2f 秒",
     "Reset layout": "重置界面布局",
     "last": "最近",
     "s": "秒",
