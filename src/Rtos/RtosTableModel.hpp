@@ -68,6 +68,17 @@ struct RtosTaskTableQuery
 
 	RtosTaskColumn sortColumn = RtosTaskColumn::Name;
 	bool descending = false;
+
+	/*
+	 * The default order is by problem, not by name.
+	 *
+	 * A table sorted by name makes the reader do the sorting: the task with
+	 * 2 % of its stack left sits wherever its name falls, and finding it means
+	 * reading every row. Sorted by problem it is the first row. Clicking a
+	 * column header turns this off - that is the reader saying which order
+	 * they want, and it stays off until the default is asked for again.
+	 */
+	bool problemFirst = true;
 };
 
 /*

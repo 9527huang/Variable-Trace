@@ -123,6 +123,24 @@ class GuiRtosPanel
 
 		drawFilters(snapshot);
 
+		/* Which order the rows are in. The header shows no arrow when the
+		   problem order is in force, and a table with no arrow on any column
+		   looks like a table that forgot to sort. */
+		if (query.problemFirst)
+			GuiHelper::drawSecondaryText("%s", I18n::tr("sorted by problem: stack alerts, blocked, inherited, busiest first"));
+		else
+		{
+			GuiHelper::drawSecondaryText("%s", I18n::tr("sorted by the column in bold"));
+
+			ImGui::SameLine(0.0f, 8.0f * GuiHelper::contentScale);
+
+			if (ImGui::SmallButton(I18n::tr("back to problem order")))
+			{
+				query.problemFirst = true;
+				query.descending = false;
+			}
+		}
+
 		drawTable(snapshot);
 	}
 
@@ -1412,7 +1430,7 @@ class GuiRtosPanel
 			ImGui::TableSetColumnIndex(index);
 
 			const RtosTaskColumn column = static_cast<RtosTaskColumn>(index);
-			const bool sorted = query.sortColumn == column;
+			const bool sorted = !query.problemFirst && query.sortColumn == column;
 
 			if (sorted)
 				ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, ImGui::GetColorU32(ImGuiCol_Header));
@@ -1422,11 +1440,15 @@ class GuiRtosPanel
 			if (ImGui::Selectable(label.c_str(), sorted))
 			{
 				/* Clicking the column that is already sorted turns it over
-				   rather than leaving the click with nothing to show for it. */
+				   rather than leaving the click with nothing to show for it.
+				   Clicking any column while the problem order is in force says
+				   which order the reader wants instead - that choice ends the
+				   default, and only the next session brings it back. */
 				if (sorted)
 					query.descending = !query.descending;
 				else
 				{
+					query.problemFirst = false;
 					query.sortColumn = column;
 					query.descending = false;
 				}

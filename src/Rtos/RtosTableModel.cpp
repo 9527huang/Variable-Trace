@@ -198,6 +198,39 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 		rows.push_back(std::move(row));
 	}
 
+	/*
+	 * The problem order: what a reader would fix first, first.
+	 *
+	 * Stack alerts, then tasks that are blocked with something to wait for,
+	 * then priority inheritance, then whoever is using the processor most, and
+	 * the name last as a tie-break. Stable, so equal rows keep the order the
+	 * round found them in rather than swapping on every redraw.
+	 */
+	const auto problemRank = [](const RtosTaskRow& row)
+	{
+		if (row.stackIsLow)
+			return 0;
+
+		if (row.state == RtosTaskState::Blocked && !row.waitingOn.empty())
+			return 1;
+
+		if (row.hasBasePriority && row.hasPriority && row.priority != row.basePriority)
+			return 2;
+
+		return 3;
+	};
+
+	const auto problemOrder = [problemRank](const RtosTaskRow& left, const RtosTaskRow& right)
+	{
+		if (problemRank(left) != problemRank(right))
+			return problemRank(left) < problemRank(right);
+
+		if (left.hasCpuShare && right.hasCpuShare && left.cpuSharePercent != right.cpuSharePercent)
+			return left.cpuSharePercent > right.cpuSharePercent;
+
+		return left.name < right.name;
+	};
+
 	/* Stable, so that two tasks with the same key keep the order the round
 	   found them in rather than swapping places on every redraw. */
 	const auto order = [&query](const RtosTaskRow& left, const RtosTaskRow& right)
@@ -206,6 +239,13 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 
 		return query.descending ? comparison > 0 : comparison < 0;
 	};
+
+	if (query.problemFirst)
+	{
+		std::stable_sort(rows.begin(), rows.end(), problemOrder);
+
+		return rows;
+	}
 
 	/* Two groups rather than one comparison that would have to know the
 	   direction: rows with a value for this column, sorted, then the rows
