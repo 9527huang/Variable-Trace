@@ -85,6 +85,7 @@ TEST(RtosTableModel, SortsByAnyColumnInEitherDirection)
 	const RtosSnapshot snapshot = makeSnapshot();
 
 	RtosTaskTableQuery byAddress;
+	byAddress.problemFirst = false;
 	byAddress.sortColumn = RtosTaskColumn::Address;
 
 	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, byAddress)), (std::vector<std::string>{"led", "IDLE", "prod", "work", "deep"}));
@@ -94,6 +95,7 @@ TEST(RtosTableModel, SortsByAnyColumnInEitherDirection)
 	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, byAddress)), (std::vector<std::string>{"deep", "work", "prod", "IDLE", "led"}));
 
 	RtosTaskTableQuery byStack;
+	byStack.problemFirst = false;
 	byStack.sortColumn = RtosTaskColumn::StackSize;
 	byStack.descending = true;
 
@@ -174,9 +176,14 @@ TEST(RtosTableModel, ATaskWithNoNameSortsLastRatherThanFirst)
 
 	snapshot.tasks.push_back(unnamed);
 
-	/* An empty name is missing data. Sorting it first would put the row that
-	   needs attention where it is least likely to be seen. */
-	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, {})).back(), "");
+	/* An empty name is missing data. Sorting by name would put it first and
+	   the row that needs attention where it is least likely to be seen. This
+	   is about the name order, so the problem order is off - under the problem
+	   order the row goes wherever its problem puts it. */
+	RtosTaskTableQuery byName;
+	byName.problemFirst = false;
+
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, byName)).back(), "");
 }
 
 TEST(RtosTableModel, ARowCarriesOnlyWhatWasRead)
@@ -204,6 +211,7 @@ TEST(RtosTableModel, TheAddressListFollowsTheRowsAndNotTheSnapshot)
 	const RtosSnapshot snapshot = makeSnapshot();
 
 	RtosTaskTableQuery query;
+	query.problemFirst = false;
 	query.sortColumn = RtosTaskColumn::Priority;
 	query.descending = true;
 
@@ -234,6 +242,7 @@ TEST(RtosTableModel, TheStackColumnSortsRowsWithNoReadingLast)
 	snapshot.tasks[2].stackWatermarkStackBytes = 504;
 
 	RtosTaskTableQuery query;
+	query.problemFirst = false;
 	query.sortColumn = RtosTaskColumn::StackWatermark;
 
 	const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(snapshot, query);
