@@ -84,9 +84,9 @@ class GuiRtosPanel
 			ImGui::TextUnformatted(I18n::tr("No task data yet."));
 
 			if (!explanation.empty())
-				ImGui::TextDisabled("%s", explanation.c_str());
+				GuiHelper::drawSecondaryTextWrapped("%s", explanation.c_str());
 			else
-				ImGui::TextDisabled("%s", I18n::tr("The task view reads its rounds while an acquisition is running."));
+				GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("The task view reads its rounds while an acquisition is running."));
 
 			return;
 		}
@@ -232,7 +232,7 @@ class GuiRtosPanel
 		if (!snapshot.stackScan.enabled || snapshot.stackScan.fillSeen)
 			return;
 
-		ImGui::TextDisabled("%s", I18n::tr("The target does not fill its stacks, so how much of one is used cannot be worked out. FreeRTOS fills them when configCHECK_FOR_STACK_OVERFLOW is above 1, or configUSE_TRACE_FACILITY, or INCLUDE_uxTaskGetStackHighWaterMark, or INCLUDE_uxTaskGetStackHighWaterMark2 is set."));
+		GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("The target does not fill its stacks, so how much of one is used cannot be worked out. FreeRTOS fills them when configCHECK_FOR_STACK_OVERFLOW is above 1, or configUSE_TRACE_FACILITY, or INCLUDE_uxTaskGetStackHighWaterMark, or INCLUDE_uxTaskGetStackHighWaterMark2 is set."));
 
 		ImGui::Separator();
 	}
@@ -253,7 +253,7 @@ class GuiRtosPanel
 	{
 		if (!snapshot.cpuLoad.supported)
 		{
-			ImGui::TextDisabled("%s", I18n::tr("The target was not built with run time statistics (configGENERATE_RUN_TIME_STATS), so how much of the time each task used cannot be worked out."));
+			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("The target was not built with run time statistics (configGENERATE_RUN_TIME_STATS), so how much of the time each task used cannot be worked out."));
 
 			ImGui::Separator();
 
@@ -262,7 +262,7 @@ class GuiRtosPanel
 
 		if (snapshot.cpuLoad.tasksMeasured > 0 && !snapshot.cpuLoad.counting)
 		{
-			ImGui::TextDisabled("%s", I18n::tr("The run time counter did not move over the last window, so the shares cannot be worked out. The timer behind it is probably not running."));
+			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("The run time counter did not move over the last window, so the shares cannot be worked out. The timer behind it is probably not running."));
 
 			ImGui::Separator();
 		}
@@ -619,7 +619,7 @@ class GuiRtosPanel
 		{
 			sameLineIfFits(170.0f * scale);
 
-			ImGui::TextDisabled("%u %s", summary.inherited, I18n::tr("priority inherited"));
+			GuiHelper::drawSecondaryText("%u %s", summary.inherited, I18n::tr("priority inherited"));
 
 			if (ImGui::IsItemHovered())
 			{
@@ -686,85 +686,6 @@ class GuiRtosPanel
 		ImGui::PopStyleColor(4);
 	}
 
-	static void drawFilters(const std::shared_ptr<const RtosSnapshot>& snapshot)
-	{
-		const float scale = GuiHelper::contentScale;
-
-		/* Row one: what a reader changes while looking at the table. */
-		if (!searchBufferPrimed)
-		{
-			std::snprintf(searchBuffer, sizeof(searchBuffer), "%s", query.nameSearch.c_str());
-			searchBufferPrimed = true;
-		}
-
-		ImGui::SetNextItemWidth(180 * scale);
-
-		if (ImGui::InputTextWithHint("##rtosNameSearch", I18n::tr("search by name"), searchBuffer, sizeof(searchBuffer)))
-			query.nameSearch = searchBuffer;
-
-		/* The checkbox and the chips both drive one filter, so its state is read
-		   from the filter rather than kept beside it: two records would let the
-		   box show clear while the table was still narrowed. */
-		sameLineIfFits(110.0f * scale);
-
-		bool onlyBlocked = query.states.size() == 1 && query.states.front() == RtosTaskState::Blocked;
-
-		if (ImGui::Checkbox(I18n::tr("only blocked"), &onlyBlocked))
-			query.states = onlyBlocked ? std::vector<RtosTaskState>{RtosTaskState::Blocked} : std::vector<RtosTaskState>{};
-
-		sameLineIfFits(140.0f * scale);
-
-		if (ImGui::Checkbox(I18n::tr("stack alerts only"), &query.onlyStackAlerts))
-		{
-			/* The flag is the filter; there is nothing else to keep in step. */
-		}
-
-		sameLineIfFits(130.0f * scale);
-
-		if (ImGui::Button(I18n::tr("clear filters")))
-			clearFilters();
-
-		/* Row two: the settings a reader changes once. No `SameLine` before the
-		   first of them, so they start a line of their own. */
-		drawAlertThreshold();
-
-		sameLineIfFits(120.0f * scale);
-
-		if (ImGui::Checkbox(I18n::tr("priority floor"), &query.hasPriorityFloor))
-		{
-			/* Turning the floor on with nothing set would hide every task that
-			   has a priority, which reads as a broken table rather than as a
-			   filter someone asked for. */
-			if (query.hasPriorityFloor && query.priorityFloor == 0)
-				query.priorityFloor = 1;
-		}
-
-		if (query.hasPriorityFloor)
-		{
-			sameLineIfFits(90.0f * scale);
-			ImGui::SetNextItemWidth(80 * scale);
-
-			int floor = static_cast<int>(query.priorityFloor);
-
-			if (ImGui::InputInt("##rtosFloor", &floor, 0, 0))
-				query.priorityFloor = floor;
-		}
-
-		sameLineIfFits(130.0f * scale);
-
-		if (ImGui::Button(I18n::tr("reset sort")))
-		{
-			query.sortColumn = RtosTaskColumn::Name;
-			query.descending = false;
-		}
-
-		sameLineIfFits(150.0f * scale);
-		ImGui::Text(I18n::tr("%d of %d shown"), static_cast<int>(RtosTableModel::taskRows(*snapshot, query).size()),
-		            static_cast<int>(snapshot->taskCount()));
-
-		ImGui::Separator();
-	}
-
 	static void clearFilters()
 	{
 		query.nameSearch.clear();
@@ -778,6 +699,184 @@ class GuiRtosPanel
 		std::snprintf(searchBuffer, sizeof(searchBuffer), "%s", "");
 	}
 
+	/* Whether any filter is narrowing the table. Used to decide whether the
+	   button that clears them is worth pressing, so that it does not sit there
+	   lit up with nothing to do. */
+	static bool filterIsOn()
+	{
+		return !query.nameSearch.empty() || !query.states.empty() || query.onlyStackAlerts || query.hasPriorityFloor;
+	}
+
+	/*
+	 * Which states to keep, as one menu.
+	 *
+	 * There used to be a checkbox for blocked alone, while the summary above
+	 * had a chip for each of the four states - two ways to narrow by state, one
+	 * of which could only ever name one of them. The menu covers all four and
+	 * the chips remain as the shortcut, and both write the same field, so
+	 * neither can disagree with the other.
+	 */
+	static void drawStateMenu()
+	{
+		const float scale = GuiHelper::contentScale;
+
+		std::string label = I18n::tr("states");
+
+		if (!query.states.empty())
+			label += " (" + std::to_string(query.states.size()) + ")";
+
+		if (ImGui::Button((label + "##rtosStates").c_str(), ImVec2(92.0f * scale, 0.0f)))
+			ImGui::OpenPopup("##rtosStatesMenu");
+
+		if (!ImGui::BeginPopup("##rtosStatesMenu"))
+			return;
+
+		const RtosTaskState states[] = {RtosTaskState::Running, RtosTaskState::Ready, RtosTaskState::Blocked, RtosTaskState::Suspended};
+
+		for (const RtosTaskState state : states)
+		{
+			const auto found = std::find(query.states.begin(), query.states.end(), state);
+			bool on = found != query.states.end();
+
+			/* The mark the state has in the strip, beside its name: the same
+			   pairing the summary uses. */
+			const ImVec2 origin = ImGui::GetCursorScreenPos();
+			const float lineHeight = ImGui::GetFrameHeight();
+			const float dotSize = 7.0f * scale;
+
+			ImGui::Dummy(ImVec2(dotSize + 4.0f * scale, lineHeight));
+			ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(origin.x + dotSize * 0.5f, origin.y + lineHeight * 0.5f), dotSize * 0.5f,
+			                                            GuiRtosPanelTimeline::getStateColour(state), 12);
+			ImGui::SameLine(0.0f, 2.0f * scale);
+
+			if (ImGui::Checkbox(RtosTableModel::taskStateLabel(state), &on))
+			{
+				if (on)
+					query.states.push_back(state);
+				else
+					query.states.erase(found);
+			}
+		}
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem(I18n::tr("show every state")))
+			query.states.clear();
+
+		ImGui::EndPopup();
+	}
+
+	/*
+	 * The lowest priority worth showing.
+	 *
+	 * Written as the comparison it is: "priority floor 2" is the name of the
+	 * field in the code, and a reader looking at a filter bar has to work out
+	 * whether the number is a minimum, a maximum, or a count.
+	 */
+	static void drawPriorityFloor()
+	{
+		const float scale = GuiHelper::contentScale;
+
+		if (ImGui::Checkbox(I18n::tr("priority >="), &query.hasPriorityFloor))
+		{
+			/* Turning the floor on with nothing set would hide every task that
+			   has a priority, which reads as a broken table rather than as a
+			   filter someone asked for. */
+			if (query.hasPriorityFloor && query.priorityFloor == 0)
+				query.priorityFloor = 1;
+		}
+
+		if (!query.hasPriorityFloor)
+			return;
+
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		ImGui::SetNextItemWidth(60.0f * scale);
+
+		int floor = static_cast<int>(query.priorityFloor);
+
+		if (ImGui::InputInt("##rtosFloor", &floor, 0, 0))
+			query.priorityFloor = floor < 0 ? 0u : static_cast<uint32_t>(floor);
+	}
+
+	/*
+	 * What narrows the table, in two rows: what a reader changes while looking
+	 * at it, and the two thresholds that are set once.
+	 *
+	 * Every number carries its unit and every condition reads as a sentence
+	 * now. "stack alert at 20" was twenty of something the reader had to guess
+	 * at, and the button that resets the sort sat among the filters although it
+	 * is a table setting - the header already sorts, and clicking the sorted
+	 * column turns it over, so the button is gone.
+	 */
+	static void drawFilters(const std::shared_ptr<const RtosSnapshot>& snapshot)
+	{
+		const float scale = GuiHelper::contentScale;
+
+		if (!searchBufferPrimed)
+		{
+			std::snprintf(searchBuffer, sizeof(searchBuffer), "%s", query.nameSearch.c_str());
+			searchBufferPrimed = true;
+		}
+
+		ImGui::SetNextItemWidth(180 * scale);
+
+		if (ImGui::InputTextWithHint("##rtosNameSearch", I18n::tr("search by name"), searchBuffer, sizeof(searchBuffer)))
+			query.nameSearch = searchBuffer;
+
+		sameLineIfFits(120.0f * scale);
+		drawStateMenu();
+
+		sameLineIfFits(150.0f * scale);
+		ImGui::Checkbox(I18n::tr("stack alerts only"), &query.onlyStackAlerts);
+
+		/* Lit up only when there is something to clear, and flat when there is
+		   not: a disabled button keeps its face colour here, so the face is
+		   taken away as well, which is what makes "nothing to clear" read as
+		   a fact rather than as a button that looks wrong. */
+		const bool anyFilter = filterIsOn();
+
+		sameLineIfFits(130.0f * scale);
+		ImGui::BeginDisabled(!anyFilter);
+
+		if (!anyFilter)
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+
+		if (ImGui::Button(I18n::tr("clear filters")))
+			clearFilters();
+
+		if (!anyFilter)
+			ImGui::PopStyleColor();
+
+		ImGui::EndDisabled();
+
+		/* Row two: the thresholds. No `SameLine` before the first of them, so
+		   they start a line of their own. */
+		drawAlertThreshold();
+
+		sameLineIfFits(170.0f * scale);
+		drawPriorityFloor();
+
+		/* The count goes to the far end of the row, away from the threshold
+		   beside it: written close after "priority >=" it read as part of the
+		   condition. */
+		char shown[64] = {};
+		std::snprintf(shown, sizeof(shown), I18n::tr("%d of %d shown"), static_cast<int>(RtosTableModel::taskRows(*snapshot, query).size()),
+		              static_cast<int>(snapshot->taskCount()));
+
+		const float shownWidth = ImGui::CalcTextSize(shown).x;
+
+		ImGui::SameLine();
+
+		const float remaining = ImGui::GetContentRegionAvail().x;
+
+		if (remaining > shownWidth + 16.0f * scale)
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + remaining - shownWidth);
+
+		GuiHelper::drawSecondaryText("%s", shown);
+
+		ImGui::Separator();
+	}
+
 	/*
 	 * The threshold the stack alert is measured against.
 	 *
@@ -789,14 +888,23 @@ class GuiRtosPanel
 	 */
 	static void drawAlertThreshold()
 	{
-		ImGui::TextUnformatted(I18n::tr("stack alert at"));
-		ImGui::SameLine();
-		ImGui::SetNextItemWidth(70 * GuiHelper::contentScale);
+		const float scale = GuiHelper::contentScale;
+
+		/* A sentence with its unit: "stack free <= 20 %". The old "stack alert
+		   at 20" left the reader to guess at twenty of what. */
+		ImGui::TextUnformatted(I18n::tr("stack free"));
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		ImGui::TextUnformatted("<=");
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		ImGui::SetNextItemWidth(70.0f * scale);
 
 		int percent = static_cast<int>(query.stackAlertFreePercent);
 
 		if (ImGui::InputInt("##rtosStackAlert", &percent, 0, 0))
 			query.stackAlertFreePercent = percent < 0 ? 0u : static_cast<uint32_t>(percent);
+
+		ImGui::SameLine(0.0f, 4.0f * scale);
+		ImGui::TextUnformatted("%");
 
 		if (ImGui::IsItemHovered())
 		{
@@ -804,8 +912,6 @@ class GuiRtosPanel
 			ImGui::TextUnformatted(I18n::tr("A task whose stack is this empty or less is marked. Zero turns the marking off, and a task with no reading is never marked."));
 			ImGui::EndTooltip();
 		}
-
-		sameLineIfFits(140.0f * GuiHelper::contentScale);
 	}
 
 	static void drawTable(const std::shared_ptr<const RtosSnapshot>& snapshot)

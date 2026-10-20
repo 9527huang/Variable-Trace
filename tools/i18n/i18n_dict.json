@@ -551,6 +551,10 @@
   "Asking for a lower rate, or reading fewer bytes each round, closes the gap. Nothing is wrong with the target.": "把请求采样率调低,或者每轮少读一些字节,就能把差距补回来。目标侧没有故障。",
   "Findings": "发现",
   "%.1f s / %u rounds": "%.1f 秒 / %u 轮",
+  "states": "状态",
+  "show every state": "显示全部状态",
+  "stack free": "栈剩余",
+  "priority >=": "优先级 >=",
   "Reset layout": "重置界面布局",
   "last": "最近",
   "s": "秒"

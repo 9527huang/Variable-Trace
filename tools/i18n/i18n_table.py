@@ -742,6 +742,13 @@ EXTRA = {
     # The findings section: its title, and the duration at the end of a row.
     "Findings": "发现",
     "%.1f s / %u rounds": "%.1f 秒 / %u 轮",
+
+    # The filter bar: the state menu, and the two thresholds written as
+    # comparisons with their units.
+    "states": "状态",
+    "show every state": "显示全部状态",
+    "stack free": "栈剩余",
+    "priority >=": "优先级 >=",
     "Reset layout": "重置界面布局",
     "last": "最近",
     "s": "秒",

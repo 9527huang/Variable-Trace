@@ -67,6 +67,38 @@ inline ImVec4 themed(ImVec4 dark, ImVec4 light)
 	return currentTheme == Theme::Light ? light : dark;
 }
 
+/* Text that explains rather than reports: the sentence under a table, the unit
+ * beside a number, the note that says why a column is empty.
+ *
+ * These were drawn with `TextDisabled`, which is the colour of something that
+ * cannot be used. Beside a dark panel it is close enough to the background that
+ * a reader has to lean in, and it carries the wrong meaning besides - nothing
+ * written in these lines is disabled. */
+inline ImVec4 secondaryTextColour()
+{
+	return themed((ImVec4)ImColor::HSV(0.0f, 0.0f, 0.74f), (ImVec4)ImColor::HSV(0.0f, 0.0f, 0.34f));
+}
+
+/* The same colour, with the text drawn in it. A function rather than a style
+ * push at every call site: the call sites are many and the colour is one. */
+template <typename... Args>
+inline void drawSecondaryText(const char* format, Args... args)
+{
+	ImGui::PushStyleColor(ImGuiCol_Text, secondaryTextColour());
+	ImGui::Text(format, args...);
+	ImGui::PopStyleColor();
+}
+
+template <typename... Args>
+inline void drawSecondaryTextWrapped(const char* format, Args... args)
+{
+	ImGui::PushStyleColor(ImGuiCol_Text, secondaryTextColour());
+	ImGui::PushTextWrapPos(0.0f);
+	ImGui::Text(format, args...);
+	ImGui::PopTextWrapPos();
+	ImGui::PopStyleColor();
+}
+
 inline ImVec4 white()
 {
 	return (ImVec4)ImColor::HSV(0.0f, 0.0f, 1.0f);

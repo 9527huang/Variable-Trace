@@ -44,7 +44,7 @@ class GuiRtosPanelTimeline
 
 		if (history.size() == 0)
 		{
-			ImGui::TextDisabled("%s", I18n::tr("The timeline fills up as rounds are published."));
+			GuiHelper::drawSecondaryText("%s", I18n::tr("The timeline fills up as rounds are published."));
 
 			return;
 		}
@@ -61,7 +61,7 @@ class GuiRtosPanelTimeline
 
 		if (samples.empty())
 		{
-			ImGui::TextDisabled("%s", I18n::tr("Nothing was published in this window."));
+			GuiHelper::drawSecondaryText("%s", I18n::tr("Nothing was published in this window."));
 
 			return;
 		}
@@ -226,7 +226,7 @@ class GuiRtosPanelTimeline
 	{
 		if (followPlotCursors && !plotCursors.empty() && !manualWindow)
 		{
-			ImGui::TextDisabled(I18n::tr("following %u plot cursor(s)"), static_cast<uint32_t>(plotCursors.size()));
+			GuiHelper::drawSecondaryText(I18n::tr("following %u plot cursor(s)"), static_cast<uint32_t>(plotCursors.size()));
 
 			ImGui::SameLine();
 		}
@@ -240,15 +240,15 @@ class GuiRtosPanelTimeline
 
 		if (!hasPinned)
 		{
-			ImGui::TextDisabled("%s", I18n::tr("click a time to pin it"));
+			GuiHelper::drawSecondaryText("%s", I18n::tr("click a time to pin it"));
 
 			ImGui::SameLine();
 		}
 
 		if (interval > 0.0)
-			ImGui::TextDisabled(I18n::tr("one mark per round, %.2f s apart"), interval);
+			GuiHelper::drawSecondaryText(I18n::tr("one mark per round, %.2f s apart"), interval);
 		else
-			ImGui::TextDisabled("%s", I18n::tr("one mark per round"));
+			GuiHelper::drawSecondaryText("%s", I18n::tr("one mark per round"));
 
 		ImGui::Separator();
 	}
@@ -283,13 +283,13 @@ class GuiRtosPanelTimeline
 			/* Where the runs come from is worth saying: a reader who knows the
 			   timeline is built from samples will read a band as a coarse
 			   thing, and this one is not coarse. */
-			ImGui::TextDisabled(I18n::tr("runs from the target's switch records, %.0f s held"), static_cast<double>(windowSeconds));
+			GuiHelper::drawSecondaryText(I18n::tr("runs from the target's switch records, %.0f s held"), static_cast<double>(windowSeconds));
 		}
 		else if (interval > 0.0)
-			ImGui::TextDisabled(I18n::tr("%u samples, %.2f s apart, %u unread"), static_cast<uint32_t>(samples.size()), interval,
+			GuiHelper::drawSecondaryText(I18n::tr("%u samples, %.2f s apart, %u unread"), static_cast<uint32_t>(samples.size()), interval,
 			                    static_cast<uint32_t>(unread));
 		else
-			ImGui::TextDisabled(I18n::tr("%u samples, %u unread"), static_cast<uint32_t>(samples.size()), static_cast<uint32_t>(unread));
+			GuiHelper::drawSecondaryText(I18n::tr("%u samples, %u unread"), static_cast<uint32_t>(samples.size()), static_cast<uint32_t>(unread));
 
 		if (unread > 0 && ImGui::IsItemHovered())
 		{
@@ -307,7 +307,7 @@ class GuiRtosPanelTimeline
 
 		if (lanes.empty())
 		{
-			ImGui::TextDisabled("%s", I18n::tr("No tasks in this round."));
+			GuiHelper::drawSecondaryText("%s", I18n::tr("No tasks in this round."));
 
 			return;
 		}
@@ -801,13 +801,13 @@ class GuiRtosPanelTimeline
 
 			ImGui::Dummy(ImVec2(size + 4.0f * scale, 0.0f));
 			ImGui::SameLine(0.0f, 4.0f * scale);
-			ImGui::TextDisabled("%s", I18n::tr("blank"));
+			GuiHelper::drawSecondaryText("%s", I18n::tr("blank"));
 		}
 
 		ImGui::SameLine(0.0f, spacing);
-		ImGui::TextDisabled("%s", I18n::tr("thin line"));
+		GuiHelper::drawSecondaryText("%s", I18n::tr("thin line"));
 		ImGui::SameLine(0.0f, 4.0f * scale);
-		ImGui::TextDisabled("%s", I18n::tr("a cursor in the variable view"));
+		GuiHelper::drawSecondaryText("%s", I18n::tr("a cursor in the variable view"));
 
 		/* The caveat gets a line of its own, and that line wraps.
 		 *
@@ -816,9 +816,7 @@ class GuiRtosPanelTimeline
 		 * sentence, so it is allowed to take a second line rather than having
 		 * its end cut off by the edge of the window. A row of legend entries
 		 * joined by `SameLine` has no second line to take. */
-		ImGui::PushTextWrapPos(0.0f);
-		ImGui::TextDisabled("%s", I18n::tr("- the round did not read that task, which is not the same as idle"));
-		ImGui::PopTextWrapPos();
+		GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("- the round did not read that task, which is not the same as idle"));
 
 		if (ImGui::IsItemHovered())
 		{
