@@ -10,6 +10,7 @@
 static const Entry table[] = {
 	{" plot image.", " 张图片。"},
 	{" plot images.", " 张图片。"},
+	{"%.1f s / %u rounds", "%.1f 秒 / %u 轮"},
 	{"%.4g s per sample (%.4g Hz)", "%.4g 秒/采样 (%.4g Hz)"},
 	{"%d of the %d tasks the window knows about could be measured, over the last %.2f s.", "窗口见过的 %d 个任务里有 %d 个测得到,窗口长度为最近 %.2f 秒。"},
 	{"%u samples, %.2f s apart, %u unread", "%u 个采样,间隔 %.2f 秒,%u 处没读到"},
@@ -146,6 +147,7 @@ static const Entry table[] = {
 	{"File name:##screenshotFileName", "文件名:##screenshotFileName"},
 	{"File open failed", "文件打开失败"},
 	{"File write failed", "文件写入失败"},
+	{"Findings", "发现"},
 	{"Firmware file:", "固件文件:"},
 	{"Flash", "烧录"},
 	{"Flash Output", "烧录输出"},

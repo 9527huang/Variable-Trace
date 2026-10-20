@@ -110,6 +110,16 @@ class GuiRtosPanelTimeline
 		return followPlotCursors;
 	}
 
+	/* The hue a state is drawn with.
+	 *
+	 * The summary counts the same four states the strip does, and a reader
+	 * comparing "4 blocked" with the amber marks in the lane beside it should
+	 * be comparing one colour, not two that were picked separately. */
+	static ImU32 getStateColour(RtosTaskState state)
+	{
+		return markOf(state).colour;
+	}
+
 	static void setFollowPlotCursors(bool value)
 	{
 		followPlotCursors = value;
@@ -445,7 +455,7 @@ class GuiRtosPanelTimeline
 		};
 
 		highlightLane(hoveredTask, ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.22f));
-		highlightLane(selectedTask, ImGui::GetColorU32(ImGuiCol_Header, 0.35f));
+		highlightLane(selectedTask, ImGui::GetColorU32(ImGuiCol_Header, 0.55f));
 
 		/*
 		 * The marks, when there are no runs.

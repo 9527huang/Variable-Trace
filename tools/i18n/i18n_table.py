@@ -738,6 +738,10 @@ EXTRA = {
     # what arrived, and that nothing is broken.
     "Asking for %.1f Hz; over the last measurement window the run is getting %.1f Hz, with %.1f%% of the sample periods missed.": "请求 %.1f Hz;最近一个统计窗口里的实际值 %.1f Hz,有 %.1f%% 的采样周期错过了截止时间。",
     "Asking for a lower rate, or reading fewer bytes each round, closes the gap. Nothing is wrong with the target.": "把请求采样率调低,或者每轮少读一些字节,就能把差距补回来。目标侧没有故障。",
+
+    # The findings section: its title, and the duration at the end of a row.
+    "Findings": "发现",
+    "%.1f s / %u rounds": "%.1f 秒 / %u 轮",
     "Reset layout": "重置界面布局",
     "last": "最近",
     "s": "秒",

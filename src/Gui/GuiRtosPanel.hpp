@@ -344,6 +344,73 @@ class GuiRtosPanel
 	inline static bool searchBufferPrimed = false;
 
 	/*
+	 * How bad a finding is.
+	 *
+	 * The four kinds are not equally urgent. Two of them describe a run that
+	 * will not make progress at all, one describes a task the scheduler keeps
+	 * passing over, and one describes the kernel doing exactly what it should
+	 * for as long as a lock is held. Drawing all four in one colour and at one
+	 * weight was the review's complaint: a section where everything is a
+	 * warning is a section a reader learns to skip.
+	 *
+	 * The mark is a character rather than a colour so that the severity still
+	 * reads for someone who cannot separate the hues.
+	 */
+	struct FindingSeverity
+	{
+		const char* mark;
+		ImVec4 colour;
+	};
+
+	static FindingSeverity severityOf(RtosDiagnostics::Kind kind)
+	{
+		switch (kind)
+		{
+			case RtosDiagnostics::Kind::SuspectedDeadlock:
+			case RtosDiagnostics::Kind::UnboundedWait:
+				return {"!", ImVec4(0.90f, 0.40f, 0.35f, 1.0f)};
+
+			case RtosDiagnostics::Kind::ReadyStarvation:
+				return {"!", ImVec4(0.85f, 0.58f, 0.20f, 1.0f)};
+
+			case RtosDiagnostics::Kind::PriorityInheritance:
+			default:
+				return {"i", ImVec4(0.55f, 0.65f, 0.85f, 1.0f)};
+		}
+	}
+
+	/*
+	 * What clicking a finding selects: the first task on its chain, and the
+	 * object the chain passes through.
+	 *
+	 * One click has to land on the same place in three views - the row in the
+	 * table, the lane in the strip, the row in the objects table - and the
+	 * chain is the only description of that place which all three understand.
+	 */
+	static void selectChain(const RtosDiagnostics::Finding& finding)
+	{
+		/* The filters go first. A finding names a task, and the task it names
+		   may be one the current filter has hidden - locating it in the table
+		   would then land on nothing, which reads as a click that did not
+		   work. Clicking a finding means "take me to this", so what is hiding
+		   it is dropped. */
+		clearFilters();
+
+		selection().task = 0;
+		selection().object.clear();
+
+		for (size_t node = 0; node < finding.chain.size(); node++)
+		{
+			const bool isTask = finding.tasks.size() > node && finding.tasks[node] != 0;
+
+			if (isTask && selection().task == 0)
+				selection().task = finding.tasks[node];
+			else if (!isTask && selection().object.empty())
+				selection().object = finding.chain[node];
+		}
+	}
+
+	/*
 	 * The findings, drawn as the chains they are.
 	 *
 	 * A finding is a shape - one task waiting for an object another task holds -
@@ -351,10 +418,19 @@ class GuiRtosPanel
 	 * boxes are the shape; a task box is a button, so clicking the task the
 	 * finding is about selects its row, and the strip and the objects table
 	 * follow.
+	 *
+	 * The section has a name and a count, and each row is a handle for the
+	 * whole chain: a reader who has just read "waiting with no timeout" wants
+	 * the task behind it, and aiming at that task's own box inside the chain
+	 * is aiming twice.
 	 */
 	static void drawDiagnostics(const std::vector<RtosDiagnostics::Finding>& findings)
 	{
 		const float scale = GuiHelper::contentScale;
+
+		ImGui::TextUnformatted(I18n::tr("Findings"));
+		ImGui::SameLine(0.0f, 6.0f * scale);
+		ImGui::TextDisabled("%d", static_cast<int>(findings.size()));
 
 		for (const RtosDiagnostics::Finding& finding : findings)
 		{
@@ -367,31 +443,41 @@ class GuiRtosPanel
 			const char* label = deadlock ? "suspected deadlock"
 			                              : (starvation ? "ready, never switched in" : (unbounded ? "waiting with no timeout" : "priority inheritance"));
 
-			const ImVec4 colour = deadlock ? ImVec4(0.90f, 0.40f, 0.35f, 1.0f)
-			                                : (starvation ? ImVec4(0.85f, 0.35f, 0.60f, 1.0f) : (unbounded ? ImVec4(0.45f, 0.55f, 0.85f, 1.0f) : ImVec4(0.85f, 0.55f, 0.15f, 1.0f)));
+			const FindingSeverity severity = severityOf(finding.kind);
 
-			ImGui::TextColored(colour, "%s", I18n::tr(label));
+			/* The row is reserved first and filled afterwards: an invisible
+			   button takes the clicks, and everything drawn over it -
+			   including the small buttons inside the chain - is submitted
+			   after it, which is what puts those buttons in front of it for
+			   the mouse.
 
-			if (ImGui::IsItemHovered())
-			{
-				ImGui::BeginTooltip();
+			   A `Selectable` was tried first and took no clicks here. The
+			   button is the plainer thing and does what it says. */
+			const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+			const float rowWidth = ImGui::GetContentRegionAvail().x;
+			const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 
-				if (starvation)
-					ImGui::TextUnformatted(I18n::tr("A task higher in priority than the one that ran, ready in every round of the last couple of seconds. A preemptive scheduler cannot do that, except while the running task holds a lock someone above it wants - and that case is not reported here."));
-				else if (unbounded)
-					ImGui::TextUnformatted(I18n::tr("Blocked with no timeout: the kernel keeps the state of a task that waits forever on its suspended list, because there is no time to wake it at. It runs again only when the object is given, and if that never happens it waits for as long as the target is powered."));
-				else
-					ImGui::TextUnformatted(I18n::tr(deadlock ? "Two or more tasks are each waiting for a lock the next one holds. A round is a sample: if the ring clears between two of them it leaves no trace, which is why this is suspected rather than proven."
-					                                         : "The task on the right is running above the priority it was created with, which the kernel only does while a higher priority task waits for a lock it holds. The lock is how long it has been held."));
+			ImGui::InvisibleButton("##findingRow", ImVec2(rowWidth, rowHeight));
 
-				ImGui::EndTooltip();
-			}
+			const bool rowHovered = ImGui::IsItemHovered();
 
-			if (starvation || (unbounded && finding.heldRounds > 0))
-			{
-				ImGui::SameLine();
-				ImGui::TextDisabled(I18n::tr("for %.1f s over %u rounds"), finding.heldSeconds, finding.heldRounds);
-			}
+			if (ImGui::IsItemClicked())
+				selectChain(finding);
+
+			/* The highlight is what says the row is one thing and not five:
+			   the chain inside it has its own buttons, and without this the
+			   row looks like loose text with a couple of boxes in it. */
+			if (rowHovered)
+				ImGui::GetWindowDrawList()->AddRectFilled(rowStart, ImVec2(rowStart.x + rowWidth, rowStart.y + rowHeight),
+				                                          ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.22f));
+
+			ImGui::SetCursorScreenPos(rowStart);
+
+			/* Two encodings of the same thing: the mark says how urgent it is
+			   without relying on the hue, and the colour repeats it. */
+			ImGui::TextColored(severity.colour, "%s", severity.mark);
+			ImGui::SameLine(0.0f, 4.0f * scale);
+			ImGui::TextColored(severity.colour, "%s", I18n::tr(label));
 
 			for (size_t node = 0; node < finding.chain.size(); node++)
 			{
@@ -425,6 +511,41 @@ class GuiRtosPanel
 
 				if (selected)
 					ImGui::PopStyleColor();
+			}
+
+			/* How long it has been going, at the far end of the row: the
+			   numbers are what tells a moment from a hang, and a column of
+			   them is easier to compare than a clause after every name. */
+			if (starvation || (unbounded && finding.heldRounds > 0))
+			{
+				char duration[64] = {};
+				std::snprintf(duration, sizeof(duration), I18n::tr("%.1f s / %u rounds"), finding.heldSeconds, finding.heldRounds);
+
+				const float width = ImGui::CalcTextSize(duration).x;
+
+				ImGui::SameLine();
+
+				const float remaining = ImGui::GetContentRegionAvail().x;
+
+				if (remaining > width + 8.0f * scale)
+					ImGui::SetCursorPosX(ImGui::GetCursorPosX() + remaining - width);
+
+				ImGui::TextDisabled("%s", duration);
+			}
+
+			if (rowHovered)
+			{
+				ImGui::BeginTooltip();
+
+				if (starvation)
+					ImGui::TextUnformatted(I18n::tr("A task higher in priority than the one that ran, ready in every round of the last couple of seconds. A preemptive scheduler cannot do that, except while the running task holds a lock someone above it wants - and that case is not reported here."));
+				else if (unbounded)
+					ImGui::TextUnformatted(I18n::tr("Blocked with no timeout: the kernel keeps the state of a task that waits forever on its suspended list, because there is no time to wake it at. It runs again only when the object is given, and if that never happens it waits for as long as the target is powered."));
+				else
+					ImGui::TextUnformatted(I18n::tr(deadlock ? "Two or more tasks are each waiting for a lock the next one holds. A round is a sample: if the ring clears between two of them it leaves no trace, which is why this is suspected rather than proven."
+					                                         : "The task on the right is running above the priority it was created with, which the kernel only does while a higher priority task waits for a lock it holds. The lock is how long it has been held."));
+
+				ImGui::EndTooltip();
 			}
 
 			ImGui::PopID();
@@ -513,12 +634,43 @@ class GuiRtosPanel
 
 	/* A count that is also a filter: clicking it narrows the table to those rows,
 	   clicking it again lets them all back. */
+	/*
+	 * A count that is also a filter.
+	 *
+	 * The colour here used to do three jobs with one blue fill: it said which
+	 * state the count was about, it said whether the filter was on, and it
+	 * looked like every other button in the row. A reader could not tell a
+	 * state's colour from a filter that had been applied.
+	 *
+	 * The work is split now. The state gets a dot of its own - the same hue
+	 * the timeline's legend uses, so a count and a lane are the same colour -
+	 * and the fill is reserved for one meaning: this filter is on. Off is no
+	 * fill at all, just a dot, a number and a word; on is a wash of the
+	 * state's colour with a border around it.
+	 */
 	static void stateChip(uint32_t count, RtosTaskState state)
 	{
+		const float scale = GuiHelper::contentScale;
 		const bool active = query.states.size() == 1 && query.states.front() == state;
 
-		if (active)
-			ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+		const ImVec4 face = ImGui::ColorConvertU32ToFloat4(GuiRtosPanelTimeline::getStateColour(state));
+		const ImVec2 origin = ImGui::GetCursorScreenPos();
+		const float lineHeight = ImGui::GetFrameHeight();
+		const float dotSize = 7.0f * scale;
+
+		ImGui::Dummy(ImVec2(dotSize + 4.0f * scale, lineHeight));
+
+		/* Drawn, not printed: no bullet in the interface font. */
+		ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(origin.x + dotSize * 0.5f, origin.y + lineHeight * 0.5f), dotSize * 0.5f,
+		                                            ImGui::GetColorU32(face), 12);
+
+		ImGui::SameLine(0.0f, 2.0f * scale);
+
+		ImGui::PushStyleColor(ImGuiCol_Button, active ? ImVec4(face.x, face.y, face.z, 0.38f) : ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(face.x, face.y, face.z, 0.26f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(face.x, face.y, face.z, 0.48f));
+		ImGui::PushStyleColor(ImGuiCol_Border, face);
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, active ? 1.0f : 0.0f);
 
 		const std::string label = std::to_string(count) + " " + RtosTableModel::taskStateLabel(state);
 
@@ -530,8 +682,8 @@ class GuiRtosPanel
 				query.states = {state};
 		}
 
-		if (active)
-			ImGui::PopStyleColor();
+		ImGui::PopStyleVar();
+		ImGui::PopStyleColor(4);
 	}
 
 	static void drawFilters(const std::shared_ptr<const RtosSnapshot>& snapshot)
@@ -1047,7 +1199,7 @@ class GuiRtosPanel
 
 			if (objectSelected)
 			{
-				ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header, 0.35f));
+				ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header, 0.55f));
 
 				if (selection().object != selection().scrolledObject)
 				{
