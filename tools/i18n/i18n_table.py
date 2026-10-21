@@ -844,6 +844,17 @@ EXTRA = {
     # Three recorder messages that used to be built by gluing translated and
     # untranslated pieces together. One format string each, so the order can move
     # between languages and nothing is left in English.
+    # 右栏的事件列表（切换记录）。
+    "Events": "事件",
+    "pause": "暂停",
+    "%u new while paused": "暂停期间新增 %u 条",
+    "%u runs": "%u 段",
+    "last %u of %u runs": "最近 %u 段，共 %u 段",
+    "Task": "任务",
+    "Ran for": "跑了多久",
+    "No switch records yet. The target writes them from its own timer interrupt, or sends them over SWO/RTT; the timeline's runs are the same records.":
+        "还没有收到切换记录。这些记录由目标在自己的定时中断里写入，或者经 SWO/RTT 送过来；时间线里的那一段段就是同一批记录。",
+
     # 这一轮没读到的任务：行留着，整行画斜杠。
     "This round did not read this task, so every column is a slash. The row stays: the task is there, the reading is not. Its last reading was %.1f s before this round.":
         "这一轮没有读到这个任务，所以每一列都是斜杠。行留着:任务还在，读数没有。上一次读到它是在 %.1f 秒之前。",

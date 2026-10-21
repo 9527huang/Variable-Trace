@@ -174,6 +174,21 @@ class GuiRtosPanelTimeline
 		followPlotCursors = value;
 	}
 
+	/*
+	 * Pins a moment from outside the strip.
+	 *
+	 * The event list is the same records as the bands, as rows; clicking one
+	 * should land on the moment it describes, and the pin is what both halves
+	 * already agree on. The window is left to the strip: if the moment is
+	 * outside it, the next frame moves the window rather than dropping the pin
+	 * somewhere the reader cannot see it.
+	 */
+	static void pinAt(double atSeconds)
+	{
+		hasPinned = true;
+		pinnedAt = atSeconds;
+	}
+
 	/* The moment the reader pinned on the strip, if any. Read by the panel to
 	   describe that moment in words. */
 	static bool getPinned()
@@ -555,6 +570,16 @@ class GuiRtosPanelTimeline
 		const double newest = samples.back().atSeconds;
 		const double oldest = samples.front().atSeconds;
 		const double span = std::max(newest - oldest, 1e-6);
+
+		/* A pin placed from outside - the event list - can be behind the window
+		   the reader is looking at. A pin nobody can see is a pin they have to
+		   hunt for, so the window is moved to hold it once. */
+		if (hasPinned && (pinnedAt < oldest || pinnedAt > newest))
+		{
+			manualFrom = pinnedAt - span * 0.5;
+			manualTo = pinnedAt + span * 0.5;
+			manualWindow = true;
+		}
 
 		const auto timeToX = [&](double atSeconds)
 		{

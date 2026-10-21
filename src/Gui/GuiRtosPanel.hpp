@@ -291,6 +291,10 @@ class GuiRtosPanel
 		fixedRows(7.0f, [&] { drawSyncObjects(*snapshot); });
 		fixedRows(4.0f, [&] { drawPinnedMoment(*model, *snapshot); });
 
+		/* The last block, and the one that takes what is left: a list is read
+		   by scrolling it, so a short window costs rows rather than frames. */
+		drawEvents(*model, rows);
+
 		/*
 		 * The detail takes what is left rather than a fixed number of rows.
 		 *
@@ -456,6 +460,18 @@ class GuiRtosPanel
 	   what the reader set up: a fold that reopens on every start is a fold that
 	   has to be folded again on every start. */
 	inline static bool selectedTaskOpen = true;
+
+	/* The event list: whether it is following the end, what it is showing, and
+	   how much arrived while it was not. */
+	inline static bool eventsPaused = false;
+	inline static uint32_t eventsHeld = 0;
+
+	/* How many runs the list holds: enough to scroll through, few enough that
+	   a thousand switches a second do not become the whole view. */
+	static constexpr size_t eventsLimit = 600;
+
+	inline static size_t eventsCachedTotal = 0;
+	inline static std::vector<RtosEventRing::Interval> eventsCache;
 
 	/* The last thing that went wrong with a recording, in the reader's words.
 	   Kept until the next attempt rather than shown for a frame: a dialog that
@@ -2263,6 +2279,145 @@ class GuiRtosPanel
 	 * "which one is selected" - a closed section that says only its own name
 	 * makes the reader open it to find out whether there is anything in it.
 	 */
+	/*
+	 * The switch records, as rows.
+	 *
+	 * The strip answers "who was running when" as a picture, and a picture
+	 * cannot be read for a number: a band's width is measured with the eye.
+	 * This is the same data as rows - when a task was switched in, which task,
+	 * and how long it stayed - so that the reader who needs "at 4.21 s, which
+	 * one" can read it.
+	 *
+	 * Paused is a state of the view and not of the target: the rows stop being
+	 * taken and the list stops following the end, so a row can be read while
+	 * the machine keeps running. What arrived meanwhile is counted beside the
+	 * box, because a list that silently stops is a list that lies.
+	 */
+	static void drawEvents(const RtosModel& model, const std::vector<RtosTaskRow>& rows)
+	{
+		const float scale = GuiHelper::contentScale;
+		const RtosEventHistory& history = model.events();
+
+		ImGui::Separator();
+
+		if (ImGui::Checkbox(I18n::tr("pause"), &eventsPaused))
+		{
+			/* Leaving the pause has to rebuild, because while it was held the
+			   list was deliberately left as it was. */
+			if (!eventsPaused)
+			{
+				eventsHeld = 0;
+				eventsCachedTotal = 0;
+			}
+		}
+
+		ImGui::SameLine(0.0f, 8.0f * scale);
+		ImGui::TextUnformatted(I18n::tr("Events"));
+
+		/*
+		 * Rebuilt when the history grew, not every frame.
+		 *
+		 * A target that switches a thousand times a second keeps thousands of
+		 * runs in ten seconds; copying all of them sixty times a second costs
+		 * more than the view is worth. The list also holds only the last few
+		 * hundred: rows that scroll past faster than they can be read are rows
+		 * nobody reads, and the whole ten seconds is looked at on the strip.
+		 */
+		const size_t total = history.size();
+
+		if (!eventsPaused && total != eventsCachedTotal)
+		{
+			eventsCache.clear();
+			history.copyRange(history.oldestSeconds(), history.newestSeconds(), eventsCache);
+
+			if (eventsCache.size() > eventsLimit)
+				eventsCache.erase(eventsCache.begin(), eventsCache.end() - static_cast<std::ptrdiff_t>(eventsLimit));
+
+			eventsCachedTotal = total;
+		}
+		else if (eventsPaused && total > eventsCachedTotal)
+			eventsHeld = static_cast<uint32_t>(total - eventsCachedTotal);
+
+		ImGui::SameLine(0.0f, 8.0f * scale);
+
+		if (eventsPaused && eventsHeld > 0)
+			GuiHelper::drawSecondaryText(I18n::tr("%u new while paused"), eventsHeld);
+		else if (total > eventsCache.size())
+			GuiHelper::drawSecondaryText(I18n::tr("last %u of %u runs"), static_cast<uint32_t>(eventsCache.size()),
+			                             static_cast<uint32_t>(total));
+		else
+			GuiHelper::drawSecondaryText(I18n::tr("%u runs"), static_cast<uint32_t>(eventsCache.size()));
+
+		if (eventsCache.empty())
+		{
+			/* Two reasons and they are not the same: nothing was ever written
+			   by the target, or the reader has just opened the view. */
+			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("No switch records yet. The target writes them from its own timer interrupt, or sends them over SWO/RTT; the timeline's runs are the same records."));
+
+			return;
+		}
+
+		const ImVec2 room = ImGui::GetContentRegionAvail();
+
+		ImGui::BeginChild("##rtosEventList", ImVec2(0.0f, std::max(room.y, ImGui::GetTextLineHeightWithSpacing() * 4.0f)), false,
+		                  ImGuiWindowFlags_NoBackground);
+
+		const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit;
+
+		if (ImGui::BeginTable("rtosEvents", 3, flags))
+		{
+			ImGui::TableSetupColumn(I18n::tr("Time"), ImGuiTableColumnFlags_WidthFixed, 74.0f * scale);
+			ImGui::TableSetupColumn(I18n::tr("Task"), ImGuiTableColumnFlags_WidthFixed, 150.0f * scale);
+			ImGui::TableSetupColumn(I18n::tr("Ran for"), ImGuiTableColumnFlags_WidthFixed, 74.0f * scale);
+			ImGui::TableHeadersRow();
+
+			/* Oldest at the top, so that the list reads the way the strip does:
+			   left to right, earlier to later. */
+			for (size_t index = 0; index < eventsCache.size(); index++)
+			{
+				const RtosEventRing::Interval& run = eventsCache[index];
+
+				ImGui::TableNextRow();
+
+				ImGui::TableNextColumn();
+
+				/* The row is the handle: clicking it pins the moment, which is
+				   what the strip, the table and the detail all read. */
+				char label[32] = {};
+				std::snprintf(label, sizeof(label), "%.2f##run%u", run.fromSeconds, static_cast<unsigned>(index));
+
+				if (ImGui::Selectable(label, false, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap))
+					GuiRtosPanelTimeline::pinAt(run.fromSeconds);
+
+				ImGui::TableNextColumn();
+				ImGui::TextUnformatted(eventTaskName(run.tcbAddress, rows));
+
+				ImGui::TableNextColumn();
+				GuiHelper::drawSecondaryText("%.1f ms", (run.toSeconds - run.fromSeconds) * 1000.0);
+			}
+
+			ImGui::EndTable();
+		}
+
+		if (!eventsPaused)
+			ImGui::SetScrollY(ImGui::GetScrollMaxY());
+
+		ImGui::EndChild();
+	}
+
+	/* The name a run belongs to: from the table's rows first, so that the list
+	   and the lanes spell a task the same way. */
+	static const char* eventTaskName(uint32_t address, const std::vector<RtosTaskRow>& rows)
+	{
+		for (const RtosTaskRow& row : rows)
+		{
+			if (row.tcbAddress == address && !row.name.empty())
+				return row.name.c_str();
+		}
+
+		return unknown();
+	}
+
 	static void drawSelectedTaskSection(const RtosModel& model, const RtosSnapshot& snapshot,
 	                                    const std::vector<RtosDiagnostics::Finding>& findings)
 	{
