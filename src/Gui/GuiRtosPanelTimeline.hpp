@@ -66,7 +66,27 @@ class GuiRtosPanelTimeline
 
 		drawHeader(history, plotCursors);
 		drawLegend();
+
+		/*
+		 * Two rows, whatever the sentence needs.
+		 *
+		 * It is one sentence of facts joined by dots, and two of those facts
+		 * depend on what the reader did: "click a time to pin it" goes away
+		 * once a time is pinned, and "showing 8.91 s of 10 s asked" appears
+		 * once a pin has moved the window out of its place. At this width the
+		 * longer form wraps, and the strip then stood a line taller than it was
+		 * a moment before - which moved every block under it, including the
+		 * pause box, by exactly that line.
+		 */
+		const float sourceTop = ImGui::GetCursorPosY();
+
 		drawSourceLine(history, plotCursors, lanes.size(), snapshot.tasks.size());
+
+		const float sourceHeight = ImGui::GetTextLineHeightWithSpacing() * 2.0f;
+		const float sourceUsed = ImGui::GetCursorPosY() - sourceTop;
+
+		if (sourceUsed < sourceHeight)
+			ImGui::Dummy(ImVec2(0.0f, sourceHeight - sourceUsed));
 
 		const double newest = history.newestSeconds();
 		const RtosTimeline::Span window = windowOf(plotCursors, newest);
@@ -300,13 +320,20 @@ class GuiRtosPanelTimeline
 			followPlotCursors = false;
 		}
 
-		if (hasPinned)
-		{
-			ImGui::SameLine();
+		ImGui::SameLine();
 
-			if (ImGui::Button(I18n::tr("unpin")))
-				hasPinned = false;
-		}
+		/* Always there, and greyed when there is nothing to unpin.
+		   A button that comes and goes changes how much room the row needs,
+		   and the row decides whether the item after it fits beside it: with
+		   the button present, "follow table order" wrapped to a second line,
+		   and every block under the strip moved down by one line the moment a
+		   moment was pinned. */
+		ImGui::BeginDisabled(!hasPinned);
+
+		if (ImGui::Button(I18n::tr("unpin")))
+			hasPinned = false;
+
+		ImGui::EndDisabled();
 
 		/* Beside the window length, because it answers the same kind of
 		   question: what the strip shows, not what the target did. */
@@ -959,7 +986,20 @@ class GuiRtosPanelTimeline
 			draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f, ImVec2(textX, origin.y + plotHeight + 4 * scale), tickColour, label);
 		}
 
+		/* The row under the axis says what the cursor is over, and it is a row
+		   whether or not there is a cursor: drawn only when something is
+		   pinned or hovered, its absence made the strip a line shorter, and
+		   pinning the first moment pushed every block under the strip down by
+		   that line. The space is kept, the sentence is not. */
+		const float readoutTop = ImGui::GetCursorPosY();
+
 		drawCursor(draw, samples, lanes, origin, plotHeight, plotLeft, plotWidth, hovered);
+
+		const float readoutHeight = ImGui::GetTextLineHeightWithSpacing();
+		const float readoutUsed = ImGui::GetCursorPosY() - readoutTop;
+
+		if (readoutUsed < readoutHeight)
+			ImGui::Dummy(ImVec2(0.0f, readoutHeight - readoutUsed));
 	}
 
 	static void drawCursor(ImDrawList* draw, const std::vector<RtosTimeline::Sample>& samples, const std::vector<uint32_t>& lanes, const ImVec2& origin,

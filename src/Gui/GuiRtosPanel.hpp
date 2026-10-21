@@ -128,7 +128,7 @@ class GuiRtosPanel
 		   disagree about which wait that is. */
 		const std::vector<RtosDiagnostics::Finding>& findings = findingsFor(*model, snapshot);
 
-		fixedRows(2.0f, [&] { drawSummary(*snapshot, findings); });
+		fixedRows(2.0f, "##rtosSummary", [&] { drawSummary(*snapshot, findings); });
 
 		/*
 		 * Always, and always the same height.
@@ -285,11 +285,13 @@ class GuiRtosPanel
 
 		/* Under the strip, and in the same window: a task that is waiting is
 		   waiting for one of these, so the two are read together. */
-		/* Seven rows: a heading, a table header and four objects. Twelve for the
-		   detail, which is the tallest it gets on a task with everything read.
-		   Four for the pinned moment. What they do not use is left blank. */
-		fixedRows(7.0f, [&] { drawSyncObjects(*snapshot); });
-		fixedRows(4.0f, [&] { drawPinnedMoment(*model, *snapshot); });
+		/* The counts are the tallest each block gets, not the counts it happens
+		   to need this frame: eight rows for the objects - a heading, the
+		   table's own header and four rows of them - and five for the pinned
+		   moment, which is a heading and three rows whether or not a moment has
+		   been pinned. What they do not use is left blank. */
+		fixedRows(8.0f, "##rtosSyncObjects", [&] { drawSyncObjects(*snapshot); });
+		fixedRows(5.0f, "##rtosPinnedMoment", [&] { drawPinnedMoment(*model, *snapshot); });
 
 		/* The last block, and the one that takes what is left: a list is read
 		   by scrolling it, so a short window costs rows rather than frames. */
@@ -2098,30 +2100,39 @@ class GuiRtosPanel
 		ImGui::Separator();
 		ImGui::TextUnformatted(I18n::tr("Pinned moment"));
 
-		/* The heading stays when there is no moment: the block keeps its room,
-		   and the sentence says how to fill it. */
-		if (!GuiRtosPanelTimeline::getPinned())
-		{
-			GuiHelper::drawSecondaryText("%s", I18n::tr("Click the strip above to pin a moment."));
-
-			return;
-		}
-
-		const double at = GuiRtosPanelTimeline::getPinnedAt();
+		const bool pinned = GuiRtosPanelTimeline::getPinned();
+		const double at = pinned ? GuiRtosPanelTimeline::getPinnedAt() : 0.0;
 
 		/* Not `near`: Windows headers define that one as a macro, and the
 		   declaration stops meaning anything. */
 		std::vector<RtosTimeline::Sample> around;
-		model.history().copyRange(at - 0.5, at + 0.5, around);
 
-		if (around.empty())
+		if (pinned)
+			model.history().copyRange(at - 0.5, at + 0.5, around);
+
+		const RtosTimeline::Sample* sample = around.empty() ? nullptr : &around[RtosTimeline::nearestIndex(around, at)];
+
+		/*
+		 * How to fill the block, on the heading's line, and always one line of
+		 * it: nothing pinned yet, pinned, or pinned to a round the view has
+		 * since dropped.
+		 *
+		 * On the heading's line rather than on one of its own, because the
+		 * three rows under it are drawn whether or not they hold anything - and
+		 * a sentence that came and went moved the pause box under this block by
+		 * a line, so the reader aimed at it again every time a moment was
+		 * pinned. A block with a hole in it is a block whose neighbours move.
+		 */
+		if (!pinned)
 		{
-			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("That moment is no longer among the rounds the view keeps."));
-
-			return;
+			ImGui::SameLine(0.0f, 8.0f * GuiHelper::contentScale);
+			GuiHelper::drawSecondaryText("%s", I18n::tr("Click the strip above to pin a moment."));
 		}
-
-		const RtosTimeline::Sample& sample = around[RtosTimeline::nearestIndex(around, at)];
+		else if (sample == nullptr)
+		{
+			ImGui::SameLine(0.0f, 8.0f * GuiHelper::contentScale);
+			GuiHelper::drawSecondaryText("%s", I18n::tr("That moment is no longer among the rounds the view keeps."));
+		}
 
 		uint32_t running = 0;
 		uint32_t ready = 0;
@@ -2129,57 +2140,68 @@ class GuiRtosPanel
 		uint32_t suspended = 0;
 		std::string runningName;
 
-		for (const RtosTimeline::Entry& entry : sample.entries)
+		if (sample != nullptr)
 		{
-			switch (entry.state)
+			for (const RtosTimeline::Entry& entry : sample->entries)
 			{
-				case RtosTaskState::Running:
-					running++;
+				switch (entry.state)
+				{
+					case RtosTaskState::Running:
+						running++;
 
-					/* The name comes from the round in hand: a task does not
-					   change its name, and the sample carries only addresses. */
-					if (runningName.empty())
-					{
-						const RtosTask* task = snapshot.find(entry.tcbAddress);
+						/* The name comes from the round in hand: a task does not
+						   change its name, and the sample carries only addresses. */
+						if (runningName.empty())
+						{
+							const RtosTask* task = snapshot.find(entry.tcbAddress);
 
-						if (task != nullptr)
-							runningName = task->name;
-					}
+							if (task != nullptr)
+								runningName = task->name;
+						}
 
-					break;
+						break;
 
-				case RtosTaskState::Ready:
-					ready++;
-					break;
+					case RtosTaskState::Ready:
+						ready++;
+						break;
 
-				case RtosTaskState::Blocked:
-					blocked++;
-					break;
+					case RtosTaskState::Blocked:
+						blocked++;
+						break;
 
-				case RtosTaskState::Suspended:
-					suspended++;
-					break;
+					case RtosTaskState::Suspended:
+						suspended++;
+						break;
 
-				default:
-					break;
+					default:
+						break;
+				}
 			}
 		}
 
+		/* The three rows are drawn whatever there is to put in them, and what
+		   is missing is a dash. A dash is not a reading, and a row that is
+		   there with a dash in it says "nothing was read"; a row that is not
+		   there says nothing at all and moves the two under it. */
+		const std::string missing = "-";
+
 		char time[32] = {};
-		std::snprintf(time, sizeof(time), "%+.2f s", sample.atSeconds);
 
-		detailRow(I18n::tr("Time"), time);
+		if (sample != nullptr)
+			std::snprintf(time, sizeof(time), "%+.2f s", sample->atSeconds);
 
-		/* Only when there is one: a round can miss the running task, and a
-		   dash under a heading that says "Running" reads as a broken reading
-		   rather than as a round that did not see it. The counts below say what
-		   was seen. */
-		if (!runningName.empty())
-			detailRow(I18n::tr("Running"), runningName);
+		detailRow(I18n::tr("Time"), sample != nullptr ? std::string(time) : missing);
+
+		/* A round can miss the running task. The counts below say what was
+		   seen; this row says only which one it was. */
+		detailRow(I18n::tr("Running"), runningName.empty() ? missing : runningName);
 
 		char counts[128] = {};
-		std::snprintf(counts, sizeof(counts), I18n::tr("%u running, %u ready, %u blocked, %u suspended"), running, ready, blocked, suspended);
-		detailRow(I18n::tr("Tasks"), counts);
+
+		if (sample != nullptr)
+			std::snprintf(counts, sizeof(counts), I18n::tr("%u running, %u ready, %u blocked, %u suspended"), running, ready, blocked, suspended);
+
+		detailRow(I18n::tr("Tasks"), sample != nullptr ? std::string(counts) : missing);
 	}
 
 	/*
@@ -2192,21 +2214,32 @@ class GuiRtosPanel
 	 * reader at moments they did not choose. Every block is now written into a
 	 * fixed number of rows, and the leftover is filled with nothing.
 	 *
+	 * Filling with nothing is only half of it: a block that drew one row more
+	 * than was reserved grew anyway, and everything under it moved. The box is
+	 * a child window now, so its height is the height asked for whatever the
+	 * block decides to draw, and a block that outgrows it scrolls instead of
+	 * pushing. That mattered in practice - the pause box under the pinned
+	 * moment sat under a different pixel depending on whether a moment had been
+	 * pinned, and the reader had to aim again each time.
+	 *
 	 * The block is expected to draw its own heading: an empty block still says
 	 * what it would have held.
 	 */
 	template <typename Block>
-	static void fixedRows(float rows, Block&& block)
+	static void fixedRows(float rows, const char* id, Block&& block)
 	{
-		const float top = ImGui::GetCursorPosY();
+		const float height = ImGui::GetTextLineHeightWithSpacing() * rows;
+
+		/* No padding inside the box: the blocks were drawn straight into the
+		   pane before, and an inset here would put their headings a few pixels
+		   right of every other heading in it. */
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+		ImGui::BeginChild(id, ImVec2(0.0f, height), false, ImGuiWindowFlags_NoBackground);
+		ImGui::PopStyleVar();
 
 		block();
 
-		const float height = ImGui::GetTextLineHeightWithSpacing() * rows;
-		const float used = ImGui::GetCursorPosY() - top;
-
-		if (used < height)
-			ImGui::Dummy(ImVec2(0.0f, height - used));
+		ImGui::EndChild();
 	}
 
 	/* One label and its value, with the values lined up in a column. */
@@ -2359,7 +2392,14 @@ class GuiRtosPanel
 
 		const ImVec2 room = ImGui::GetContentRegionAvail();
 
-		ImGui::BeginChild("##rtosEventList", ImVec2(0.0f, std::max(room.y, ImGui::GetTextLineHeightWithSpacing() * 4.0f)), false,
+		/* What is left, and no more.
+		   A minimum of a few rows was asked for here, and asking for more than
+		   is left is what made the pane scroll: with the content one line
+		   taller than the window, the pane gained a scrollbar and everything in
+		   it moved up by that line the moment a block above changed. The list
+		   scrolls on its own, so a short list costs rows rather than a moving
+		   pane. */
+		ImGui::BeginChild("##rtosEventList", ImVec2(0.0f, std::max(room.y, 1.0f)), false,
 		                  ImGuiWindowFlags_NoBackground);
 
 		const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit;
@@ -2447,7 +2487,9 @@ class GuiRtosPanel
 
 		const ImVec2 room = ImGui::GetContentRegionAvail();
 
-		ImGui::BeginChild("##rtosSelectedTask", ImVec2(0.0f, std::max(room.y, ImGui::GetTextLineHeightWithSpacing() * 4.0f)), false,
+		/* What is left, and no more: see the note on the event list, which is
+		   the same block on the other side of the split. */
+		ImGui::BeginChild("##rtosSelectedTask", ImVec2(0.0f, std::max(room.y, 1.0f)), false,
 		                  ImGuiWindowFlags_NoBackground);
 
 		drawSelectedTask(model, snapshot, findings);
