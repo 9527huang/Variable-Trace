@@ -10,6 +10,7 @@
 #include "RtosSnapshot.hpp"
 #include "RtosEventHistory.hpp"
 #include "RtosRecording.hpp"
+#include "RtosTaskRoster.hpp"
 #include "RtosTimeline.hpp"
 
 /*
@@ -118,6 +119,19 @@ class RtosModel
 	void beginSession(const std::string& sessionId);
 
 	/*
+	 * Every task this session has seen, in the order they were first found.
+	 *
+	 * The table is built from this rather than from the newest round, because
+	 * a round can miss a task the kernel was still changing when it was read -
+	 * and a row that appears and disappears twice a second cannot be read.
+	 * A copy is handed out: the sampling thread adds to the roster while the
+	 * interface walks it.
+	 */
+	std::vector<RtosTaskRoster::Entry> rosterEntries() const;
+
+	size_t rosterSize() const;
+
+	/*
 	 * Writing a recording.
 	 *
 	 * The rounds are handed to the file from `publish`, which runs on the
@@ -197,6 +211,7 @@ class RtosModel
 
 	RtosTimeline timeline;
 	RtosEventHistory eventHistory;
+	RtosTaskRoster roster;
 
 	/* The recording, in whichever of its two roles is active. Read and written
 	   under `modelMutex` for its flags, and internally for the file itself. */

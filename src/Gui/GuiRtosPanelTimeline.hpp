@@ -51,8 +51,8 @@ class GuiRtosPanelTimeline
 	 * the legend says how many, because a missing lane reads as a task that did
 	 * nothing rather than as a filter.
 	 */
-	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors, const std::vector<uint32_t>& lanes,
-	                 GuiRtosSelection& selection)
+	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors,
+	                 const std::vector<RtosTaskRow>& rows, const std::vector<uint32_t>& lanes, GuiRtosSelection& selection)
 	{
 		const RtosTimeline& history = model.history();
 
@@ -97,13 +97,13 @@ class GuiRtosPanelTimeline
 		{
 			drawCounts(history, samples, true);
 
-			drawGrid(snapshot, lanes, samples, runs, plotCursors, selection);
+			drawGrid(snapshot, rows, lanes, samples, runs, plotCursors, selection);
 		}
 		else
 		{
 			drawCounts(history, samples, false);
 
-			drawGrid(snapshot, lanes, samples, {}, plotCursors, selection);
+			drawGrid(snapshot, rows, lanes, samples, {}, plotCursors, selection);
 		}
 	}
 
@@ -437,8 +437,32 @@ class GuiRtosPanelTimeline
 		}
 	}
 
-	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<uint32_t>& lanes, const std::vector<RtosTimeline::Sample>& samples,
-	                     const std::vector<RtosEventRing::Interval>& runs, const std::vector<double>& plotCursors, GuiRtosSelection& selection)
+	/*
+	 * The name of a lane's task.
+	 *
+	 * This round may not have read it - that is the whole reason a lane can be
+	 * there while its task is missing - and the roster's copy is what the row
+	 * above is labelled with, so the two agree.
+	 */
+	static std::string laneName(uint32_t address, const RtosSnapshot& snapshot, const std::vector<RtosTaskRow>& rows)
+	{
+		const RtosTask* task = snapshot.find(address);
+
+		if (task != nullptr && !task->name.empty())
+			return task->name;
+
+		for (const RtosTaskRow& row : rows)
+		{
+			if (row.tcbAddress == address)
+				return row.name;
+		}
+
+		return {};
+	}
+
+	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTaskRow>& rows, const std::vector<uint32_t>& lanes,
+	                     const std::vector<RtosTimeline::Sample>& samples, const std::vector<RtosEventRing::Interval>& runs,
+	                     const std::vector<double>& plotCursors, GuiRtosSelection& selection)
 	{
 		if (lanes.empty())
 		{
@@ -463,10 +487,10 @@ class GuiRtosPanelTimeline
 
 		for (const uint32_t address : lanes)
 		{
-			const RtosTask* task = snapshot.find(address);
+			const std::string name = laneName(address, snapshot, rows);
 
-			if (task != nullptr && !task->name.empty())
-				widestName = std::max(widestName, ImGui::CalcTextSize(task->name.c_str()).x * 0.85f);
+			if (!name.empty())
+				widestName = std::max(widestName, ImGui::CalcTextSize(name.c_str()).x * 0.85f);
 		}
 
 		const float nameWidth = std::clamp(widestName + 12.0f * scale, 110.0f * scale, 210.0f * scale);
@@ -609,13 +633,13 @@ class GuiRtosPanelTimeline
 			if (lane % 2 == 1)
 				draw->AddRectFilled(ImVec2(plotLeft, top), ImVec2(plotLeft + plotWidth, top + rowHeight), ImGui::GetColorU32(ImGuiCol_Text, 0.03f));
 
-			const RtosTask* task = snapshot.find(lanes[lane]);
+			const std::string name = laneName(lanes[lane], snapshot, rows);
 
-			if (task != nullptr && !task->name.empty())
+			if (!name.empty())
 			{
 				const float labelRoom = plotLeft - origin.x - 6.0f * scale;
-				const std::string label = fittedLabel(task->name, labelRoom);
-				const bool clipped = label != task->name;
+				const std::string label = fittedLabel(name, labelRoom);
+				const bool clipped = label != name;
 
 				draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.85f, ImVec2(origin.x + 4 * scale, top + rowHeight * 0.1f),
 				              ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
@@ -626,8 +650,8 @@ class GuiRtosPanelTimeline
 				if (clipped && ImGui::IsMouseHoveringRect(ImVec2(origin.x, top), ImVec2(plotLeft, top + rowHeight)))
 				{
 					ImGui::BeginTooltip();
-					ImGui::TextUnformatted(task->name.c_str());
-					ImGui::TextDisabled("0x%08X", task->tcbAddress);
+					ImGui::TextUnformatted(name.c_str());
+					ImGui::TextDisabled("0x%08X", lanes[lane]);
 					ImGui::EndTooltip();
 				}
 			}

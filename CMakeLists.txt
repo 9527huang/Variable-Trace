@@ -216,6 +216,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/GdbRtosLayout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosSyncEnumerator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosTableModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosTaskRoster.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosStackScanner.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosStackSweep.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosCpuLoad.cpp

@@ -25,6 +25,10 @@ void RtosModel::publish(std::shared_ptr<RtosSnapshot> snapshot)
 
 		counters.published++;
 		counters.lastPublishedAt = snapshot->captureFinishedAt;
+
+		/* The roster grows with the run, not with the round: a round that could
+		   not read a task must not take its row away. */
+		roster.observe(*snapshot);
 	}
 
 	/* Kept before the snapshot is handed to the interface, so that a reader
@@ -84,6 +88,11 @@ bool RtosModel::openRecording(const std::string& path, RtosRecording::Problem& p
 		nextSequence = 0;
 		playback = true;
 		playbackRound = 0;
+
+		/* A recording's roster is the whole file: a task that appears in one
+		   round of it gets a row for the whole of it, so scrubbing does not add
+		   and remove rows either. */
+		roster.clear();
 	}
 
 	const size_t rounds = recording.roundCount();
@@ -106,6 +115,12 @@ bool RtosModel::openRecording(const std::string& path, RtosRecording::Problem& p
 			continue;
 
 		timeline.add(*snapshot);
+
+		{
+			std::lock_guard<std::mutex> lock(modelMutex);
+			roster.observe(*snapshot);
+		}
+
 		last = std::move(snapshot);
 	}
 
@@ -138,6 +153,12 @@ void RtosModel::closePlayback()
 
 	timeline.clear();
 	eventHistory.clear();
+
+	{
+		std::lock_guard<std::mutex> lock(modelMutex);
+		roster.clear();
+	}
+
 	published.store(nullptr);
 }
 
@@ -207,6 +228,20 @@ RtosModel::Stats RtosModel::stats() const
 	return counters;
 }
 
+std::vector<RtosTaskRoster::Entry> RtosModel::rosterEntries() const
+{
+	std::lock_guard<std::mutex> lock(modelMutex);
+
+	return roster.entries();
+}
+
+size_t RtosModel::rosterSize() const
+{
+	std::lock_guard<std::mutex> lock(modelMutex);
+
+	return roster.size();
+}
+
 std::string RtosModel::sessionId() const
 {
 	std::lock_guard<std::mutex> lock(modelMutex);
@@ -234,6 +269,7 @@ void RtosModel::beginSession(const std::string& sessionId)
 
 	timeline.clear();
 	eventHistory.clear();
+	roster.clear();
 }
 
 std::shared_ptr<RtosSnapshot> RtosModel::fromEnumeration(const RtosTaskEnumeration& enumeration,

@@ -34,12 +34,17 @@ namespace
 	 * would then disagree with its own summary - which is the one kind of
 	 * disagreement a reader cannot see the cause of.
 	 */
-	bool stackIsBelowAlert(const RtosTask& task, uint32_t thresholdPercent)
+	bool stackIsBelowAlert(bool hasWatermark, uint32_t stackFreeBytes, uint32_t stackWatermarkStackBytes, uint32_t thresholdPercent)
 	{
-		if (thresholdPercent == 0 || !task.hasStackWatermark || task.stackWatermarkStackBytes == 0)
+		if (thresholdPercent == 0 || !hasWatermark || stackWatermarkStackBytes == 0)
 			return false;
 
-		return (static_cast<uint64_t>(task.stackFreeBytes) * 100u) / task.stackWatermarkStackBytes < thresholdPercent;
+		return (static_cast<uint64_t>(stackFreeBytes) * 100u) / stackWatermarkStackBytes < thresholdPercent;
+	}
+
+	bool stackIsBelowAlert(const RtosTask& task, uint32_t thresholdPercent)
+	{
+		return stackIsBelowAlert(task.hasStackWatermark, task.stackFreeBytes, task.stackWatermarkStackBytes, thresholdPercent);
 	}
 
 	int compareNames(const std::string& left, const std::string& right)
@@ -75,35 +80,66 @@ namespace
 	 * same kind of condition: a filter narrows what the mode kept, and a row the
 	 * mode drops was never part of the answer.
 	 */
-	bool keepsForMode(const RtosTask& task, const RtosTaskTableQuery& query, const std::vector<uint32_t>& namedByFindings)
+	bool keepsForMode(const RtosTaskRow& row, const RtosTaskTableQuery& query, const std::vector<uint32_t>& namedByFindings)
 	{
 		switch (query.mode)
 		{
 			case RtosTaskFilterMode::Blocked:
-				return task.state == RtosTaskState::Blocked;
+				return row.hasReading && row.state == RtosTaskState::Blocked;
 
 			case RtosTaskFilterMode::HighShare:
 				/* A task with no share is not a small one: nothing was measured
 				   for it, and a column of them under a heading about the
 				   busiest tasks would be the answer to a different question. */
-				return task.hasCpuShare && task.cpuSharePercent >= query.shareFloorPercent;
+				return row.hasReading && row.hasCpuShare && row.cpuSharePercent >= query.shareFloorPercent;
 
 			case RtosTaskFilterMode::Anomalies:
-				if (stackIsBelowAlert(task, query.stackAlertFreePercent))
+				/* A row no round has read yet cannot be called healthy or
+				   otherwise: this question is about the round, and the round
+				   did not see it. */
+				if (!row.hasReading)
+					return false;
+
+				if (row.stackIsLow)
 					return true;
 
-				if (priorityIsInherited(task.hasPriority, task.hasBasePriority, task.rawPriority, task.basePriority))
+				if (priorityIsInherited(row.hasPriority, row.hasBasePriority, row.priority, row.basePriority))
 					return true;
 
 				/* The findings are the only source for a task that is ready and
 				   being passed over: nothing in the round in front of you says
 				   so, and a deadlock ring is a shape rather than a field. */
-				return std::find(namedByFindings.begin(), namedByFindings.end(), task.tcbAddress) != namedByFindings.end();
+				return std::find(namedByFindings.begin(), namedByFindings.end(), row.tcbAddress) != namedByFindings.end();
 
 			case RtosTaskFilterMode::All:
 			default:
 				return true;
 		}
+	}
+
+	/* The filters that narrow inside the mode, applied to a row for the same
+	   reason: a row without a reading can only be found by its name. */
+	bool keepsForFilters(const RtosTaskRow& row, const RtosTaskTableQuery& query)
+	{
+		if (row.hasReading && !matchesState(row.state, query.states))
+			return false;
+
+		if (!row.hasReading && !query.states.empty())
+			return false;
+
+		/* A task with no priority does not pass a floor, and that is not the
+		   same as failing one: nothing about it was read, so there is nothing
+		   to compare against. */
+		if (query.hasPriorityFloor && (!row.hasReading || !row.hasPriority || row.priorityRank < static_cast<int64_t>(query.priorityFloor)))
+			return false;
+
+		if (!containsIgnoringCase(row.name, query.nameSearch))
+			return false;
+
+		if (query.onlyStackAlerts && (!row.hasReading || !row.stackIsLow))
+			return false;
+
+		return true;
 	}
 
 	int signOf(int64_t left, int64_t right)
@@ -127,6 +163,11 @@ namespace
 	 */
 	bool hasValueFor(const RtosTaskRow& row, RtosTaskColumn column)
 	{
+		/* A row the round did not read has no value in any column but the two
+		   that are identity: its name and the address it is known by. */
+		if (!row.hasReading)
+			return column == RtosTaskColumn::Name || column == RtosTaskColumn::Address;
+
 		switch (column)
 		{
 			case RtosTaskColumn::Name:
@@ -201,60 +242,79 @@ namespace
 std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, const RtosTaskTableQuery& query,
                                                   const std::vector<uint32_t>& namedByFindings)
 {
+	/* The same table, with a roster of one round: what an API client asking
+	   "what is in this round" expects. The view passes the session's roster
+	   instead, which is what keeps its rows from coming and going. */
+	RtosTaskRoster round;
+
+	round.observe(snapshot);
+
+	return taskRows(round.entries(), snapshot, query, namedByFindings);
+}
+
+std::vector<RtosTaskRow> RtosTableModel::taskRows(const std::vector<RtosTaskRoster::Entry>& roster, const RtosSnapshot& snapshot,
+                                                  const RtosTaskTableQuery& query, const std::vector<uint32_t>& namedByFindings)
+{
 	std::vector<RtosTaskRow> rows;
 
-	rows.reserve(snapshot.tasks.size());
+	rows.reserve(roster.size());
 
-	for (const RtosTask& task : snapshot.tasks)
+	for (const RtosTaskRoster::Entry& entry : roster)
 	{
-		if (!keepsForMode(task, query, namedByFindings))
-			continue;
-
-		if (!matchesState(task.state, query.states))
-			continue;
-
-		/* A task with no priority does not pass a floor, and that is not the
-		   same as failing one: nothing about it was read, so there is nothing
-		   to compare against. */
-		if (query.hasPriorityFloor && (!task.hasPriority || task.priorityRank < query.priorityFloor))
-			continue;
-
-		if (!containsIgnoringCase(task.name, query.nameSearch))
-			continue;
-
-		if (query.onlyStackAlerts && !stackIsBelowAlert(task, query.stackAlertFreePercent))
-			continue;
+		const RtosTask* task = snapshot.find(entry.tcbAddress);
 
 		RtosTaskRow row;
 
-		row.tcbAddress = task.tcbAddress;
-		row.name = task.name;
-		row.state = task.state;
-		/* A ready list states its own priority - it is one priority by
-		   construction - so this needs no control block to be sound. See
-		   `RtosTaskEnumerator::ListSource`. */
-		row.hasPriority = task.hasPriority;
-		row.priority = task.rawPriority;
-		row.basePriority = task.basePriority;
-		row.hasBasePriority = task.hasBasePriority;
-		row.priorityRank = task.priorityRank;
-		row.hasStack = task.hasStack;
-		row.stackBytes = (task.hasStack && task.stackTop > task.stackBase) ? task.stackTop - task.stackBase : 0;
-		row.hasCpuShare = task.hasCpuShare;
-		row.cpuSharePercent = task.cpuSharePercent;
-		row.hasStackWatermark = task.hasStackWatermark;
-		row.stackFreeBytes = task.stackFreeBytes;
-		row.stackWatermarkStackBytes = task.stackWatermarkStackBytes;
-		row.stackWatermarkAgeSeconds = task.stackWatermarkAgeSeconds;
-		row.stackWatermarkReachedCap = task.stackWatermarkReachedCap;
+		row.tcbAddress = entry.tcbAddress;
+		row.name = entry.name;
 
-		row.waitingOn = task.waitingOn;
-		row.sourceList = task.sourceList;
+		/* The base priority is carried even when the round could not read the
+		   task: it was set when the task was created, and it is what the lanes
+		   are ordered by - a lane that moved because one round missed its task
+		   would be worse than the gap it was reporting. */
+		row.basePriority = entry.basePriority;
+		row.hasBasePriority = entry.hasBasePriority;
 
-		/* Last, because it reads two of the fields above: computing it while
-		   the row was being filled in would have compared zero against the
-		   threshold and marked every row with a reading. */
-		row.stackIsLow = stackIsBelowAlert(task, query.stackAlertFreePercent);
+		if (task == nullptr)
+		{
+			row.hasReading = false;
+			row.sinceLastReadSeconds = snapshot.captureStartedAt > entry.lastSeenAt ? snapshot.captureStartedAt - entry.lastSeenAt : 0.0;
+			row.sourceList = entry.sourceList;
+		}
+		else
+		{
+			row.state = task->state;
+			/* A ready list states its own priority - it is one priority by
+			   construction - so this needs no control block to be sound. See
+			   `RtosTaskEnumerator::ListSource`. */
+			row.hasPriority = task->hasPriority;
+			row.priority = task->rawPriority;
+			row.basePriority = task->basePriority;
+			row.hasBasePriority = task->hasBasePriority;
+			row.priorityRank = task->priorityRank;
+			row.hasStack = task->hasStack;
+			row.stackBytes = (task->hasStack && task->stackTop > task->stackBase) ? task->stackTop - task->stackBase : 0;
+			row.hasCpuShare = task->hasCpuShare;
+			row.cpuSharePercent = task->cpuSharePercent;
+			row.hasStackWatermark = task->hasStackWatermark;
+			row.stackFreeBytes = task->stackFreeBytes;
+			row.stackWatermarkStackBytes = task->stackWatermarkStackBytes;
+			row.stackWatermarkAgeSeconds = task->stackWatermarkAgeSeconds;
+			row.stackWatermarkReachedCap = task->stackWatermarkReachedCap;
+			row.waitingOn = task->waitingOn;
+			row.sourceList = task->sourceList;
+
+			/* Last, because it reads two of the fields above: computing it
+			   while the row was being filled in would have compared zero
+			   against the threshold and marked every row with a reading. */
+			row.stackIsLow = stackIsBelowAlert(*task, query.stackAlertFreePercent);
+		}
+
+		if (!keepsForMode(row, query, namedByFindings))
+			continue;
+
+		if (!keepsForFilters(row, query))
+			continue;
 
 		rows.push_back(std::move(row));
 	}
@@ -263,9 +323,17 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 	 * The problem order: what a reader would fix first, first.
 	 *
 	 * Stack alerts, then tasks that are blocked with something to wait for,
-	 * then priority inheritance, then whoever is using the processor most, and
-	 * the name last as a tie-break. Stable, so equal rows keep the order the
-	 * round found them in rather than swapping on every redraw.
+	 * then priority inheritance, then rows with no reading of this round at
+	 * all.
+	 *
+	 * Inside a rank the order is the base priority and then the name - not the
+	 * share of the processor. The share is a measurement over a sliding window:
+	 * it moves on every round, so ranking by it put the same rows in a
+	 * different order twice a second, and the table appeared to shuffle itself
+	 * while the reader was halfway down it. Base priority changes only when
+	 * someone changes it, and ordering by it makes the table agree with the
+	 * lanes, which are ordered the same way. "Which of these is busiest" is a
+	 * column's question, and the column still answers it when clicked.
 	 *
 	 * The blocked rank is not a list of the anomalies - `Anomalies` does not
 	 * keep every task waiting on an object, because in a healthy kernel that is
@@ -284,6 +352,12 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 		if (priorityIsInherited(row.hasPriority, row.hasBasePriority, row.priority, row.basePriority))
 			return 2;
 
+		/* "Not read this round" is not a problem and not a clean bill: it is
+		   the one thing in the table the reader cannot judge for themselves, so
+		   it goes last, together and out of the way. */
+		if (!row.hasReading)
+			return 4;
+
 		return 3;
 	};
 
@@ -292,8 +366,14 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const RtosSnapshot& snapshot, 
 		if (problemRank(left) != problemRank(right))
 			return problemRank(left) < problemRank(right);
 
-		if (left.hasCpuShare && right.hasCpuShare && left.cpuSharePercent != right.cpuSharePercent)
-			return left.cpuSharePercent > right.cpuSharePercent;
+		/* A row whose base priority was never read goes after the ones that
+		   have one, in both directions, for the same reason a missing value
+		   goes last in a column sort: it is not a small priority. */
+		if (left.hasBasePriority != right.hasBasePriority)
+			return left.hasBasePriority;
+
+		if (left.hasBasePriority && left.basePriority != right.basePriority)
+			return left.basePriority > right.basePriority;
 
 		return left.name < right.name;
 	};

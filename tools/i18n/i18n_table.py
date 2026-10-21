@@ -787,7 +787,7 @@ EXTRA = {
     "right now": "就是现在",
     "%.2f s ago": "%.2f 秒前",
     "not in the last %.0f s": "最近 %.0f 秒内没跑过",
-    "sorted by problem: stack alerts, blocked, inherited, busiest first": "按问题排序: 栈告警、阻塞、继承、最忙的在前",
+    "sorted by problem: stack alerts, blocked, inherited, then by base priority": "按问题排序: 栈告警、阻塞、继承，然后按基础优先级",
     "sorted by the column in bold": "按加粗那一列排序",
     "back to problem order": "回到问题排序",
     "not read is not the same as idle": "未采样不等于没在跑",
@@ -844,6 +844,10 @@ EXTRA = {
     # Three recorder messages that used to be built by gluing translated and
     # untranslated pieces together. One format string each, so the order can move
     # between languages and nothing is left in English.
+    # 这一轮没读到的任务：行留着，整行画斜杠。
+    "This round did not read this task, so every column is a slash. The row stays: the task is there, the reading is not. Its last reading was %.1f s before this round.":
+        "这一轮没有读到这个任务，所以每一列都是斜杠。行留着:任务还在，读数没有。上一次读到它是在 %.1f 秒之前。",
+
     # 离线记录：录一段、后面不接探针也能看。判据与文件格式在 RtosRecording。
     "record": "录制",
     "stop recording": "停止录制",

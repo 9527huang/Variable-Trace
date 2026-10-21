@@ -111,6 +111,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/GdbRtosLayout.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosSyncEnumerator.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosTableModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosTaskRoster.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosStackScanner.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosStackSweep.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosCpuLoad.cpp
@@ -209,6 +210,7 @@ add_executable(${EXECUTABLE} main.cpp
     RtosEventHistoryTest.cpp
     RtosTimelineTest.cpp
     RtosRecordingTest.cpp
+    RtosTaskRosterTest.cpp
     ${SOURCES})
 
 add_compile_options(-Wall -Wextra -Wpedantic)

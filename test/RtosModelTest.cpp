@@ -553,3 +553,31 @@ TEST_F(RtosModelRecordingTest, ANewSessionEndsTheRecording)
 	EXPECT_FALSE(model.isRecording());
 	EXPECT_EQ(model.recordingStats().rounds, 1u);
 }
+
+TEST(RtosModel, TheRosterGrowsWithTheRunAndNotWithTheRound)
+{
+	RtosModel model;
+
+	model.beginSession("session-1");
+
+	/* Three rounds, the middle one short: a list walked while the kernel was
+	   moving under it. */
+	publishRound(model, 1.0, 3);
+	publishRound(model, 1.5, 2);
+	publishRound(model, 2.0, 3);
+
+	/* Three tasks were seen, so three rows are available to the table, although
+	   no single round held all three. */
+	EXPECT_EQ(model.rosterSize(), 3u);
+
+	const std::vector<RtosTaskRoster::Entry> entries = model.rosterEntries();
+
+	ASSERT_EQ(entries.size(), 3u);
+	EXPECT_EQ(entries[0].tcbAddress, 0x20008000u);
+	EXPECT_EQ(entries[2].tcbAddress, 0x20008000u + 2 * 0x60u);
+
+	/* A new session is a new set of addresses as far as the view is concerned. */
+	model.beginSession("session-2");
+
+	EXPECT_EQ(model.rosterSize(), 0u);
+}

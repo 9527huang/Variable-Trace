@@ -138,7 +138,7 @@ class GuiRtosPanel
 		 */
 		drawDiagnostics(findings);
 
-		const std::vector<RtosTaskRow> rows = drawFilters(snapshot, addressesNamedBy(findings));
+		const std::vector<RtosTaskRow> rows = drawFilters(*model, snapshot, addressesNamedBy(findings));
 
 		/*
 		 * One line, three things it can say, and never more than one line.
@@ -152,7 +152,7 @@ class GuiRtosPanel
 		if (rows.empty())
 			GuiHelper::drawSecondaryText("%s", emptyWords(*snapshot));
 		else if (query.problemFirst)
-			GuiHelper::drawSecondaryText("%s", I18n::tr("sorted by problem: stack alerts, blocked, inherited, busiest first"));
+			GuiHelper::drawSecondaryText("%s", I18n::tr("sorted by problem: stack alerts, blocked, inherited, then by base priority"));
 		else
 		{
 			GuiHelper::drawSecondaryText("%s", I18n::tr("sorted by the column in bold"));
@@ -217,7 +217,7 @@ class GuiRtosPanel
 		   strip has to hold the tasks the table kept, or the two halves of the
 		   view would be answering different questions. */
 		const std::vector<RtosDiagnostics::Finding>& findings = findingsFor(*model, snapshot);
-		const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(*snapshot, query, addressesNamedBy(findings));
+		const std::vector<RtosTaskRow> rows = currentRows(*model, *snapshot, addressesNamedBy(findings));
 
 		/* Which order the rows go in: the stable one, or the one the reader
 		   sorted the table to. The stable order exists because a lane that
@@ -226,7 +226,7 @@ class GuiRtosPanel
 		const std::vector<uint32_t> lanes = GuiRtosPanelTimeline::getFollowTableOrder() ? RtosTableModel::addressesOf(rows)
 		                                                                               : RtosTableModel::laneOrderOf(rows);
 
-		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, lanes, selection());
+		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, rows, lanes, selection());
 
 		/*
 		 * In a recording the strip is also the scrubber.
@@ -1386,7 +1386,23 @@ class GuiRtosPanel
 	 * ask the same question a second time - and so that the count on the last
 	 * row and the rows under it cannot disagree.
 	 */
-	static std::vector<RtosTaskRow> drawFilters(const std::shared_ptr<const RtosSnapshot>& snapshot, const std::vector<uint32_t>& named)
+	/*
+	 * The rows of the table: one per task the session has seen.
+	 *
+	 * Not one per task this round holds. A round of fourteen followed by one of
+	 * eleven used to take three rows away and put them back half a second
+	 * later, and the reader was left re-finding their place. What the round
+	 * says about a task it did read is the row's content; what it says about
+	 * one it did not is nothing, and that is drawn as a mark rather than by
+	 * deleting the row.
+	 */
+	static std::vector<RtosTaskRow> currentRows(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<uint32_t>& named)
+	{
+		return RtosTableModel::taskRows(model.rosterEntries(), snapshot, query, named);
+	}
+
+	static std::vector<RtosTaskRow> drawFilters(const RtosModel& model, const std::shared_ptr<const RtosSnapshot>& snapshot,
+	                                            const std::vector<uint32_t>& named)
 	{
 		const float scale = GuiHelper::contentScale;
 
@@ -1439,10 +1455,10 @@ class GuiRtosPanel
 		/* The count goes to the far end of the row, away from the threshold
 		   beside it: written close after "priority >=" it read as part of the
 		   condition. */
-		const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(*snapshot, query, named);
+		const std::vector<RtosTaskRow> rows = currentRows(model, *snapshot, named);
 
 		char shown[64] = {};
-		std::snprintf(shown, sizeof(shown), I18n::tr("%d of %d shown"), static_cast<int>(rows.size()), static_cast<int>(snapshot->taskCount()));
+		std::snprintf(shown, sizeof(shown), I18n::tr("%d of %d shown"), static_cast<int>(rows.size()), static_cast<int>(model.rosterSize()));
 
 		const float shownWidth = ImGui::CalcTextSize(shown).x;
 
@@ -1639,6 +1655,45 @@ class GuiRtosPanel
 	 * and asking again would be the one place where the two could disagree
 	 * about what is on screen.
 	 */
+	/*
+	 * A task the newest round did not read.
+	 *
+	 * The name and the address are identity - the session knows them - so they
+	 * are shown; every column that would hold a reading gets a slash. The
+	 * tooltip says how long ago the task was last read, because "not read" on
+	 * its own leaves the reader wondering whether the task is gone.
+	 */
+	static void drawMissingRow(const RtosTaskRow& row)
+	{
+		const bool selected = row.tcbAddress == selection().task;
+
+		if (ImGui::Selectable(row.name.empty() ? missingRow() : row.name.c_str(), selected,
+		                      ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap))
+			selection().task = selected ? 0u : row.tcbAddress;
+
+		if (ImGui::IsItemHovered())
+		{
+			selection().hoveredTask = row.tcbAddress;
+
+			ImGui::BeginTooltip();
+			ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
+			ImGui::Text(I18n::tr("This round did not read this task, so every column is a slash. The row stays: the task is there, the reading is not. Its last reading was %.1f s before this round."),
+			            row.sinceLastReadSeconds);
+			ImGui::PopTextWrapPos();
+			ImGui::EndTooltip();
+		}
+
+		ImGui::TableNextColumn();
+		ImGui::Text("0x%08X", row.tcbAddress);
+
+		/* Priority, state, stack size, stack used, share, waiting object. */
+		for (int column = 0; column < 6; column++)
+		{
+			ImGui::TableNextColumn();
+			ImGui::TextUnformatted(missingRow());
+		}
+	}
+
 	static void drawTable(const std::shared_ptr<const RtosSnapshot>& snapshot, const std::vector<RtosTaskRow>& rows)
 	{
 		/*
@@ -1771,6 +1826,17 @@ class GuiRtosPanel
 			ImGui::TableNextRow();
 
 			ImGui::TableNextColumn();
+
+			if (!row.hasReading)
+			{
+				/* Dimmed, so that a row of slashes does not compete with the
+				   readings above it for the eye. */
+				ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.62f);
+				drawMissingRow(row);
+				ImGui::PopStyleVar();
+
+				continue;
+			}
 
 			/*
 			 * The name doubles as the row's handle.
@@ -1956,6 +2022,20 @@ class GuiRtosPanel
 			if (column == RtosTaskColumn::CpuLoad && ImGui::IsItemHovered())
 				drawCpuColumnTooltip(*snapshot);
 		}
+	}
+
+	/*
+	 * The mark for a whole row this round did not read.
+	 *
+	 * A slash, and deliberately not the dash above. A dash is this round's
+	 * answer about one field - it read the task and has nothing for that
+	 * column; a slash is this round having no answer about the task at all.
+	 * The row stays either way, because a task is not gone just because one
+	 * walk of a list came back short.
+	 */
+	static const char* missingRow()
+	{
+		return "/";
 	}
 
 	static const char* unknown()

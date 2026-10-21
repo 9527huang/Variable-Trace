@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "RtosSnapshot.hpp"
+#include "RtosTaskRoster.hpp"
 
 /*
  * What the task table shows, and in what order.
@@ -133,6 +134,22 @@ struct RtosTaskRow
 	std::string name;
 	RtosTaskState state = RtosTaskState::Unknown;
 
+	/*
+	 * Whether the round this table was built from read this task at all.
+	 *
+	 * False is not "every field happened to be missing": it is a task the
+	 * session has seen and the newest round cannot. The row stays - the set of
+	 * rows is the set of tasks the session knows, not the set one round
+	 * happened to catch - and everything in it is shown as missing. Deleting
+	 * the row instead would say the task had gone, which is a stronger claim
+	 * than a short walk of a list supports.
+	 */
+	bool hasReading = true;
+
+	/* How long before this round the task was last read, in seconds. Only
+	   meaningful when `hasReading` is false. */
+	double sinceLastReadSeconds = 0.0;
+
 	bool hasPriority = false;
 	uint32_t priority = 0;
 
@@ -250,6 +267,18 @@ class RtosTableModel
 	 */
 	static std::vector<RtosTaskRow> taskRows(const RtosSnapshot& snapshot, const RtosTaskTableQuery& query,
 	                                         const std::vector<uint32_t>& namedByFindings = {});
+
+	/*
+	 * The table as the view shows it: a row for every task the session has
+	 * seen, filled from the round where the round read it and marked where it
+	 * did not.
+	 *
+	 * The single-round overload above builds the same thing from a roster of
+	 * one round, which is what an API client asking "what is in this round"
+	 * wants; the view wants the session.
+	 */
+	static std::vector<RtosTaskRow> taskRows(const std::vector<RtosTaskRoster::Entry>& roster, const RtosSnapshot& snapshot,
+	                                         const RtosTaskTableQuery& query, const std::vector<uint32_t>& namedByFindings = {});
 
 	/*
 	 * The task numbers a row set holds, in order.

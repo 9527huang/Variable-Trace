@@ -81,11 +81,18 @@ TEST(RtosTableModel, ReturnsEveryTaskWhenNothingIsAskedFor)
 	EXPECT_EQ(rows.size(), snapshot.tasks.size());
 }
 
-TEST(RtosTableModel, SortsByNameByDefault)
+TEST(RtosTableModel, SortsByNameWhenAskedTo)
 {
 	const RtosSnapshot snapshot = makeSnapshot();
 
-	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, {})), (std::vector<std::string>{"IDLE", "deep", "led", "prod", "work"}));
+	/* The default query is the problem order - this is the column, asked for on
+	   purpose. It used to pass by accident: every row had the same problem
+	   rank and the same share, so the tie-break put them in name order anyway. */
+	RtosTaskTableQuery query;
+	query.problemFirst = false;
+	query.sortColumn = RtosTaskColumn::Name;
+
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"IDLE", "deep", "led", "prod", "work"}));
 }
 
 TEST(RtosTableModel, SortsByAnyColumnInEitherDirection)
@@ -117,7 +124,7 @@ TEST(RtosTableModel, FiltersByState)
 	RtosTaskTableQuery query;
 	query.states = {RtosTaskState::Blocked};
 
-	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"deep", "prod"}));
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"prod", "deep"}));
 }
 
 TEST(RtosTableModel, FiltersByPriorityFloor)
@@ -128,7 +135,7 @@ TEST(RtosTableModel, FiltersByPriorityFloor)
 	query.hasPriorityFloor = true;
 	query.priorityFloor = 2;
 
-	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"led", "prod", "work"}));
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"prod", "led", "work"}));
 }
 
 TEST(RtosTableModel, ATaskWithNoPriorityDoesNotPassAFloor)
@@ -327,6 +334,7 @@ TEST(RtosTableModel, TheCpuColumnKeepsRowsWithoutAShareLast)
 	snapshot.tasks[4].cpuSharePercent = 62.5;
 
 	RtosTaskTableQuery query;
+	query.problemFirst = false;
 	query.sortColumn = RtosTaskColumn::CpuLoad;
 	query.descending = true;
 
@@ -556,7 +564,7 @@ TEST(RtosTableModel, OnlyBlockedKeepsTheTasksThatAreWaiting)
 	RtosTaskTableQuery query;
 	query.mode = RtosTaskFilterMode::Blocked;
 
-	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"deep", "prod"}));
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"prod", "deep"}));
 }
 
 TEST(RtosTableModel, ProblemsOnlyKeepsStacksInheritanceAndWhateverTheFindingsName)
@@ -617,7 +625,7 @@ TEST(RtosTableModel, HighShareKeepsTheRowsAtOrAboveTheFloorAndNothingUnmeasured)
 
 	/* At the floor counts: a reader who typed ten means ten and above. The two
 	   tasks with no share at all are not small, they are unmeasured. */
-	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"led", "prod"}));
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(snapshot, query)), (std::vector<std::string>{"prod", "led"}));
 
 	/* Zero is the switch: every task that has a share, however little. */
 	query.shareFloorPercent = 0.0;
@@ -657,4 +665,145 @@ TEST(RtosTableModel, TheLanesAreOnlyTheRowsTheFilterKept)
 	ASSERT_EQ(lanes.size(), 2u);
 	EXPECT_EQ(lanes[0], 0x20000300u);
 	EXPECT_EQ(lanes[1], 0x20000500u);
+}
+
+namespace
+{
+	/* A roster built the way the model builds one: every round observed, in
+	   order, never removing. */
+	RtosTaskRoster rosterOf(std::initializer_list<RtosSnapshot> rounds)
+	{
+		RtosTaskRoster roster;
+
+		for (const RtosSnapshot& round : rounds)
+			roster.observe(round);
+
+		return roster;
+	}
+
+	/* The second round of the fixture, with `prod` missing: a walk of the delay
+	   list that came back short. */
+	RtosSnapshot makeSnapshotMissing(const std::string& name)
+	{
+		RtosSnapshot snapshot = makeSnapshot();
+
+		snapshot.tasks.erase(std::remove_if(snapshot.tasks.begin(), snapshot.tasks.end(), [&](const RtosTask& task)
+		{
+			return task.name == name;
+		}), snapshot.tasks.end());
+
+		snapshot.captureStartedAt = 3.0;
+
+		return snapshot;
+	}
+}  // namespace
+
+TEST(RtosTableModel, ATaskTheRoundDidNotReadKeepsItsRowAndCarriesSlashes)
+{
+	const RtosSnapshot first = makeSnapshot();
+	const RtosSnapshot second = makeSnapshotMissing("prod");
+
+	const RtosTaskRoster roster = rosterOf({first, second});
+
+	const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(roster.entries(), second, {});
+
+	/* Five tasks were seen and five rows are there, although this round holds
+	   four: the row set is the session's, not the round's. */
+	ASSERT_EQ(rows.size(), 5u);
+
+	const RtosTaskRow* prod = findRow(rows, "prod");
+
+	ASSERT_NE(prod, nullptr);
+	EXPECT_FALSE(prod->hasReading);
+
+	/* Nothing about it was read this round, so nothing in it claims to be. */
+	EXPECT_FALSE(prod->hasPriority);
+	EXPECT_FALSE(prod->hasStack);
+	EXPECT_FALSE(prod->hasCpuShare);
+	EXPECT_TRUE(prod->waitingOn.empty());
+
+	/* The identity it is known by is still there. */
+	EXPECT_EQ(prod->tcbAddress, 0x20000300u);
+	EXPECT_DOUBLE_EQ(prod->sinceLastReadSeconds, 3.0);
+
+	/* And the four the round did read are unchanged. */
+	EXPECT_TRUE(findRow(rows, "led")->hasReading);
+	EXPECT_EQ(findRow(rows, "led")->priority, 2u);
+}
+
+TEST(RtosTableModel, AnUnreadRowAnswersNoneOfTheNarrowQuestions)
+{
+	const RtosSnapshot first = makeSnapshot();
+	const RtosSnapshot second = makeSnapshotMissing("prod");
+
+	const RtosTaskRoster roster = rosterOf({first, second});
+
+	RtosTaskTableQuery query;
+	query.mode = RtosTaskFilterMode::Blocked;
+
+	/* `deep` is blocked in this round; `prod` was blocked in a round that is
+	   gone. A question about what is blocked now has one answer. */
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(roster.entries(), second, query)), (std::vector<std::string>{"deep"}));
+
+	query.mode = RtosTaskFilterMode::Anomalies;
+
+	/* Nor is it an anomaly: this round cannot say either way. */
+	EXPECT_TRUE(RtosTableModel::taskRows(roster.entries(), second, query).empty());
+
+	/* It can still be found by name, which is the one thing identity answers. */
+	query.mode = RtosTaskFilterMode::All;
+	query.nameSearch = "pro";
+
+	EXPECT_EQ(namesOf(RtosTableModel::taskRows(roster.entries(), second, query)), (std::vector<std::string>{"prod"}));
+}
+
+TEST(RtosTableModel, AnUnreadRowIsPutLastInTheProblemOrder)
+{
+	const RtosSnapshot first = makeSnapshot();
+	const RtosSnapshot second = makeSnapshotMissing("prod");
+
+	const RtosTaskRoster roster = rosterOf({first, second});
+
+	const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(roster.entries(), second, {});
+
+	/* `prod` is blocked with a waiting object in the first round, which would
+	   put it second - but this round has nothing on it, and a row nobody can
+	   judge belongs at the bottom rather than in the middle. */
+	ASSERT_EQ(rows.size(), 5u);
+	EXPECT_EQ(rows.back().name, "prod");
+}
+
+TEST(RtosTableModel, AnUnreadRowDoesNotTakePartInColumnSorting)
+{
+	const RtosSnapshot first = makeSnapshot();
+	const RtosSnapshot second = makeSnapshotMissing("prod");
+
+	const RtosTaskRoster roster = rosterOf({first, second});
+
+	RtosTaskTableQuery query;
+	query.problemFirst = false;
+	query.sortColumn = RtosTaskColumn::Priority;
+	query.descending = true;
+
+	const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(roster.entries(), second, query);
+
+	/* Whichever way the column runs, the row with no value for it is at the end
+	   - a gap is not a small number. */
+	ASSERT_EQ(rows.size(), 5u);
+	EXPECT_FALSE(rows.back().hasReading);
+	EXPECT_EQ(rows.back().name, "prod");
+}
+
+TEST(RtosTableModel, OneRoundOnItsOwnStillFillsOneRowPerTask)
+{
+	/* The single-round overload is what an API client gets: it never marks a
+	   row, because it never looks at a roster wider than the round. */
+	const RtosSnapshot snapshot = makeSnapshot();
+
+	const std::vector<RtosTaskRow> rows = RtosTableModel::taskRows(snapshot, {});
+
+	ASSERT_EQ(rows.size(), 5u);
+
+	for (const RtosTaskRow& row : rows)
+		EXPECT_TRUE(row.hasReading);
 }
