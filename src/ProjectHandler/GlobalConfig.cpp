@@ -134,6 +134,7 @@ bool GlobalConfig::load()
 			if (!view.contains("filterMode") && view.value("showOnlyBlocked", false))
 				settings.rtosView.filterMode = static_cast<uint32_t>(RtosTaskFilterMode::Blocked);
 
+			settings.rtosView.selectedTaskOpen = view.value("selectedTaskOpen", settings.rtosView.selectedTaskOpen);
 			settings.rtosView.timelineWindowSeconds = view.value("timelineWindowSeconds", settings.rtosView.timelineWindowSeconds);
 			settings.rtosView.followPlotCursors = view.value("followPlotCursors", settings.rtosView.followPlotCursors);
 			settings.rtosView.timelineFollowsTable = view.value("timelineFollowsTable", settings.rtosView.timelineFollowsTable);
@@ -207,6 +208,7 @@ bool GlobalConfig::save()
 	                  {"onlyStackAlerts", settings.rtosView.onlyStackAlerts},
 	                  {"filterMode", settings.rtosView.filterMode},
 	                  {"shareFloorPercent", settings.rtosView.shareFloorPercent},
+	                  {"selectedTaskOpen", settings.rtosView.selectedTaskOpen},
 	                  {"timelineWindowSeconds", settings.rtosView.timelineWindowSeconds},
 	                  {"followPlotCursors", settings.rtosView.followPlotCursors},
 	                  {"timelineFollowsTable", settings.rtosView.timelineFollowsTable}}}};

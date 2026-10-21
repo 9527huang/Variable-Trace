@@ -65,6 +65,7 @@ class GuiRtosPanel
 			query.mode = filterModeFrom(view.filterMode);
 			query.shareFloorPercent = view.shareFloorPercent;
 
+			selectedTaskOpen = view.selectedTaskOpen;
 			GuiRtosPanelTimeline::setWindowSeconds(view.timelineWindowSeconds);
 			GuiRtosPanelTimeline::setFollowPlotCursors(view.followPlotCursors);
 			GuiRtosPanelTimeline::setFollowTableOrder(view.timelineFollowsTable);
@@ -80,6 +81,7 @@ class GuiRtosPanel
 		view.onlyStackAlerts = query.onlyStackAlerts;
 		view.filterMode = static_cast<uint32_t>(query.mode);
 		view.shareFloorPercent = query.shareFloorPercent;
+		view.selectedTaskOpen = selectedTaskOpen;
 		view.timelineWindowSeconds = GuiRtosPanelTimeline::getWindowSeconds();
 		view.followPlotCursors = GuiRtosPanelTimeline::getFollowPlotCursors();
 		view.timelineFollowsTable = GuiRtosPanelTimeline::getFollowTableOrder();
@@ -168,7 +170,32 @@ class GuiRtosPanel
 			}
 		}
 
-		drawTable(snapshot, rows);
+		/*
+		 * The detail sits under the table, on the side of "now".
+		 *
+		 * It is a block about one task as it is in this round, which is what
+		 * the table is about; the right hand half is about time and is read
+		 * with the timeline. The space it takes comes off the table, which is
+		 * the one block here that can be given less - and folding it gives the
+		 * table all of it back.
+		 */
+		const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+		const float room = ImGui::GetContentRegionAvail().y;
+		const float folded = lineHeight + 4.0f * GuiHelper::contentScale;
+		const float reserve = selectedTaskOpen ? std::clamp(room * 0.34f, folded, 12.0f * lineHeight) : folded;
+		/* The table takes what its rows need, not what is left.
+		 *
+		 * Filling the pane left a column of empty table under the last row and
+		 * pushed the detail block to the bottom of the window, half a pane away
+		 * from the row it was describing. Sized to its rows, the block sits
+		 * directly under the last one - which is where a reader looking at a
+		 * row expects the detail of that row to be. */
+		const float tableContent = static_cast<float>(rows.size() + 2) * lineHeight + 4.0f * GuiHelper::contentScale;
+		const float tableHeight = std::clamp(tableContent, 8.0f * lineHeight, std::max(room - reserve - 6.0f * GuiHelper::contentScale, 8.0f * lineHeight));
+
+		drawTable(snapshot, rows, tableHeight);
+
+		drawSelectedTaskSection(*model, *snapshot, findings);
 	}
 
 	/*
@@ -275,16 +302,6 @@ class GuiRtosPanel
 		 * space and its own scrollbar, the block still does not move, and
 		 * nothing is unreachable.
 		 */
-		{
-			const ImVec2 room = ImGui::GetContentRegionAvail();
-
-			ImGui::BeginChild("##rtosSelectedTask", ImVec2(0.0f, std::max(room.y, ImGui::GetTextLineHeightWithSpacing() * 4.0f)), false,
-			                  ImGuiWindowFlags_NoBackground);
-
-			drawSelectedTask(*model, *snapshot, findings);
-
-			ImGui::EndChild();
-		}
 	}
 
 	/*
@@ -434,6 +451,11 @@ class GuiRtosPanel
 	   choice rather than the round's data. */
 	inline static RtosTaskTableQuery query{};
 	inline static bool stackAlertSeeded = false;
+
+	/* Whether the detail block under the table is open. Kept with the rest of
+	   what the reader set up: a fold that reopens on every start is a fold that
+	   has to be folded again on every start. */
+	inline static bool selectedTaskOpen = true;
 
 	/* The last thing that went wrong with a recording, in the reader's words.
 	   Kept until the next attempt rather than shown for a frame: a dialog that
@@ -1696,7 +1718,7 @@ class GuiRtosPanel
 		}
 	}
 
-	static void drawTable(const std::shared_ptr<const RtosSnapshot>& snapshot, const std::vector<RtosTaskRow>& rows)
+	static void drawTable(const std::shared_ptr<const RtosSnapshot>& snapshot, const std::vector<RtosTaskRow>& rows, float height)
 	{
 		/*
 		 * Every column has a width of its own, and the sideways scroll is the
@@ -1737,7 +1759,7 @@ class GuiRtosPanel
 		 * `ScrollY` is on, so a list longer than the pane scrolls inside it and
 		 * the height still does not move.
 		 */
-		const ImVec2 size(0.0f, ImGui::GetContentRegionAvail().y);
+		const ImVec2 size(0.0f, height);
 
 		/*
 		 * The name carries a version. ImGui stores a table's column widths and
@@ -2234,12 +2256,53 @@ class GuiRtosPanel
 	 * comparing, this is for reading, and neither is what gets pasted into a
 	 * bug report.
 	 */
-	static void drawSelectedTask(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<RtosDiagnostics::Finding>& findings)
+	/*
+	 * What the detail block is, and whether it is showing.
+	 *
+	 * The heading carries the task's name, so that a folded block still answers
+	 * "which one is selected" - a closed section that says only its own name
+	 * makes the reader open it to find out whether there is anything in it.
+	 */
+	static void drawSelectedTaskSection(const RtosModel& model, const RtosSnapshot& snapshot,
+	                                    const std::vector<RtosDiagnostics::Finding>& findings)
 	{
 		const float scale = GuiHelper::contentScale;
 
 		ImGui::Separator();
+
+		if (ImGui::ArrowButton("##rtosSelectedTaskFold", selectedTaskOpen ? ImGuiDir_Down : ImGuiDir_Right))
+			selectedTaskOpen = !selectedTaskOpen;
+
+		ImGui::SameLine(0.0f, 6.0f * scale);
 		ImGui::TextUnformatted(I18n::tr("Selected task"));
+
+		if (selection().task != 0)
+		{
+			const RtosTask* task = snapshot.find(selection().task);
+
+			if (task != nullptr && !task->name.empty())
+			{
+				ImGui::SameLine(0.0f, 6.0f * scale);
+				GuiHelper::drawSecondaryText("· %s", task->name.c_str());
+			}
+		}
+
+		if (!selectedTaskOpen)
+			return;
+
+		const ImVec2 room = ImGui::GetContentRegionAvail();
+
+		ImGui::BeginChild("##rtosSelectedTask", ImVec2(0.0f, std::max(room.y, ImGui::GetTextLineHeightWithSpacing() * 4.0f)), false,
+		                  ImGuiWindowFlags_NoBackground);
+
+		drawSelectedTask(model, snapshot, findings);
+
+		ImGui::EndChild();
+	}
+
+	static void drawSelectedTask(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<RtosDiagnostics::Finding>& findings)
+	{
+		const float scale = GuiHelper::contentScale;
 
 		if (selection().task == 0)
 		{
