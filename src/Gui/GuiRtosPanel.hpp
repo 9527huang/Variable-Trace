@@ -57,6 +57,7 @@ class GuiRtosPanel
 		{
 			query.sortColumn = static_cast<RtosTaskColumn>(view.sortColumn);
 			query.descending = view.sortDescending;
+			query.problemFirst = view.problemFirst;
 			query.hasPriorityFloor = view.hasPriorityFloor;
 			query.priorityFloor = view.priorityFloor;
 			query.onlyStackAlerts = view.onlyStackAlerts;
@@ -73,6 +74,7 @@ class GuiRtosPanel
 
 		view.sortColumn = static_cast<uint32_t>(query.sortColumn);
 		view.sortDescending = query.descending;
+		view.problemFirst = query.problemFirst;
 		view.hasPriorityFloor = query.hasPriorityFloor;
 		view.priorityFloor = query.priorityFloor;
 		view.onlyStackAlerts = query.onlyStackAlerts;

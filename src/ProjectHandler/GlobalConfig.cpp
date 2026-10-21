@@ -119,6 +119,7 @@ bool GlobalConfig::load()
 
 			settings.rtosView.sortColumn = view.value("sortColumn", settings.rtosView.sortColumn);
 			settings.rtosView.sortDescending = view.value("sortDescending", settings.rtosView.sortDescending);
+			settings.rtosView.problemFirst = view.value("problemFirst", settings.rtosView.problemFirst);
 			settings.rtosView.hasPriorityFloor = view.value("hasPriorityFloor", settings.rtosView.hasPriorityFloor);
 			settings.rtosView.priorityFloor = view.value("priorityFloor", settings.rtosView.priorityFloor);
 			settings.rtosView.onlyStackAlerts = view.value("onlyStackAlerts", settings.rtosView.onlyStackAlerts);
@@ -200,6 +201,7 @@ bool GlobalConfig::save()
 	                {"view",
 	                 {{"sortColumn", settings.rtosView.sortColumn},
 	                  {"sortDescending", settings.rtosView.sortDescending},
+	                  {"problemFirst", settings.rtosView.problemFirst},
 	                  {"hasPriorityFloor", settings.rtosView.hasPriorityFloor},
 	                  {"priorityFloor", settings.rtosView.priorityFloor},
 	                  {"onlyStackAlerts", settings.rtosView.onlyStackAlerts},

@@ -232,8 +232,13 @@ struct RtosTaskRow
  */
 struct RtosViewSettings
 {
+	/* The order the table opens in: a column, or the problem order. Fixed by
+	   the column by default - the problem order re-ranks rows as the target
+	   changes, which is the right answer to "what should I look at" and the
+	   wrong one to watch a running system with. */
 	uint32_t sortColumn = 0;
 	bool sortDescending = false;
+	bool problemFirst = false;
 	bool hasPriorityFloor = false;
 	uint32_t priorityFloor = 0;
 	bool onlyStackAlerts = false;
