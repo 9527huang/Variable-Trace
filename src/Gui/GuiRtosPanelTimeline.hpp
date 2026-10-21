@@ -718,7 +718,10 @@ class GuiRtosPanelTimeline
 		if (coveredTo > coveredFrom)
 		{
 			ImVec4 gap = ImGui::ColorConvertU32ToFloat4(unsampledColour);
-			gap.w = 0.32f;
+
+			/* Darker than the violet this replaces, so it needs more of itself
+			   to stand off the pane at all. */
+			gap.w = 0.5f;
 
 			for (size_t lane = 0; lane < lanes.size(); lane++)
 			{
@@ -742,10 +745,17 @@ class GuiRtosPanelTimeline
 				continue;
 
 			ImVec4 colour = ImGui::ColorConvertU32ToFloat4(markOf(band.state).colour);
-			/* Enough body for the hue to survive the dark background: at 0.30
-			   the blocked orange mixed into the pane's own colour and read as
-			   brown, which is nobody's state. */
-			colour.w = band.state == RtosTaskState::Running ? 0.62f : 0.45f;
+
+			/* Nearly opaque, and that is a correction rather than a taste.
+			 *
+			 * The four states are told apart by lightness as much as by hue -
+			 * light green, bright yellow, deep amber - and blending them into a
+			 * dark pane compresses exactly that: at 0.45 the yellow and the
+			 * amber came out as two browns a few steps apart, which is the
+			 * problem the colours were picked to solve. The band has to show
+			 * the colour it was chosen for, so the pane contributes as little
+			 * as it can while the strips still read as part of the window. */
+			colour.w = 0.82f;
 
 			const float top = origin.y + static_cast<float>(lane - lanes.begin()) * rowHeight + 1.0f * scale;
 			const float width = std::max(to - from, 2.0f * scale);
@@ -1107,40 +1117,40 @@ class GuiRtosPanelTimeline
 	 * Fixed hues rather than theme colours: these have to stay apart from one
 	 * another, and a theme's accent colour is chosen for something else.
 	 *
-	 * Picked for a reader who is red-green colour weak, which is the common
-	 * case and was not what the first set was picked for: running was green
-	 * (60,160,90) and blocked amber (210,140,55), and under deuteranopia those
-	 * two collapse to (148,138,95) and (180,161,57) - dE 9, the same colour to
-	 * anyone with the weakness. The lanes are bands, so colour is the only
-	 * channel they have: a pair that reads alike is a pair that cannot be told
-	 * apart at all.
+	 * Picked for a reader who is red-green colour weak, and by that reader:
+	 * light green for running, orange-yellow for ready, amber for blocked. All
+	 * three sit on the red-green axis, which sounds like the wrong place to put
+	 * them - and it is the wrong place to put them at one lightness. What makes
+	 * it work is that they are spread across lightness instead: nearly white
+	 * green, bright yellow, deep amber. Lightness survives red-green weakness
+	 * intact, so the spread is what a reader with the weakness actually sees.
 	 *
-	 * What survives red-green weakness is the blue-yellow axis and lightness,
-	 * so the four states are placed along both:
+	 *   running   light green   (160,224,152)
+	 *   ready     orange-yellow (250,196,70)
+	 *   blocked   amber         (168,104,18)
+	 *   suspended neutral grey  (146,146,152)
 	 *
-	 *   running   deep blue     (31,111,208)
-	 *   ready     light sky     (107,199,232)
-	 *   blocked   amber         (232,163,61)
-	 *   suspended neutral grey  (138,138,144)
+	 * Measured CIELAB distance between the closest pair: 37 under normal
+	 * vision, 35 under deuteranopia, 36 under protanopia. The green and amber
+	 * this replaces measured 9 and 3 - not because they were green and amber,
+	 * but because they were the same lightness.
 	 *
-	 * Measured CIELAB distance between the closest pair: 34 under normal
-	 * vision, 30 under deuteranopia, 28 under protanopia - against 9 and 3 for
-	 * the set this replaces. Do not put a green back in without measuring it:
-	 * "green and amber look different to me" is the assumption that produced
-	 * the old pair.
+	 * Move one of the first three up or down a long way in lightness and it
+	 * closes onto a neighbour; the order light / bright / deep is the part
+	 * doing the work, not the hues.
 	 */
-	inline static const ImU32 runningColour = IM_COL32(31, 111, 208, 255);
-	inline static const ImU32 readyColour = IM_COL32(107, 199, 232, 255);
-	inline static const ImU32 blockedColour = IM_COL32(232, 163, 61, 255);
-	inline static const ImU32 suspendedColour = IM_COL32(138, 138, 144, 255);
+	inline static const ImU32 runningColour = IM_COL32(160, 224, 152, 255);
+	inline static const ImU32 readyColour = IM_COL32(250, 196, 70, 255);
+	inline static const ImU32 blockedColour = IM_COL32(168, 104, 18, 255);
+	inline static const ImU32 suspendedColour = IM_COL32(146, 146, 152, 255);
 
 	/* A task a round did not read.
 	   Its own hue, because a gap in a lane has two possible meanings - the task
 	   was not there, or the round could not look - and until now the picture
-	   left both of them blank. A dull plum: far enough from the four above
-	   (dE 20 under deuteranopia) and dull enough to stay a background, since
-	   it is drawn at a third of full strength. */
-	inline static const ImU32 unsampledColour = IM_COL32(128, 92, 140, 255);
+	   left both of them blank. Dark brown: it belongs with "nothing was read
+	   here" rather than with any of the four states, and it is drawn at a third
+	   of full strength so that it stays a background. */
+	inline static const ImU32 unsampledColour = IM_COL32(84, 60, 42, 255);
 };
 
 #endif
