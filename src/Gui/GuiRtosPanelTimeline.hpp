@@ -797,7 +797,7 @@ class GuiRtosPanelTimeline
 
 			const float x = timeToX(at);
 
-			draw->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + plotHeight), plotCursorColour, 1.0f);
+			draw->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + plotHeight), ImGui::GetColorU32(ImGuiCol_Text, 0.5f), 1.0f);
 
 			/* The label goes under the axis, and is left off where it would sit
 			   on top of the axis's own last label: two times printed over each
@@ -805,7 +805,8 @@ class GuiRtosPanelTimeline
 			const float labelX = x + 2.0f * scale;
 
 			if (labelX < plotLeft + plotWidth - 54 * scale)
-				draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f, ImVec2(labelX, origin.y + plotHeight + 2 * scale), plotCursorColour,
+				draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f, ImVec2(labelX, origin.y + plotHeight + 2 * scale),
+				              ImGui::GetColorU32(ImGuiCol_TextDisabled),
 				              formatSeconds(at).c_str());
 		}
 
@@ -1102,23 +1103,44 @@ class GuiRtosPanelTimeline
 		return buffer;
 	}
 
-	/* Fixed hues rather than theme colours: these four have to stay apart from
-	   one another, and a theme's accent colour is chosen for something else.
-	   They are picked to read on a light background and a dark one. */
-	inline static const ImU32 runningColour = IM_COL32(60, 160, 90, 255);
-	inline static const ImU32 readyColour = IM_COL32(70, 130, 210, 255);
-	inline static const ImU32 blockedColour = IM_COL32(210, 140, 55, 255);
-	inline static const ImU32 suspendedColour = IM_COL32(140, 140, 145, 255);
+	/*
+	 * Fixed hues rather than theme colours: these have to stay apart from one
+	 * another, and a theme's accent colour is chosen for something else.
+	 *
+	 * Picked for a reader who is red-green colour weak, which is the common
+	 * case and was not what the first set was picked for: running was green
+	 * (60,160,90) and blocked amber (210,140,55), and under deuteranopia those
+	 * two collapse to (148,138,95) and (180,161,57) - dE 9, the same colour to
+	 * anyone with the weakness. The lanes are bands, so colour is the only
+	 * channel they have: a pair that reads alike is a pair that cannot be told
+	 * apart at all.
+	 *
+	 * What survives red-green weakness is the blue-yellow axis and lightness,
+	 * so the four states are placed along both:
+	 *
+	 *   running   deep blue     (31,111,208)
+	 *   ready     light sky     (107,199,232)
+	 *   blocked   amber         (232,163,61)
+	 *   suspended neutral grey  (138,138,144)
+	 *
+	 * Measured CIELAB distance between the closest pair: 34 under normal
+	 * vision, 30 under deuteranopia, 28 under protanopia - against 9 and 3 for
+	 * the set this replaces. Do not put a green back in without measuring it:
+	 * "green and amber look different to me" is the assumption that produced
+	 * the old pair.
+	 */
+	inline static const ImU32 runningColour = IM_COL32(31, 111, 208, 255);
+	inline static const ImU32 readyColour = IM_COL32(107, 199, 232, 255);
+	inline static const ImU32 blockedColour = IM_COL32(232, 163, 61, 255);
+	inline static const ImU32 suspendedColour = IM_COL32(138, 138, 144, 255);
 
 	/* A task a round did not read.
 	   Its own hue, because a gap in a lane has two possible meanings - the task
 	   was not there, or the round could not look - and until now the picture
-	   left both of them blank. */
-	inline static const ImU32 unsampledColour = IM_COL32(150, 110, 200, 255);
-
-	/* The variable view's cursors: a hue of their own, so that a thin line is
-	   never mistaken for one of the state marks. */
-	inline static const ImU32 plotCursorColour = IM_COL32(110, 175, 200, 220);
+	   left both of them blank. A dull plum: far enough from the four above
+	   (dE 20 under deuteranopia) and dull enough to stay a background, since
+	   it is drawn at a third of full strength. */
+	inline static const ImU32 unsampledColour = IM_COL32(128, 92, 140, 255);
 };
 
 #endif
