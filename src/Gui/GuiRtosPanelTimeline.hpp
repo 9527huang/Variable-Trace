@@ -52,7 +52,8 @@ class GuiRtosPanelTimeline
 	 * nothing rather than as a filter.
 	 */
 	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors,
-	                 const std::vector<RtosTaskRow>& rows, const std::vector<uint32_t>& lanes, GuiRtosSelection& selection)
+	                 const std::vector<RtosTaskRow>& rows, const std::vector<uint32_t>& lanes, size_t rosterSize,
+	                 GuiRtosSelection& selection)
 	{
 		const RtosTimeline& history = model.history();
 
@@ -97,15 +98,19 @@ class GuiRtosPanelTimeline
 		{
 			drawCounts(history, samples, true);
 
-			drawGrid(snapshot, rows, lanes, samples, runs, plotCursors, selection);
+			drawGrid(snapshot, rows, lanes, samples, runs, plotCursors, rosterSize, selection);
 		}
 		else
 		{
 			drawCounts(history, samples, false);
 
-			drawGrid(snapshot, rows, lanes, samples, {}, plotCursors, selection);
+			drawGrid(snapshot, rows, lanes, samples, {}, plotCursors, rosterSize, selection);
 		}
 	}
+
+	/* How far the lanes are scrolled, in pixels. Kept across frames because it
+	   is a place the reader put themselves, like the window and the pin. */
+	inline static float scroll = 0.0f;
 
 	/* Read and written by the panel, which keeps them with the rest of what the
 	   reader set up. */
@@ -462,7 +467,7 @@ class GuiRtosPanelTimeline
 
 	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTaskRow>& rows, const std::vector<uint32_t>& lanes,
 	                     const std::vector<RtosTimeline::Sample>& samples, const std::vector<RtosEventRing::Interval>& runs,
-	                     const std::vector<double>& plotCursors, GuiRtosSelection& selection)
+	                     const std::vector<double>& plotCursors, size_t rosterSize, GuiRtosSelection& selection)
 	{
 		if (lanes.empty())
 		{
@@ -508,11 +513,42 @@ class GuiRtosPanelTimeline
 		 * strip is the part that can give, because it scrolls and zooms; the
 		 * blocks under it cannot.
 		 */
-		const float height = std::clamp(available * 0.52f, 90.0f * scale, std::max(available - 2.0f, 90.0f * scale));
+		/*
+		 * One height for every lane, and the same height every round.
+		 *
+		 * It used to be the pane's height divided by the number of lanes, so a
+		 * round that read one task more made every lane a little thinner and
+		 * the whole picture jumped - twice a second, for a target that was not
+		 * doing anything unusual. A lane is a row of a list: rows of a list do
+		 * not resize because the list got longer, they scroll.
+		 *
+		 * With few lanes the strip shrinks to what it holds instead of leaving
+		 * the extra height as a band of nothing under the last lane.
+		 */
+		const float rowHeight = 22.0f * scale;
+		const float contentHeight = rowHeight * static_cast<float>(lanes.size());
 		const float axisHeight = 16.0f * scale;
+
+		/*
+		 * The box is sized by the tasks the session knows, not by the lanes the
+		 * filter left.
+		 *
+		 * A filter that tests the round changes how many lanes there are from
+		 * one round to the next - a task this round did not read fails a
+		 * priority floor, so its lane leaves and comes back half a second
+		 * later. Sized to the filtered count, the strip changed height with it,
+		 * and everything under the strip moved. The roster only grows, so
+		 * sizing by it means the strip stands still while a filter comes and
+		 * goes, and grows by one lane the day a task is created.
+		 */
+		const size_t lanesForHeight = std::max<size_t>(rosterSize, lanes.size());
+		const float height = std::clamp(std::min(available * 0.52f, rowHeight * static_cast<float>(lanesForHeight) + axisHeight),
+		                                90.0f * scale, std::max(available - 2.0f, 90.0f * scale));
 		const float plotHeight = height - axisHeight;
 
-		const float rowHeight = plotHeight / static_cast<float>(lanes.size());
+		/* How far the lanes are scrolled, and how far they can be. */
+		const float overflow = std::max(contentHeight - plotHeight, 0.0f);
+		scroll = std::clamp(scroll, 0.0f, overflow);
 		const float plotLeft = origin.x + nameWidth;
 		const float plotWidth = std::max(width - nameWidth, 40.0f * scale);
 
@@ -549,7 +585,7 @@ class GuiRtosPanelTimeline
 
 			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 			{
-				const float offset = std::max(ImGui::GetIO().MousePos.y - origin.y, 0.0f);
+				const float offset = std::max(ImGui::GetIO().MousePos.y - origin.y + scroll, 0.0f);
 				const size_t lane = std::min(static_cast<size_t>(offset / rowHeight), lanes.size() - 1);
 				const RtosTask* task = snapshot.find(lanes[lane]);
 
@@ -570,7 +606,18 @@ class GuiRtosPanelTimeline
 		 * is looking; a drag moves the window under the hand. Both switch the
 		 * automatic rules off, and both are undone by "back to latest".
 		 */
-		if (hovered && ImGui::GetIO().MouseWheel != 0.0f)
+		/* The wheel scrolls the list when the pointer is on the list, and zooms
+		   the time axis when it is on the chart. Shift forces scrolling, so
+		   that a long task list can be read without moving the hand off the
+		   plot. */
+		const bool wheelOverList = ImGui::GetIO().MousePos.x < plotLeft;
+		const bool scrollWheel = overflow > 0.0f && (wheelOverList || ImGui::GetIO().KeyShift);
+
+		if (hovered && ImGui::GetIO().MouseWheel != 0.0f && scrollWheel)
+		{
+			scroll = std::clamp(scroll - ImGui::GetIO().MouseWheel * rowHeight * 1.5f, 0.0f, overflow);
+		}
+		else if (hovered && ImGui::GetIO().MouseWheel != 0.0f)
 		{
 			const double at = timeAtX(ImGui::GetIO().MousePos.x);
 			const double factor = ImGui::GetIO().MouseWheel > 0.0f ? 0.8 : 1.25;
@@ -626,9 +673,13 @@ class GuiRtosPanelTimeline
 		draw->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + plotHeight), ImGui::GetColorU32(ImGuiCol_FrameBg, 0.35f));
 		draw->AddRect(origin, ImVec2(origin.x + width, origin.y + plotHeight), ImGui::GetColorU32(ImGuiCol_Border));
 
+		/* Everything inside the frame is clipped to it: a lane scrolled half out
+		   of view must be cut, not drawn over the pane above. */
+		draw->PushClipRect(origin, ImVec2(origin.x + width, origin.y + plotHeight), true);
+
 		for (size_t lane = 0; lane < lanes.size(); lane++)
 		{
-			const float top = origin.y + static_cast<float>(lane) * rowHeight;
+			const float top = origin.y + static_cast<float>(lane) * rowHeight - scroll;
 
 			if (lane % 2 == 1)
 				draw->AddRectFilled(ImVec2(plotLeft, top), ImVec2(plotLeft + plotWidth, top + rowHeight), ImGui::GetColorU32(ImGuiCol_Text, 0.03f));
@@ -674,7 +725,7 @@ class GuiRtosPanelTimeline
 				if (lanes[lane] != address)
 					continue;
 
-				const float top = origin.y + static_cast<float>(lane) * rowHeight;
+				const float top = origin.y + static_cast<float>(lane) * rowHeight - scroll;
 
 				draw->AddRectFilled(ImVec2(origin.x, top), ImVec2(plotLeft + plotWidth, top + rowHeight), colour);
 			}
@@ -725,7 +776,7 @@ class GuiRtosPanelTimeline
 
 			for (size_t lane = 0; lane < lanes.size(); lane++)
 			{
-				const float top = origin.y + static_cast<float>(lane) * rowHeight + 1.0f * scale;
+				const float top = origin.y + static_cast<float>(lane) * rowHeight + 1.0f * scale - scroll;
 
 				draw->AddRectFilled(ImVec2(coveredFrom, top), ImVec2(coveredTo, top + bandHeight), ImGui::GetColorU32(gap));
 			}
@@ -757,7 +808,7 @@ class GuiRtosPanelTimeline
 			 * as it can while the strips still read as part of the window. */
 			colour.w = 0.82f;
 
-			const float top = origin.y + static_cast<float>(lane - lanes.begin()) * rowHeight + 1.0f * scale;
+			const float top = origin.y + static_cast<float>(lane - lanes.begin()) * rowHeight + 1.0f * scale - scroll;
 			const float width = std::max(to - from, 2.0f * scale);
 
 			draw->AddRectFilled(ImVec2(from, top), ImVec2(from + width, top + bandHeight), ImGui::GetColorU32(colour));
@@ -784,12 +835,48 @@ class GuiRtosPanelTimeline
 				if (to <= from)
 					break;
 
-				const float top = origin.y + static_cast<float>(lane) * rowHeight + 1.0f * scale;
+				const float top = origin.y + static_cast<float>(lane) * rowHeight + 1.0f * scale - scroll;
 
 				draw->AddRectFilled(ImVec2(from, top), ImVec2(to, top + rowHeight - 2.0f * scale), runningColour);
 
 				break;
 			}
+		}
+
+		draw->PopClipRect();
+
+		/*
+		 * The lane scroll, said in two ways.
+		 *
+		 * A thin bar against the right edge of the frame shows how much of the
+		 * list is on screen; the numbers at its foot say it outright. Without
+		 * both, a task list longer than the strip would simply appear to end
+		 * early, which is the same kind of quiet lie as a row that disappears.
+		 */
+		if (overflow > 0.0f)
+		{
+			const float trackX = origin.x + width - 4.0f * scale;
+			const float thumbHeight = std::max(plotHeight * (plotHeight / contentHeight), 18.0f * scale);
+			const float thumbY = origin.y + (plotHeight - thumbHeight) * (scroll / overflow);
+
+			draw->AddRectFilled(ImVec2(trackX, origin.y), ImVec2(trackX + 3.0f * scale, origin.y + plotHeight),
+			                    ImGui::GetColorU32(ImGuiCol_Text, 0.06f));
+			draw->AddRectFilled(ImVec2(trackX, thumbY), ImVec2(trackX + 3.0f * scale, thumbY + thumbHeight),
+			                    ImGui::GetColorU32(ImGuiCol_Text, 0.35f));
+
+			char range[48] = {};
+			const size_t first = static_cast<size_t>(scroll / rowHeight) + 1;
+			const size_t last = std::min(lanes.size(), first + static_cast<size_t>(plotHeight / rowHeight));
+
+			std::snprintf(range, sizeof(range), "%u-%u / %u", static_cast<unsigned>(first), static_cast<unsigned>(last),
+			              static_cast<unsigned>(lanes.size()));
+
+			const float textWidth = ImGui::CalcTextSize(range).x;
+			draw->AddRectFilled(ImVec2(plotLeft + plotWidth - textWidth - 6.0f * scale, origin.y + plotHeight - 14.0f * scale),
+			                    ImVec2(plotLeft + plotWidth, origin.y + plotHeight), ImGui::GetColorU32(ImGuiCol_WindowBg, 0.7f));
+			draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.7f,
+			              ImVec2(plotLeft + plotWidth - textWidth - 3.0f * scale, origin.y + plotHeight - 13.0f * scale),
+			              ImGui::GetColorU32(ImGuiCol_TextDisabled), range);
 		}
 
 		/*
@@ -847,11 +934,11 @@ class GuiRtosPanelTimeline
 			draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f, ImVec2(textX, origin.y + plotHeight + 4 * scale), tickColour, label);
 		}
 
-		drawCursor(draw, samples, lanes, origin, rowHeight, plotLeft, plotWidth, hovered);
+		drawCursor(draw, samples, lanes, origin, plotHeight, plotLeft, plotWidth, hovered);
 	}
 
 	static void drawCursor(ImDrawList* draw, const std::vector<RtosTimeline::Sample>& samples, const std::vector<uint32_t>& lanes, const ImVec2& origin,
-	                       float rowHeight, float plotLeft, float plotWidth, bool hovered)
+	                       float plotHeight, float plotLeft, float plotWidth, bool hovered)
 	{
 		ImGuiIO& io = ImGui::GetIO();
 
@@ -879,7 +966,7 @@ class GuiRtosPanelTimeline
 
 		const float x = plotLeft + static_cast<float>((at - oldest) / span) * plotWidth;
 
-		draw->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + rowHeight * static_cast<float>(lanes.size())), ImGui::GetColorU32(ImGuiCol_Text, 0.55f));
+		draw->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + plotHeight), ImGui::GetColorU32(ImGuiCol_Text, 0.55f));
 
 		const size_t nearest = RtosTimeline::nearestIndex(samples, at);
 

@@ -226,7 +226,7 @@ class GuiRtosPanel
 		const std::vector<uint32_t> lanes = GuiRtosPanelTimeline::getFollowTableOrder() ? RtosTableModel::addressesOf(rows)
 		                                                                               : RtosTableModel::laneOrderOf(rows);
 
-		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, rows, lanes, selection());
+		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, rows, lanes, model->rosterSize(), selection());
 
 		/*
 		 * In a recording the strip is also the scrubber.
