@@ -193,6 +193,26 @@ class RtosModel
 	size_t nearestPlaybackRound(double atSeconds) const;
 
 	/*
+	 * One round of the recording, read straight from the file.
+	 *
+	 * `showPlaybackRound` moves the view to a round; this hands one over
+	 * without moving anything, which is what writing the whole recording out
+	 * needs: the exporter walks every round while the reader keeps looking at
+	 * the one they are on.
+	 *
+	 * Null when this is not a playback, or the round is out of range, or the
+	 * file stopped making sense. A round that cannot be decoded is worth a
+	 * skipped line in an export, not an exception in the middle of one.
+	 */
+	struct PlaybackRound
+	{
+		std::shared_ptr<RtosSnapshot> snapshot;
+		double atSeconds = 0.0;
+	};
+
+	PlaybackRound playbackRoundAt(size_t round) const;
+
+	/*
 	 * Builds a snapshot out of one enumeration.
 	 *
 	 * The collector uses this so that the fields the interface depends on are

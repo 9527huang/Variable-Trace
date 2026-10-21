@@ -662,7 +662,14 @@
   "Show every task again.": "恢复显示全部任务",
   "This task has not been switched in during the runs the view keeps.": "在这段记录里，这个任务没有被切入过。",
   "Switches (5 s)": "切入次数(5 秒)",
-  "Show only this task's switches in the event list.": "事件列表里只看这个任务的切换。"
+  "Show only this task's switches in the event list.": "事件列表里只看这个任务的切换。",
+  "export CSV": "导出 CSV",
+  "Writes every round to a spreadsheet: one line per task per round, with the columns the table shows. A field the round did not measure is left empty rather than written as zero.": "把每一轮写成表格文件：每个任务每轮一行，列和界面上的表一样。这一轮没测到的格子留空，不写 0。",
+  "This recording holds no rounds.": "这份记录里没有任何轮次。",
+  "The file could not be created.": "文件无法创建。",
+  "Wrote %u rows from %u rounds to %s": "从 %u 轮写出 %u 行，保存到 %s",
+  "Wrote %u rows; %u rounds could not be read and were left out.": "写了 %u 行；有 %u 轮读不出来，已略过。",
+  "CSV files": "CSV 文件"
  },
  "skip": [
   "%s",

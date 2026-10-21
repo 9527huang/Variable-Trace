@@ -207,6 +207,19 @@ size_t RtosModel::nearestPlaybackRound(double atSeconds) const
 	return recording.nearestRound(atSeconds);
 }
 
+RtosModel::PlaybackRound RtosModel::playbackRoundAt(size_t round) const
+{
+	PlaybackRound result;
+
+	if (!playback || round >= recording.roundCount())
+		return result;
+
+	result.snapshot = recording.roundAt(round);
+	result.atSeconds = recording.atSeconds(round);
+
+	return result;
+}
+
 std::shared_ptr<const RtosSnapshot> RtosModel::current() const
 {
 	return published.load();

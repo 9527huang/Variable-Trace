@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@
 #include "GuiRtosSelection.hpp"
 #include "RtosDiagnostics.hpp"
 #include "I18n.hpp"
+#include "RtosCsvExport.hpp"
 #include "RtosEventQuery.hpp"
 #include "RtosModel.hpp"
 #include "RtosSyncEnumerator.hpp"
@@ -487,6 +489,12 @@ class GuiRtosPanel
 	   failed has to say why after it has closed. */
 	inline static std::string recordingProblem;
 	inline static std::string playbackProblem;
+
+	/* What the last CSV export did, and whether it went wrong. Kept beside the
+	   recording problems and for the same reason: the export closes a dialog
+	   and the answer has to still be there when it has. */
+	inline static std::string exportNote;
+	inline static bool exportFailed = false;
 
 	/*
 	 * The findings of the round on screen, worked out once and kept.
@@ -979,7 +987,10 @@ class GuiRtosPanel
 			sameLineIfFits(120.0f * scale);
 
 			if (ImGui::SmallButton(I18n::tr("back to live")))
+			{
+				exportNote.clear();
 				model->closePlayback();
+			}
 
 			/* Another file is one click away, rather than a trip through the
 			   live view to get back to the same button. */
@@ -992,6 +1003,36 @@ class GuiRtosPanel
 			{
 				ImGui::SameLine(0.0f, 8.0f * scale);
 				ImGui::TextColored(GuiHelper::redLight(), "%s", playbackProblem.c_str());
+			}
+
+			/*
+			 * On its own line, and the line above is full at every width this
+			 * runs at: a button that fits only on a wide screen is a button
+			 * that is missing on the machine somebody actually uses. The row
+			 * above says what is being looked at; this one says what can be
+			 * taken away, and the answer to what it wrote lands beside it.
+			 */
+			if (ImGui::SmallButton(I18n::tr("export CSV")))
+				exportPlayback(model, fileHandler);
+
+			if (ImGui::IsItemHovered())
+			{
+				ImGui::BeginTooltip();
+				ImGui::PushTextWrapPos(ImGui::GetFontSize() * 34.0f);
+				ImGui::TextUnformatted(
+				    I18n::tr("Writes every round to a spreadsheet: one line per task per round, with the columns the table shows. A field the round did not measure is left empty rather than written as zero."));
+				ImGui::PopTextWrapPos();
+				ImGui::EndTooltip();
+			}
+
+			if (!exportNote.empty())
+			{
+				ImGui::SameLine(0.0f, 8.0f * scale);
+
+				if (exportFailed)
+					ImGui::TextColored(GuiHelper::redLight(), "%s", exportNote.c_str());
+				else
+					GuiHelper::drawSecondaryText("%s", exportNote.c_str());
 			}
 
 			ImGui::Separator();
@@ -1105,6 +1146,7 @@ class GuiRtosPanel
 	static void openRecording(const std::shared_ptr<RtosModel>& model, IFileHandler* fileHandler)
 	{
 		playbackProblem.clear();
+		exportNote.clear();
 
 		if (fileHandler == nullptr)
 			return;
@@ -1118,6 +1160,92 @@ class GuiRtosPanel
 
 		if (!model->openRecording(path, problem))
 			playbackProblem = I18n::tr(RtosRecording::describe(problem));
+	}
+
+	/*
+	 * The recording, written out for something else to read.
+	 *
+	 * Done on this thread, in one pass, rather than handed to a worker: the
+	 * whole file is a read and a write per round, and a recording of ten
+	 * thousand rounds takes about a second. A progress bar for a second of
+	 * work would be its own complication, and the rounds are read through the
+	 * same decoder the view uses, so what lands in the file is what was on
+	 * screen.
+	 */
+	static void exportPlayback(const std::shared_ptr<RtosModel>& model, IFileHandler* fileHandler)
+	{
+		exportNote.clear();
+		exportFailed = false;
+
+		if (model == nullptr || fileHandler == nullptr || !model->isPlayback())
+			return;
+
+		const RtosModel::PlaybackInfo info = model->playbackInfo();
+
+		if (info.rounds == 0)
+		{
+			exportFailed = true;
+			exportNote = I18n::tr("This recording holds no rounds.");
+
+			return;
+		}
+
+		/* The recording's own name with a CSV extension, because the two files
+		   are the same session and a reader who found one should find the other
+		   beside it. */
+		std::string name = fileNameOf(info.path);
+
+		const size_t dot = name.find_last_of('.');
+
+		if (dot != std::string::npos)
+			name = name.substr(0, dot);
+
+		name += ".csv";
+
+		std::string path = fileHandler->saveFile({{I18n::tr("CSV files"), "csv"}, {I18n::tr("All files"), "*"}}, "", name);
+
+		if (path.empty())
+			return;
+
+		if (path.size() < 4 || path.compare(path.size() - 4, 4, ".csv") != 0)
+			path += ".csv";
+
+		const std::filesystem::path target(path);
+		std::error_code error;
+
+		if (target.has_parent_path())
+			std::filesystem::create_directories(target.parent_path(), error);
+
+		std::ofstream file(path, std::ios::out | std::ios::trunc);
+
+		if (!file)
+		{
+			exportFailed = true;
+			exportNote = I18n::tr("The file could not be created.");
+
+			return;
+		}
+
+		const RtosCsvExport::Counts counts = RtosCsvExport::writeRecording(file, *model);
+
+		file.close();
+
+		char text[512] = {};
+
+		if (counts.skipped > 0)
+		{
+			exportFailed = true;
+
+			std::snprintf(text, sizeof(text), I18n::tr("Wrote %u rows; %u rounds could not be read and were left out."),
+			              static_cast<uint32_t>(counts.rows), static_cast<uint32_t>(counts.skipped));
+		}
+		else
+		{
+			std::snprintf(text, sizeof(text), I18n::tr("Wrote %u rows from %u rounds to %s"), static_cast<uint32_t>(counts.rows),
+			              static_cast<uint32_t>(counts.rounds), fileNameOf(path).c_str());
+		}
+
+		exportNote = text;
 	}
 
 	/*

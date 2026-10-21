@@ -402,6 +402,38 @@
   回放时采集可以继续跑：变量视图照常更新，任务视图只显示文件。
 </div>
 
+<h4>导出成 CSV</h4>
+
+<p><code>.vtrec</code> 只有这个程序能读。想算点别的——这一小时的栈占用有没有往上爬、哪个任务
+吃掉了多少时间、那个阻塞到底多久来一次——用表格软件算比在界面上看快。所以回放时这一行下面
+有一个 <code>export CSV</code>：<strong>每个任务每轮一行</strong>，列和界面上的表一样。</p>
+
+<table>
+  <thead><tr><th>列</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><code>round</code> / <code>at_s</code></td><td>第几轮，以及那一刻在时间轴上的秒数。每行都带，方便筛选和分组</td></tr>
+    <tr><td><code>task</code> / <code>address</code></td><td>名字与控制块地址。这两个是身份，不是读数，所以任务这一轮没读到也会写</td></tr>
+    <tr><td><code>state</code> / <code>found_on</code></td><td>状态，以及这条状态是从内核哪张表上读到的（<code>suspended</code> 表上、事件项为空，就是"无超时等待"）</td></tr>
+    <tr><td><code>priority</code> / <code>base_priority</code></td><td>当前优先级与创建时的优先级。两者不同就是被继承了</td></tr>
+    <tr><td><code>stack_used_bytes</code> / <code>stack_size_bytes</code> / <code>stack_free_percent</code></td><td>水位、声明大小、剩余百分比</td></tr>
+    <tr><td><code>cpu_share_percent</code></td><td>它在这段窗口里占任务时间的百分比</td></tr>
+    <tr><td><code>waiting_on</code></td><td>在等的对象名，没有就是空</td></tr>
+  </tbody>
+</table>
+
+<p><strong>这一轮没测到的格子是空的，不是 0</strong>。空表示"没读数"，0 表示"读到了，值是零"——
+这两件事在表上是一个破折号与一个数字的区别，在 CSV 里就是一个空字段与一个 0。把它们混起来，
+后面算平均值就会把没测到的轮次当成零拖低。</p>
+
+<p>文件默认叫记录文件的名字、后缀换成 <code>.csv</code>，写在记录旁边。导出的是<strong>整份记录</strong>，
+不受表格当前筛选和排序的限制——筛掉几行再导出，那份文件就跟记录对不上了。</p>
+
+<div class="note">
+  <strong>导出只有回放时才有</strong>
+  实时采集时程序只保留当前这一轮，没有"整份"可导。想把一段正在跑的东西留下来，
+  先按 <code>record</code> 录下来，再打开它导出。
+</div>
+
 <h3>任务表</h3>
 <table>
   <thead><tr><th>列</th><th>含义</th></tr></thead>
