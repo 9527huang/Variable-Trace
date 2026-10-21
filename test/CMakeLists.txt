@@ -119,6 +119,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosEventRing.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosEventHistory.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosEventQuery.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosTimeline.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosRecording.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpTypes.cpp
@@ -208,6 +209,7 @@ add_executable(${EXECUTABLE} main.cpp
     RtosEventRingTest.cpp
     RtosItmDecoderTest.cpp
     RtosEventHistoryTest.cpp
+    RtosEventQueryTest.cpp
     RtosTimelineTest.cpp
     RtosRecordingTest.cpp
     RtosTaskRosterTest.cpp

@@ -903,6 +903,14 @@ EXTRA = {
     "%.1f s": "%.1f 秒",
     "This kernel keeps no registry of its queues.": "这个内核不保留队列登记表。",
     "None are registered.": "没有登记任何对象。",
+
+    # The event list narrowed to one task: the chip that says so, the way back
+    # out of it, and the detail block's short run of the same records.
+    "only %s": "只看 %s",
+    "Show every task again.": "恢复显示全部任务",
+    "This task has not been switched in during the runs the view keeps.": "在这段记录里，这个任务没有被切入过。",
+    "Switches (5 s)": "切入次数(5 秒)",
+    "Show only this task's switches in the event list.": "事件列表里只看这个任务的切换。",
 }
 
 

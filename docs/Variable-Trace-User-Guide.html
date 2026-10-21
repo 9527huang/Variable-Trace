@@ -664,6 +664,37 @@
 （<code>global.json</code> 的 <code>rtos.eventsTransport</code>）。它们的现状见"限制与已知问题"。</p>
 </section>
 
+<section id="events">
+<h3>事件列表：把切换记录读成行</h3>
+
+<p>时间线画的是同一批记录，但<strong>宽度只能用眼睛量</strong>。"4.21 秒那一刻是谁"这种问题，
+眼睛量不出来。事件列表就是这批记录的行式：时间、任务、跑了多久，从早到晚排。</p>
+
+<table>
+  <thead><tr><th>做什么</th><th>怎么做</th></tr></thead>
+  <tbody>
+    <tr><td>停住列表</td><td>勾 <code>pause</code>。停住的是<strong>列表</strong>不是目标，采集照跑；停住期间新到的条数写在旁边（<code>19 new while paused</code>）——一条悄悄停住的列表是会骗人的</td></tr>
+    <tr><td>跳到那一刻</td><td>点任意一行。左栏的钉住时刻、时间线窗口、任务表都跟着换到那一刻</td></tr>
+    <tr><td>只看一个任务</td><td>先在表格或泳道里选中一个任务，列表右上出现 <code>only inv_mid</code>，点它只剩这个任务的切换；它前面变成带叉的标签，点叉恢复全部</td></tr>
+    <tr><td>从这个任务看它的切换</td><td>选中任务详情里的 <code>Switches (5 s)</code>：最近五秒被切入了几次，最多列三条，点一条同样跳到那一刻</td></tr>
+  </tbody>
+</table>
+
+<p>反过来也成立：点列表里的某一行，<strong>那个任务就被选中</strong>——左栏详情块换成它，
+它在列表里的其它行加一层底色。两边指的是同一个任务，不需要记住刚才在哪儿点的。</p>
+
+<p>列表只留<strong>最近 600 段</strong>，表头写"600 of 48122"：滚过去比读得快，而整段时间线那边看得见。
+计数永远报的是<strong>筛完之后的数</strong>，所以"只看 inv_mid"时会从四万多掉到一万三。</p>
+
+<div class="note">
+  <strong>为什么没有"因果高亮"</strong>
+  切换记录里只有两样东西：哪个任务的控制块、目标自己计时器上的微秒数。它不记录<strong>为什么</strong>切换
+  （超时、被抢占、主动让出），也不记录那一刻在等哪个对象。要把"谁等谁"画到事件行上，得让固件在切换点
+  多写一个原因字节——那是给固件加约束，按项目原则不做。这一刻在等谁，读<strong>钉住时刻</strong>与
+  <strong>同步对象</strong>两块：它们说的是当前这一轮的快照，来源不同，不混在一起。
+</div>
+</section>
+
 <section id="shortcuts">
 <h2>快捷键</h2>
 <table>

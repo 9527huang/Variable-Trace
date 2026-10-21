@@ -15,6 +15,7 @@
 #include "GuiRtosSelection.hpp"
 #include "RtosDiagnostics.hpp"
 #include "I18n.hpp"
+#include "RtosEventQuery.hpp"
 #include "RtosModel.hpp"
 #include "RtosSyncEnumerator.hpp"
 #include "RtosTableModel.hpp"
@@ -473,7 +474,13 @@ class GuiRtosPanel
 	static constexpr size_t eventsLimit = 600;
 
 	inline static size_t eventsCachedTotal = 0;
-	inline static std::vector<RtosEventRing::Interval> eventsCache;
+	inline static std::vector<RtosEventQuery::Row> eventsCache;
+
+	/* Every match behind the rows on screen, and the task the list is limited
+	   to. Zero is every task: no run has that control block. */
+	inline static size_t eventsMatched = 0;
+	inline static uint32_t eventsTask = 0;
+	inline static uint32_t eventsCachedTask = 0;
 
 	/* The last thing that went wrong with a recording, in the reader's words.
 	   Kept until the next attempt rather than shown for a frame: a dialog that
@@ -2348,44 +2355,110 @@ class GuiRtosPanel
 		ImGui::TextUnformatted(I18n::tr("Events"));
 
 		/*
-		 * Rebuilt when the history grew, not every frame.
+		 * Rebuilt when the history grew or when the question changed, and not
+		 * every frame.
 		 *
 		 * A target that switches a thousand times a second keeps thousands of
 		 * runs in ten seconds; copying all of them sixty times a second costs
 		 * more than the view is worth. The list also holds only the last few
 		 * hundred: rows that scroll past faster than they can be read are rows
 		 * nobody reads, and the whole ten seconds is looked at on the strip.
+		 *
+		 * Narrowing to one task is a new question, so it rebuilds even while the
+		 * list is paused: the reader asked for a different list, not for the one
+		 * in front of them to keep still.
 		 */
 		const size_t total = history.size();
+		const bool questionChanged = eventsTask != eventsCachedTask;
 
-		if (!eventsPaused && total != eventsCachedTotal)
+		if (questionChanged || (!eventsPaused && total != eventsCachedTotal))
 		{
-			eventsCache.clear();
-			history.copyRange(history.oldestSeconds(), history.newestSeconds(), eventsCache);
+			std::vector<RtosEventRing::Interval> runs;
+			history.copyRange(history.oldestSeconds(), history.newestSeconds(), runs);
 
-			if (eventsCache.size() > eventsLimit)
-				eventsCache.erase(eventsCache.begin(), eventsCache.end() - static_cast<std::ptrdiff_t>(eventsLimit));
+			const RtosEventQuery::Selection selection = RtosEventQuery::select(runs, eventsTask, eventsLimit);
 
+			eventsCache = std::move(selection.rows);
+			eventsMatched = selection.matched;
 			eventsCachedTotal = total;
+			eventsCachedTask = eventsTask;
+			eventsHeld = 0;
 		}
 		else if (eventsPaused && total > eventsCachedTotal)
 			eventsHeld = static_cast<uint32_t>(total - eventsCachedTotal);
+
+		/*
+		 * What the list is limited to on the left, how to limit it on the
+		 * right.
+		 *
+		 * A chip that says "only inv_low" beside a count that covers every task
+		 * would be two answers to one question, so the two never share a place:
+		 * while the list is narrowed, the chip with its cross sits where the
+		 * question is asked; while it is not, the way in sits after the count,
+		 * which is then about every task and reads that way.
+		 */
+		if (eventsTask != 0)
+		{
+			char chip[192] = {};
+			std::snprintf(chip, sizeof(chip), I18n::tr("only %s"), eventTaskName(eventsTask, rows));
+
+			const std::string label = std::string(chip) + " \xc3\x97##eventsOnlyOut";
+
+			ImGui::SameLine(0.0f, 8.0f * scale);
+
+			if (ImGui::SmallButton(label.c_str()))
+				eventsTask = 0;
+
+			if (ImGui::IsItemHovered())
+			{
+				ImGui::BeginTooltip();
+				ImGui::TextUnformatted(I18n::tr("Show every task again."));
+				ImGui::EndTooltip();
+			}
+		}
 
 		ImGui::SameLine(0.0f, 8.0f * scale);
 
 		if (eventsPaused && eventsHeld > 0)
 			GuiHelper::drawSecondaryText(I18n::tr("%u new while paused"), eventsHeld);
-		else if (total > eventsCache.size())
+		else if (eventsMatched > eventsCache.size())
 			GuiHelper::drawSecondaryText(I18n::tr("last %u of %u runs"), static_cast<uint32_t>(eventsCache.size()),
-			                             static_cast<uint32_t>(total));
+			                             static_cast<uint32_t>(eventsMatched));
 		else
 			GuiHelper::drawSecondaryText(I18n::tr("%u runs"), static_cast<uint32_t>(eventsCache.size()));
 
+		/* The way in, after the count it would change. Offered here rather than
+		   only in the detail block because this is where the reader is looking
+		   when the question "which of these are its" comes up. */
+		if (eventsTask == 0 && selection().task != 0)
+		{
+			char chip[192] = {};
+			std::snprintf(chip, sizeof(chip), I18n::tr("only %s"), eventTaskName(selection().task, rows));
+
+			const std::string label = std::string(chip) + "##eventsOnlyIn";
+
+			ImGui::SameLine(0.0f, 8.0f * scale);
+
+			if (ImGui::SmallButton(label.c_str()))
+				eventsTask = selection().task;
+
+			if (ImGui::IsItemHovered())
+			{
+				ImGui::BeginTooltip();
+				ImGui::TextUnformatted(I18n::tr("Show only this task's switches in the event list."));
+				ImGui::EndTooltip();
+			}
+		}
+
 		if (eventsCache.empty())
 		{
-			/* Two reasons and they are not the same: nothing was ever written
-			   by the target, or the reader has just opened the view. */
-			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("No switch records yet. The target writes them from its own timer interrupt, or sends them over SWO/RTT; the timeline's runs are the same records."));
+			/* Three reasons and they are not the same: nothing was ever written
+			   by the target, the reader has just opened the view, or the task
+			   being looked at was never switched in. */
+			if (eventsTask != 0)
+				GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("This task has not been switched in during the runs the view keeps."));
+			else
+				GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("No switch records yet. The target writes them from its own timer interrupt, or sends them over SWO/RTT; the timeline's runs are the same records."));
 
 			return;
 		}
@@ -2415,25 +2488,36 @@ class GuiRtosPanel
 			   left to right, earlier to later. */
 			for (size_t index = 0; index < eventsCache.size(); index++)
 			{
-				const RtosEventRing::Interval& run = eventsCache[index];
+				const RtosEventQuery::Row& run = eventsCache[index];
 
 				ImGui::TableNextRow();
+
+				/* The runs of the task the reader picked, tinted the way the
+				   table tints a selected row, so that a name in the detail and a
+				   row here are recognisably the same thing. */
+				if (selection().task != 0 && run.tcbAddress == selection().task)
+					ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_Header, 0.35f));
 
 				ImGui::TableNextColumn();
 
 				/* The row is the handle: clicking it pins the moment, which is
-				   what the strip, the table and the detail all read. */
-				char label[32] = {};
+				   what the strip, the table and the detail all read - and picks
+				   the task, so that a click in either half points both at the
+				   same one. */
+				char label[48] = {};
 				std::snprintf(label, sizeof(label), "%.2f##run%u", run.fromSeconds, static_cast<unsigned>(index));
 
 				if (ImGui::Selectable(label, false, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap))
+				{
 					GuiRtosPanelTimeline::pinAt(run.fromSeconds);
+					selection().task = run.tcbAddress;
+				}
 
 				ImGui::TableNextColumn();
 				ImGui::TextUnformatted(eventTaskName(run.tcbAddress, rows));
 
 				ImGui::TableNextColumn();
-				GuiHelper::drawSecondaryText("%.1f ms", (run.toSeconds - run.fromSeconds) * 1000.0);
+				GuiHelper::drawSecondaryText("%.1f ms", run.ranForSeconds() * 1000.0);
 			}
 
 			ImGui::EndTable();
@@ -2644,6 +2728,40 @@ class GuiRtosPanel
 
 				detailRow(I18n::tr("Last ran"), never);
 			}
+		}
+
+		/*
+		 * When it was put on the processor, as rows.
+		 *
+		 * "Last ran 2.13 s ago" answers when, and nothing about how often or for
+		 * how long. These are the same switch records the list below shows,
+		 * narrowed to this task, and each row is a jump: a detail that raised a
+		 * question can be followed without hunting for the row in a list of six
+		 * hundred.
+		 *
+		 * Five seconds and three rows, because this is a detail block and not a
+		 * second list: enough to see whether the task is being switched in at
+		 * all, and not enough to read instead of the list.
+		 */
+		const double switchFrom = std::max(0.0, newest - 5.0);
+
+		std::vector<RtosEventRing::Interval> switchRuns;
+		model.events().copyRange(switchFrom, newest, switchRuns);
+
+		const RtosEventQuery::Selection switches = RtosEventQuery::select(switchRuns, row.tcbAddress, 3);
+
+		ImGui::TextUnformatted(I18n::tr("Switches (5 s)"));
+		ImGui::SameLine(120.0f * scale);
+		ImGui::TextUnformatted(switches.matched == 0 ? "-" : std::to_string(switches.matched).c_str());
+
+		for (const RtosEventQuery::Row& switchRun : switches.rows)
+		{
+			char label[96] = {};
+			std::snprintf(label, sizeof(label), "    %s %.2f s, %.1f ms##switch%.2f", I18n::tr("at"), switchRun.fromSeconds,
+			              switchRun.ranForSeconds() * 1000.0, switchRun.fromSeconds);
+
+			if (ImGui::Selectable(label))
+				GuiRtosPanelTimeline::pinAt(switchRun.fromSeconds);
 		}
 	}
 
