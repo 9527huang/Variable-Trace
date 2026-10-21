@@ -625,8 +625,14 @@ void Gui::drawRecorderWindow()
 																		: static_cast<double>(raw));
 			}
 
-			report("Copied " + std::to_string(recorderHandler->getLastDownloadSize()) + " bytes: " +
-				   std::to_string(downloaded.samples) + " samples.");
+			/* One format string rather than pieces joined by hand: a sentence
+			   assembled from translated halves reads in the order English puts
+			   them together, and the second half never gets translated at all. */
+			char message[160] = {};
+			std::snprintf(message, sizeof(message), I18n::tr("Copied %u bytes: %u samples."),
+						  static_cast<unsigned>(recorderHandler->getLastDownloadSize()), static_cast<unsigned>(downloaded.samples));
+
+			report(message);
 		}
 		else
 			fail(error);
@@ -665,7 +671,12 @@ void Gui::drawRecorderWindow()
 			std::ofstream file(path);
 
 			if (!file)
-				fail(I18n::tr("The capture could not be written to ") + path);
+			{
+				char message[512] = {};
+				std::snprintf(message, sizeof(message), I18n::tr("The capture could not be written to %s."), path.c_str());
+
+				fail(message);
+			}
 			else
 			{
 				file << "time [s]";
@@ -692,7 +703,10 @@ void Gui::drawRecorderWindow()
 					file << "\n";
 				}
 
-				report(I18n::tr("Wrote ") + path + " (" + std::to_string(samples) + " samples).");
+				char message[512] = {};
+				std::snprintf(message, sizeof(message), I18n::tr("Wrote %s (%u samples)."), path.c_str(), static_cast<unsigned>(samples));
+
+				report(message);
 			}
 		}
 	}

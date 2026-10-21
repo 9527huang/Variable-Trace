@@ -827,6 +827,27 @@ EXTRA = {
     "%u of %u tasks have lanes": "%u / %u 个任务有泳道",
     "The filters left no task to draw. Clear them to see the lanes again.": "筛选之后没有任务可画。清除筛选就能重新看到泳道。",
 
+    # A sweep over the rest of the interface found ten more hand written keys
+    # with no entry - the same shape of leak as the twelve above: in Chinese the
+    # English stays, silently.
+    "Puts the windows, the docking and the table columns back the way a first run has them. Sizes and column choices are remembered per window, so a new layout would otherwise never reach an installation that has been started before.":
+        "把窗口、停靠和表格列恢复成第一次运行时的样子。尺寸和列的选择是按窗口记住的，否则新布局永远到不了一个已经启动过几次的安装上。",
+    "Error:": "错误:",
+    "File:": "文件:",
+    "Export capture to *.csv": "导出采集到 *.csv",
+    "There is nothing to write yet. Press Download first.": "还没有可写的内容。先按「下载」。",
+    "Writes the capture beside the project file, one column per variable, with the values the variables' own types give them.":
+        "把采集写到工程文件旁边，一个变量一列，数值按变量自己的类型给出。",
+    "Warning": "警告",
+    "(derived)": "(派生)",
+
+    # Three recorder messages that used to be built by gluing translated and
+    # untranslated pieces together. One format string each, so the order can move
+    # between languages and nothing is left in English.
+    "Copied %u bytes: %u samples.": "已读出 %u 字节: %u 个样本。",
+    "Wrote %s (%u samples).": "已写入 %s（%u 个样本）。",
+    "The capture could not be written to %s.": "采集写不进 %s。",
+
     # Twelve strings the panel asked for by hand and the table never had, so
     # they stayed English in the Chinese interface. Found by asking every
     # `I18n::tr` literal in the task view which entry it resolves to.
