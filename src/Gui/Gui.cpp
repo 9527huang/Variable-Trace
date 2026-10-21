@@ -434,7 +434,7 @@ void Gui::mainThread(std::string externalPath)
 				viewerDataHandler->setSwoSettings({}, 0, 0);
 
 			GuiRtosPanel::draw(viewerDataHandler->getRtosModel(), viewerDataHandler->getRtosPrepareError(),
-			                   globalConfig->getSettings().rtosStackAlertFreePercent, globalConfig->getSettings().rtosView);
+			                   globalConfig->getSettings().rtosStackAlertFreePercent, globalConfig->getSettings().rtosView, fileHandler);
 		}
 		ImGui::End();
 

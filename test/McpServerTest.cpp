@@ -708,7 +708,8 @@ namespace
 			{"acquisition", {"set_debug_probe", "configure_probe", "start_acquisition", "stop_acquisition", "get_acquisition_state"}},
 			{"data", {"get_variable_value", "get_variable_stats", "set_variable_value", "get_curve_data"}},
 			{"flashing", {"flash", "get_flash_status", "abort_flash", "get_flash_settings", "set_flash_settings"}},
-			{"rtos", {"get_rtos_info", "list_tasks", "list_sync_objects"}},
+			{"rtos", {"get_rtos_info", "list_tasks", "list_sync_objects", "start_rtos_recording", "stop_rtos_recording", "open_rtos_recording",
+					  "close_rtos_recording", "show_rtos_round"}},
 			{"instance", {"get_instance_info"}},
 		};
 
@@ -727,7 +728,7 @@ namespace
 		}
 
 		EXPECT_EQ(registered.size(), expected.size());
-		EXPECT_EQ(registered.size(), 52u);
+		EXPECT_EQ(registered.size(), 57u);
 	}
 
 	TEST_F(ServerTest, EveryToolDescribesItsArguments)
@@ -875,7 +876,7 @@ namespace
 
 		const Json listing = server->handleMessage(Json::object({{"jsonrpc", "2.0"}, {"id", 2}, {"method", "tools/list"}}));
 		ASSERT_TRUE(listing.contains("result"));
-		EXPECT_EQ(listing.at("result").at("tools").size(), 52u);
+		EXPECT_EQ(listing.at("result").at("tools").size(), 57u);
 
 		const Json ping = server->handleMessage(Json::object({{"jsonrpc", "2.0"}, {"id", 3}, {"method", "ping"}}));
 		EXPECT_EQ(ping.at("result"), Json::object({}));

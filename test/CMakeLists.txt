@@ -119,6 +119,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosEventHistory.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosTimeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosRecording.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpTypes.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpProtocol.cpp
     ${CMAKE_SOURCE_DIR}/src/McpServer/McpToolRegistry.cpp
@@ -207,6 +208,7 @@ add_executable(${EXECUTABLE} main.cpp
     RtosItmDecoderTest.cpp
     RtosEventHistoryTest.cpp
     RtosTimelineTest.cpp
+    RtosRecordingTest.cpp
     ${SOURCES})
 
 add_compile_options(-Wall -Wextra -Wpedantic)

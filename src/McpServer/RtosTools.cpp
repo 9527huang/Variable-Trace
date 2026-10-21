@@ -51,6 +51,159 @@ namespace mcp
 	}
 
 	/*
+	 * The recording and the file being played back.
+	 *
+	 * One object with both, because the caller's question is "what is the task
+	 * view showing" and the answer is one or the other - never both.
+	 */
+	Json recordingJson(const RtosModel* model)
+	{
+		Json recording = Json::object({{"active", false}});
+		Json playback = Json::object({{"active", false}});
+
+		if (model == nullptr)
+			return Json::object({{"recording", recording}, {"playback", playback}});
+
+		if (model->isRecording())
+		{
+			const RtosRecording::Info info = model->recordingStats();
+
+			recording["active"] = true;
+			recording["path"] = model->recordingPath();
+			recording["rounds"] = static_cast<uint64_t>(info.rounds);
+			recording["bytes"] = info.bytes;
+			recording["duration_s"] = info.durationSeconds();
+		}
+
+		if (model->isPlayback())
+		{
+			const RtosModel::PlaybackInfo info = model->playbackInfo();
+
+			playback["active"] = true;
+			playback["path"] = info.path;
+			playback["rounds"] = static_cast<uint64_t>(info.rounds);
+			playback["current"] = static_cast<uint64_t>(info.current);
+			playback["first_s"] = info.firstSecond;
+			playback["last_s"] = info.lastSecond;
+		}
+
+		return Json::object({{"recording", recording}, {"playback", playback}});
+	}
+
+	/* The model, or a sentence about why there is none. The task view exists
+	   for every project; it only has rounds once it has prepared against one
+	   built with the kernel symbols, which is the one thing worth saying. */
+	std::shared_ptr<RtosModel> requireRtosModel(McpContext& context, const char* tool)
+	{
+		std::shared_ptr<RtosModel> model = context.viewerDataHandler != nullptr ? context.viewerDataHandler->getRtosModel() : nullptr;
+
+		if (model == nullptr)
+		{
+			const std::string reason = context.viewerDataHandler != nullptr ? context.viewerDataHandler->getRtosPrepareError() : "";
+
+			throw ToolError(std::string(tool) + " needs the task view, and it is not prepared: " + (reason.empty() ? "no reason was given" : reason));
+		}
+
+		return model;
+	}
+
+	Json startRtosRecording(McpContext& context, const Json& arguments)
+	{
+		requireApiWritesEnabled(context);
+
+		const std::string path = requireString(arguments, "path");
+		std::shared_ptr<RtosModel> model = requireRtosModel(context, "start_rtos_recording");
+
+		RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+		if (!model->startRecording(path, problem))
+			throw ToolError(std::string("The recording could not be started: ") + RtosRecording::describe(problem) + ".");
+
+		return recordingJson(model.get());
+	}
+
+	Json stopRtosRecording(McpContext& context, const Json&)
+	{
+		requireApiWritesEnabled(context);
+
+		std::shared_ptr<RtosModel> model = requireRtosModel(context, "stop_rtos_recording");
+
+		/* The numbers before the file is closed: the counters live with the
+		   handle, and closing it would leave the caller with nothing to report. */
+		const RtosRecording::Info info = model->recordingStats();
+
+		model->stopRecording();
+
+		return Json::object({{"recording", Json::object({{"active", false},
+		                                                 {"rounds", static_cast<uint64_t>(info.rounds)},
+		                                                 {"bytes", info.bytes},
+		                                                 {"duration_s", info.durationSeconds()}})}});
+	}
+
+	Json openRtosRecording(McpContext& context, const Json& arguments)
+	{
+		requireApiWritesEnabled(context);
+
+		const std::string path = requireString(arguments, "path");
+		std::shared_ptr<RtosModel> model = requireRtosModel(context, "open_rtos_recording");
+
+		RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+		if (!model->openRecording(path, problem))
+			throw ToolError(std::string("The recording could not be opened: ") + RtosRecording::describe(problem) + ".");
+
+		return recordingJson(model.get());
+	}
+
+	Json closeRtosRecording(McpContext& context, const Json&)
+	{
+		requireApiWritesEnabled(context);
+
+		std::shared_ptr<RtosModel> model = requireRtosModel(context, "close_rtos_recording");
+
+		model->closePlayback();
+
+		return recordingJson(model.get());
+	}
+
+	Json showRtosRound(McpContext& context, const Json& arguments)
+	{
+		requireApiWritesEnabled(context);
+
+		std::shared_ptr<RtosModel> model = requireRtosModel(context, "show_rtos_round");
+
+		if (!model->isPlayback())
+			throw ToolError("show_rtos_round needs a recording to be open; open one with open_rtos_recording first.");
+
+		/* A caller looking at a recording thinks in seconds, because that is what
+		   the strip prints. The index is accepted too, for a caller that walked
+		   the rounds itself. */
+		const std::optional<double> atSeconds = optionalNumber(arguments, "at_s");
+		const std::optional<int64_t> index = optionalInteger(arguments, "index");
+
+		if (!atSeconds.has_value() && !index.has_value())
+			throw ToolError("Field 'at_s' or 'index' is required.");
+
+		const RtosModel::PlaybackInfo info = model->playbackInfo();
+
+		size_t round = info.current;
+
+		if (atSeconds.has_value())
+			round = model->nearestPlaybackRound(*atSeconds);
+		else if (index.has_value())
+		{
+			if (*index < 0 || static_cast<uint64_t>(*index) >= info.rounds)
+				throw ToolError("Field 'index' is outside the recording, which holds " + std::to_string(info.rounds) + " round(s).");
+
+			round = static_cast<size_t>(*index);
+		}
+
+		model->showPlaybackRound(round);
+
+		return recordingJson(model.get());
+	}
+
+	/*
 	 * The task view.
 	 *
 	 * Both tools are read only and both answer out of the snapshot the
@@ -203,7 +356,9 @@ namespace mcp
 								 {"history_samples", 0},
 								 {"history_oldest_s", 0.0},
 								 {"stack_scan", Json::object({{"enabled", false}, {"fill_seen", false}, {"tasks_scanned", 0}, {"oldest_age_s", 0.0}})},
-								 {"cpu_load", Json::object({{"supported", false}, {"counting", false}, {"tasks_measured", 0}, {"tasks_known", 0}, {"window_s", 0.0}})}});
+								 {"cpu_load", Json::object({{"supported", false}, {"counting", false}, {"tasks_measured", 0}, {"tasks_known", 0}, {"window_s", 0.0}})},
+								 {"recording", recordingJson(nullptr)["recording"]},
+								 {"playback", recordingJson(nullptr)["playback"]}});
 			}
 
 			const std::shared_ptr<const RtosSnapshot> snapshot = model->current();
@@ -270,7 +425,9 @@ namespace mcp
 								    mean different things to whoever is reading: one is about
 								    the firmware, the other about the target's timer. */
 								 {"cpu_load",
-								  snapshot == nullptr ? Json() : Json(Json::object({{"supported", snapshot->cpuLoad.supported}, {"counting", snapshot->cpuLoad.counting}, {"tasks_measured", static_cast<uint32_t>(snapshot->cpuLoad.tasksMeasured)}, {"tasks_known", static_cast<uint32_t>(snapshot->cpuLoad.tasksKnown)}, {"window_s", snapshot->cpuLoad.windowSeconds}}))}});
+								  snapshot == nullptr ? Json() : Json(Json::object({{"supported", snapshot->cpuLoad.supported}, {"counting", snapshot->cpuLoad.counting}, {"tasks_measured", static_cast<uint32_t>(snapshot->cpuLoad.tasksMeasured)}, {"tasks_known", static_cast<uint32_t>(snapshot->cpuLoad.tasksKnown)}, {"window_s", snapshot->cpuLoad.windowSeconds}}))},
+								 {"recording", recordingJson(model.get())["recording"]},
+								 {"playback", recordingJson(model.get())["playback"]}});
 		}
 
 		Json listTasks(McpContext& context, const Json& args)
@@ -407,12 +564,47 @@ namespace mcp
 		registry.add({.name = "get_rtos_info",
 					  .description = "Return the state of the task view as JSON: {enabled, session_id, sequence, consistency, capture_started_at_s, "
 									 "capture_finished_at_s, capture_span_s, task_count, sync_object_count, lists_walked, lists_failed, rounds_published, "
-									 "rounds_rejected, last_rejection, stack_scan, cpu_load, history_samples, history_oldest_s, problems, inconsistencies}. "
+									 "rounds_rejected, last_rejection, stack_scan, cpu_load, history_samples, history_oldest_s, problems, inconsistencies, recording, playback}. "
 									 "cpu_load carries {supported, counting, tasks_measured, tasks_known, window_s}. "
 									 "stack_scan carries {enabled, fill_seen, tasks_scanned, oldest_age_s}. "
+					 "recording carries {active, path, rounds, bytes, duration_s} while a recording is being written; playback carries "
+					 "{active, path, rounds, current, first_s, last_s} while a file is being shown instead of the target. "
 									 "Reads the last published snapshot; it does not touch the target.",
 					  .inputSchema = objectSchema(Json::object({})),
 					  .handler = rtosInfo});
+
+		registry.add({.name = "start_rtos_recording",
+					  .description = "Write every round the task view is shown to a file, so that the same table, findings and lanes can be read "
+									 "later with no probe attached. Returns {recording, playback}. The file is a snapshot of the view, not a second "
+									 "model of the target; nothing is read from the target because of it. Requires API writes.",
+					  .inputSchema = objectSchema(Json::object({{"path", stringProperty("File to write, for example D:/captures/run.vtrec")}}), {"path"}),
+					  .handler = startRtosRecording});
+
+		registry.add({.name = "stop_rtos_recording",
+					  .description = "Close the file being recorded and report what went into it: {recording: {active, rounds, bytes, duration_s}}. "
+									 "Requires API writes.",
+					  .inputSchema = objectSchema(Json::object({})),
+					  .handler = stopRtosRecording});
+
+		registry.add({.name = "open_rtos_recording",
+					  .description = "Show a recording instead of a live target: the rounds go into the timeline and the last one becomes the round "
+									 "the task tools answer from. Starting an acquisition closes it. Returns {recording, playback}. Requires API writes.",
+					  .inputSchema = objectSchema(Json::object({{"path", stringProperty("Recording written by start_rtos_recording")}}), {"path"}),
+					  .handler = openRtosRecording});
+
+		registry.add({.name = "close_rtos_recording",
+					  .description = "Stop showing a recording and go back to the live target: the history is cleared and the task tools report no "
+									 "snapshot until an acquisition publishes one. Requires API writes.",
+					  .inputSchema = objectSchema(Json::object({})),
+					  .handler = closeRtosRecording});
+
+		registry.add({.name = "show_rtos_round",
+					  .description = "In a recording, make one round the round the task tools answer from. Give 'at_s' (the same seconds the strip "
+									 "prints; the nearest round is used) or 'index' (0 based). Returns {recording, playback} with the round now current. "
+									 "Requires API writes.",
+					  .inputSchema = objectSchema(Json::object({{"at_s", numberProperty("Seconds into the recording")},
+					                                            {"index", integerProperty("Round number, 0 based")}})),
+					  .handler = showRtosRound});
 
 		registry.add({.name = "list_tasks",
 					  .description = "Return the tasks of the most recent snapshot as JSON: {session_id, sequence, consistency, capture_span_s, "

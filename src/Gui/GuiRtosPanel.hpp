@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -16,6 +18,7 @@
 #include "RtosModel.hpp"
 #include "RtosSyncEnumerator.hpp"
 #include "RtosTableModel.hpp"
+#include "IFileHandler.hpp"
 #include "imgui.h"
 
 /*
@@ -43,7 +46,8 @@
 class GuiRtosPanel
 {
    public:
-	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation, uint32_t stackAlertFreePercent, RtosViewSettings& view)
+	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation, uint32_t stackAlertFreePercent, RtosViewSettings& view,
+	                 IFileHandler* fileHandler)
 	{
 		/* What the reader had set up is taken once, from the settings file, so
 		   that a run does not change under a number someone is moving in a box -
@@ -94,6 +98,10 @@ class GuiRtosPanel
 
 			return;
 		}
+
+		/* Before the round: where the round came from is the first thing to know
+		   about it, and it is the only place a recording is started or left. */
+		drawSourceLine(model, fileHandler);
 
 		const std::shared_ptr<const RtosSnapshot> snapshot = model->current();
 
@@ -219,6 +227,32 @@ class GuiRtosPanel
 		                                                                               : RtosTableModel::laneOrderOf(rows);
 
 		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, lanes, selection());
+
+		/*
+		 * In a recording the strip is also the scrubber.
+		 *
+		 * A live view always shows the newest round, because that is the only
+		 * one a probe can give. A file holds every round, and the question
+		 * "what was it doing then" is the whole reason for keeping them - so
+		 * the pinned moment decides which round the table is built from.
+		 *
+		 * Only when something is pinned. Opening a file shows its last round
+		 * and nothing moves the round after that unless the reader asks: a view
+		 * that snapped back to the newest round every frame would undo both a
+		 * pin and anything else that had moved it, and the strip's own window
+		 * would be unreadable the moment it was dragged back in time.
+		 *
+		 * Asked after the strip has drawn, because the click is handled there:
+		 * the round follows the click on the next frame, one frame behind every
+		 * other click in a window.
+		 */
+		if (model->isPlayback() && GuiRtosPanelTimeline::getPinned())
+		{
+			const size_t wanted = model->nearestPlaybackRound(GuiRtosPanelTimeline::getPinnedAt());
+
+			if (wanted != model->playbackInfo().current)
+				model->showPlaybackRound(wanted);
+		}
 
 		/* Under the strip, and in the same window: a task that is waiting is
 		   waiting for one of these, so the two are read together. */
@@ -398,6 +432,12 @@ class GuiRtosPanel
 	   choice rather than the round's data. */
 	inline static RtosTaskTableQuery query{};
 	inline static bool stackAlertSeeded = false;
+
+	/* The last thing that went wrong with a recording, in the reader's words.
+	   Kept until the next attempt rather than shown for a frame: a dialog that
+	   failed has to say why after it has closed. */
+	inline static std::string recordingProblem;
+	inline static std::string playbackProblem;
 
 	/*
 	 * The findings of the round on screen, worked out once and kept.
@@ -847,6 +887,188 @@ class GuiRtosPanel
 	{
 		if (ImGui::GetContentRegionAvail().x > width)
 			ImGui::SameLine();
+	}
+
+	/*
+	 * Where the rounds on screen came from.
+	 *
+	 * Two sources, and they are never on at once: a probe being read right now,
+	 * or a file written during an earlier run. The line is one row either way,
+	 * because everything under it must stay where it is when a recording starts
+	 * or a file is opened - and because "is this happening now" is the first
+	 * thing a reader needs to know about a table of a running system.
+	 */
+	static void drawSourceLine(const std::shared_ptr<RtosModel>& model, IFileHandler* fileHandler)
+	{
+		const float scale = GuiHelper::contentScale;
+
+		if (model->isPlayback())
+		{
+			const RtosModel::PlaybackInfo info = model->playbackInfo();
+
+			ImGui::TextUnformatted(I18n::tr("playing back"));
+
+			ImGui::SameLine(0.0f, 6.0f * scale);
+			GuiHelper::drawSecondaryText("%s", fileNameOf(info.path).c_str());
+
+			ImGui::SameLine(0.0f, 10.0f * scale);
+			GuiHelper::drawSecondaryText(I18n::tr("%u rounds"), static_cast<uint32_t>(info.rounds));
+
+			ImGui::SameLine(0.0f, 6.0f * scale);
+			GuiHelper::drawSecondaryText(I18n::tr("%.1f s"), info.lastSecond - info.firstSecond);
+
+			/* Which round is on screen: the table is one moment out of the
+			   recording, and a reader who pinned the strip needs to see which
+			   moment that turned out to be. */
+			if (info.rounds > 0)
+			{
+				ImGui::SameLine(0.0f, 6.0f * scale);
+				GuiHelper::drawSecondaryText(I18n::tr("round %u of %u"), static_cast<uint32_t>(info.current + 1),
+				                             static_cast<uint32_t>(info.rounds));
+			}
+
+			sameLineIfFits(120.0f * scale);
+
+			if (ImGui::SmallButton(I18n::tr("back to live")))
+				model->closePlayback();
+
+			/* Another file is one click away, rather than a trip through the
+			   live view to get back to the same button. */
+			sameLineIfFits(150.0f * scale);
+
+			if (ImGui::SmallButton(I18n::tr("open a recording")))
+				openRecording(model, fileHandler);
+
+			if (!playbackProblem.empty())
+			{
+				ImGui::SameLine(0.0f, 8.0f * scale);
+				ImGui::TextColored(GuiHelper::redLight(), "%s", playbackProblem.c_str());
+			}
+
+			ImGui::Separator();
+
+			return;
+		}
+
+		if (model->isRecording())
+		{
+			ImGui::TextColored(GuiHelper::redLight(), "%s", I18n::tr("recording"));
+
+			const RtosRecording::Info info = model->recordingStats();
+
+			ImGui::SameLine(0.0f, 6.0f * scale);
+			GuiHelper::drawSecondaryText("%s", fileNameOf(model->recordingPath()).c_str());
+
+			ImGui::SameLine(0.0f, 10.0f * scale);
+			GuiHelper::drawSecondaryText(I18n::tr("%u rounds"), static_cast<uint32_t>(info.rounds));
+
+			ImGui::SameLine(0.0f, 6.0f * scale);
+			GuiHelper::drawSecondaryText(I18n::tr("%.1f s"), info.durationSeconds());
+
+			/* The size is part of the answer, not decoration: a recording of a
+			   hundred rounds a second is six megabytes a minute, and a reader
+			   who leaves it on for an afternoon should be told. */
+			ImGui::SameLine(0.0f, 6.0f * scale);
+
+			if (info.bytes < 1024u * 1024u)
+				GuiHelper::drawSecondaryText(I18n::tr("%.0f KB"), static_cast<double>(info.bytes) / 1024.0);
+			else
+				GuiHelper::drawSecondaryText(I18n::tr("%.1f MB"), static_cast<double>(info.bytes) / (1024.0 * 1024.0));
+
+			sameLineIfFits(120.0f * scale);
+
+			if (ImGui::SmallButton(I18n::tr("stop recording")))
+				model->stopRecording();
+		}
+		else
+		{
+			if (ImGui::SmallButton(I18n::tr("record")))
+				startRecording(model, fileHandler);
+
+			if (ImGui::IsItemHovered())
+			{
+				ImGui::BeginTooltip();
+				ImGui::PushTextWrapPos(ImGui::GetFontSize() * 34.0f);
+				ImGui::TextUnformatted(I18n::tr("Writes every round the view is shown to a file, so that the same table, findings and lanes can be read again with no probe attached."));
+				ImGui::PopTextWrapPos();
+				ImGui::EndTooltip();
+			}
+
+			sameLineIfFits(150.0f * scale);
+
+			if (ImGui::SmallButton(I18n::tr("open a recording")))
+				openRecording(model, fileHandler);
+		}
+
+		if (!recordingProblem.empty())
+		{
+			ImGui::SameLine(0.0f, 8.0f * scale);
+			ImGui::TextColored(GuiHelper::redLight(), "%s", recordingProblem.c_str());
+		}
+
+		ImGui::Separator();
+	}
+
+	static std::string fileNameOf(const std::string& path)
+	{
+		if (path.empty())
+			return {};
+
+		return std::filesystem::path(path).filename().string();
+	}
+
+	/* A name that sorts by when it was taken, so that a directory of them reads
+	   as a timeline rather than as a pile. */
+	static std::string defaultRecordingName()
+	{
+		const std::time_t now = std::time(nullptr);
+		std::tm local = {};
+		localtime_s(&local, &now);
+
+		char stamp[32] = {};
+		std::strftime(stamp, sizeof(stamp), "tasks_%Y%m%d-%H%M%S.vtrec", &local);
+
+		return stamp;
+	}
+
+	static void startRecording(const std::shared_ptr<RtosModel>& model, IFileHandler* fileHandler)
+	{
+		recordingProblem.clear();
+
+		if (fileHandler == nullptr)
+			return;
+
+		std::string path = fileHandler->saveFile({{I18n::tr("Task view recordings"), "vtrec"}, {I18n::tr("All files"), "*"}}, "",
+		                                         defaultRecordingName());
+
+		if (path.empty())
+			return;
+
+		if (path.size() < 6 || path.compare(path.size() - 6, 6, ".vtrec") != 0)
+			path += ".vtrec";
+
+		RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+		if (!model->startRecording(path, problem))
+			recordingProblem = I18n::tr(RtosRecording::describe(problem));
+	}
+
+	static void openRecording(const std::shared_ptr<RtosModel>& model, IFileHandler* fileHandler)
+	{
+		playbackProblem.clear();
+
+		if (fileHandler == nullptr)
+			return;
+
+		const std::string path = fileHandler->openFile({{I18n::tr("Task view recordings"), "vtrec"}, {I18n::tr("All files"), "*"}});
+
+		if (path.empty())
+			return;
+
+		RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+		if (!model->openRecording(path, problem))
+			playbackProblem = I18n::tr(RtosRecording::describe(problem));
 	}
 
 	/*

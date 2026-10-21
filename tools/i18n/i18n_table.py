@@ -844,6 +844,29 @@ EXTRA = {
     # Three recorder messages that used to be built by gluing translated and
     # untranslated pieces together. One format string each, so the order can move
     # between languages and nothing is left in English.
+    # 离线记录：录一段、后面不接探针也能看。判据与文件格式在 RtosRecording。
+    "record": "录制",
+    "stop recording": "停止录制",
+    "recording": "正在录制",
+    "open a recording": "打开记录",
+    "playing back": "回放",
+    "back to live": "回到实时",
+    "Task view recordings": "任务视图记录",
+    "%u rounds": "%u 轮",
+    "round %u of %u": "第 %u 轮，共 %u 轮",
+    # %.0f KB / %.1f MB 只在两种语言里一样，所以不进词表（英文原样返回）。
+    "Writes every round the view is shown to a file, so that the same table, findings and lanes can be read again with no probe attached.":
+        "把界面看到的每一轮写进文件，之后不接探针也能重新看同一张表、同样的发现和泳道。",
+
+    # RtosRecording 的失败原因。英文那句同时是日志和词表的键，所以只写一次。
+    "the file could not be created": "文件无法创建",
+    "the file could not be opened": "文件打不开",
+    "this is not a task view recording": "这不是任务视图的记录文件",
+    "this recording was written by another version of the program": "这个记录是别的版本的程序写的",
+    "this recording holds no rounds": "这个记录里没有轮次",
+    "a recording is already open for reading": "已经打开了一个记录在看",
+    "a recording is being written": "正在录制，先停下再打开",
+
     "Copied %u bytes: %u samples.": "已读出 %u 字节: %u 个样本。",
     "Wrote %s (%u samples).": "已写入 %s（%u 个样本）。",
     "The capture could not be written to %s.": "采集写不进 %s。",

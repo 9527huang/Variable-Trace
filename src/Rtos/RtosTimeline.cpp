@@ -35,6 +35,27 @@ void RtosTimeline::add(const RtosSnapshot& snapshot)
 	filled = std::min(filled + 1, capacity);
 }
 
+void RtosTimeline::ensureCapacity(size_t count)
+{
+	std::lock_guard<std::mutex> guard(mtx);
+
+	if (count <= capacity)
+		return;
+
+	std::vector<Sample> grown(count);
+
+	/* Oldest first, so that the ring can start again at zero with the samples
+	   in the order they were taken. */
+	const size_t oldest = (next + capacity - filled) % capacity;
+
+	for (size_t index = 0; index < filled; index++)
+		grown[index] = std::move(samples[(oldest + index) % capacity]);
+
+	samples = std::move(grown);
+	capacity = count;
+	next = filled % capacity;
+}
+
 void RtosTimeline::clear()
 {
 	std::lock_guard<std::mutex> guard(mtx);

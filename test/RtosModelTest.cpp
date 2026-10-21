@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <thread>
@@ -338,4 +339,217 @@ TEST(RtosModel, EveryPublishedRoundReachesTheTimeline)
 	/* A new session is a new history. */
 	model.beginSession("session-2");
 	EXPECT_EQ(model.history().size(), 0u);
+}
+
+namespace
+{
+	/* A recording needs a file, and a test needs a place to put one. */
+	class RtosModelRecordingTest : public ::testing::Test
+	{
+	   protected:
+		void SetUp() override
+		{
+			directory = std::filesystem::temp_directory_path() / "variable-trace-model-recording-test";
+			std::filesystem::remove_all(directory);
+			std::filesystem::create_directories(directory);
+		}
+
+		void TearDown() override
+		{
+			std::filesystem::remove_all(directory);
+		}
+
+		std::string path(const std::string& name) const
+		{
+			return (directory / name).string();
+		}
+
+		std::filesystem::path directory;
+	};
+
+	/* The rounds a session publishes, the way the sampler does it. */
+	void publishRound(RtosModel& model, double atSeconds, uint32_t tasks)
+	{
+		auto snapshot = std::make_shared<RtosSnapshot>();
+		snapshot->captureStartedAt = atSeconds;
+		snapshot->tasks = enumerationOf(tasks).tasks;
+
+		model.publish(std::move(snapshot));
+	}
+}  // namespace
+
+TEST_F(RtosModelRecordingTest, WhatWasRecordedIsWhatIsPlayedBack)
+{
+	RtosModel model;
+	const std::string file = path("session.vtrec");
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	model.beginSession("session-1");
+
+	ASSERT_TRUE(model.startRecording(file, problem)) << RtosRecording::describe(problem);
+	EXPECT_TRUE(model.isRecording());
+
+	publishRound(model, 1.0, 2);
+	publishRound(model, 1.5, 3);
+	publishRound(model, 2.0, 3);
+
+	model.stopRecording();
+
+	EXPECT_FALSE(model.isRecording());
+
+	const RtosRecording::Info written = model.recordingStats();
+	EXPECT_EQ(written.rounds, 3u);
+
+	/* Playing it back is a different model: the live history is gone, and what
+	   is in its place is the file. */
+	RtosModel replay;
+
+	ASSERT_TRUE(replay.openRecording(file, problem)) << RtosRecording::describe(problem);
+	EXPECT_TRUE(replay.isPlayback());
+
+	EXPECT_EQ(replay.history().size(), 3u);
+	EXPECT_DOUBLE_EQ(replay.history().oldestSeconds(), 1.0);
+	EXPECT_DOUBLE_EQ(replay.history().newestSeconds(), 2.0);
+
+	const RtosModel::PlaybackInfo info = replay.playbackInfo();
+
+	EXPECT_EQ(info.rounds, 3u);
+	EXPECT_EQ(info.current, 2u);
+	EXPECT_DOUBLE_EQ(info.firstSecond, 1.0);
+	EXPECT_DOUBLE_EQ(info.lastSecond, 2.0);
+
+	ASSERT_NE(replay.current(), nullptr);
+	EXPECT_DOUBLE_EQ(replay.current()->captureStartedAt, 2.0);
+	EXPECT_EQ(replay.current()->tasks.size(), 3u);
+}
+
+TEST_F(RtosModelRecordingTest, ShowingARoundMovesWhatTheViewHas)
+{
+	RtosModel model;
+	const std::string file = path("scrub.vtrec");
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	model.beginSession("session-1");
+
+	ASSERT_TRUE(model.startRecording(file, problem)) << RtosRecording::describe(problem);
+
+	publishRound(model, 1.0, 2);
+	publishRound(model, 1.5, 3);
+	publishRound(model, 2.0, 4);
+
+	model.stopRecording();
+
+	RtosModel replay;
+
+	ASSERT_TRUE(replay.openRecording(file, problem)) << RtosRecording::describe(problem);
+
+	replay.showPlaybackRound(0);
+
+	ASSERT_NE(replay.current(), nullptr);
+	EXPECT_DOUBLE_EQ(replay.current()->captureStartedAt, 1.0);
+	EXPECT_EQ(replay.current()->tasks.size(), 2u);
+
+	/* The history does not move with the round being looked at: the lanes are
+	   the whole recording, and the round on screen is one point inside it. */
+	EXPECT_EQ(replay.history().size(), 3u);
+
+	/* A click on the strip asks for the nearest round, not for an exact one. */
+	EXPECT_EQ(replay.nearestPlaybackRound(1.62), 1u);
+
+	replay.showPlaybackRound(1);
+	EXPECT_EQ(replay.current()->tasks.size(), 3u);
+
+	/* Out of range is ignored rather than clamped: the view keeps showing what
+	   it was showing. */
+	replay.showPlaybackRound(99);
+	EXPECT_EQ(replay.current()->tasks.size(), 3u);
+}
+
+TEST_F(RtosModelRecordingTest, StartingASessionEndsThePlayback)
+{
+	RtosModel model;
+	const std::string file = path("session2.vtrec");
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	model.beginSession("session-1");
+
+	ASSERT_TRUE(model.startRecording(file, problem)) << RtosRecording::describe(problem);
+	publishRound(model, 1.0, 2);
+	model.stopRecording();
+
+	RtosModel replay;
+
+	ASSERT_TRUE(replay.openRecording(file, problem)) << RtosRecording::describe(problem);
+	EXPECT_TRUE(replay.isPlayback());
+
+	/* Starting an acquisition is what this is: a new session, and the file has
+	   no place in it. */
+	replay.beginSession("session-2");
+
+	EXPECT_FALSE(replay.isPlayback());
+	EXPECT_EQ(replay.current(), nullptr);
+	EXPECT_EQ(replay.history().size(), 0u);
+}
+
+TEST_F(RtosModelRecordingTest, ARoundThatArrivesWhilePlayingBackIsDropped)
+{
+	RtosModel model;
+	const std::string file = path("guarded.vtrec");
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	model.beginSession("session-1");
+
+	ASSERT_TRUE(model.startRecording(file, problem)) << RtosRecording::describe(problem);
+	publishRound(model, 1.0, 2);
+	model.stopRecording();
+
+	RtosModel replay;
+
+	ASSERT_TRUE(replay.openRecording(file, problem)) << RtosRecording::describe(problem);
+
+	/* Two targets in one history is a picture of neither: a live round reaching
+	   a view that is showing a file is refused. */
+	publishRound(replay, 5.0, 3);
+
+	EXPECT_EQ(replay.history().size(), 1u);
+	EXPECT_DOUBLE_EQ(replay.current()->captureStartedAt, 1.0);
+}
+
+TEST_F(RtosModelRecordingTest, RecordingCannotStartWhileAPlaybackIsOpen)
+{
+	RtosModel model;
+	const std::string file = path("both.vtrec");
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	model.beginSession("session-1");
+
+	ASSERT_TRUE(model.startRecording(file, problem)) << RtosRecording::describe(problem);
+	publishRound(model, 1.0, 2);
+	model.stopRecording();
+
+	RtosModel replay;
+
+	ASSERT_TRUE(replay.openRecording(file, problem)) << RtosRecording::describe(problem);
+
+	EXPECT_FALSE(replay.startRecording(path("other.vtrec"), problem));
+	EXPECT_NE(problem, RtosRecording::Problem::None);
+}
+
+TEST_F(RtosModelRecordingTest, ANewSessionEndsTheRecording)
+{
+	RtosModel model;
+	const std::string file = path("session3.vtrec");
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	model.beginSession("session-1");
+
+	ASSERT_TRUE(model.startRecording(file, problem)) << RtosRecording::describe(problem);
+	publishRound(model, 1.0, 2);
+
+	/* The clock starts again with a session, so rounds from both sides of one
+	   would be two runs on one axis - in the file as well as on the screen. */
+	model.beginSession("session-2");
+
+	EXPECT_FALSE(model.isRecording());
+	EXPECT_EQ(model.recordingStats().rounds, 1u);
 }

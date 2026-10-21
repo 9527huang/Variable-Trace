@@ -374,6 +374,34 @@
   以及运行时间统计。这些是内核自己为调度而维护的，软件只是把它们读出来并做算术。
 </div>
 
+<h3>录制与回放：把一段现场带回去看</h3>
+
+<p>面板最上面一行是<strong>数据来源</strong>：眼下这张表是探针刚读回来的，还是几天前录下来的文件。
+两种情况只会有一种成立，这一行也只会说一件事。</p>
+
+<table>
+  <thead><tr><th>这一行显示</th><th>意思</th></tr></thead>
+  <tbody>
+    <tr><td><code>record</code> · <code>open a recording</code></td><td>正在看实时目标。按 <code>record</code> 选一个文件（默认名字带开始时刻，后缀 <code>.vtrec</code>），按 <code>open a recording</code> 打开以前录的</td></tr>
+    <tr><td><code>recording 文件名 · 1204 轮 · 602.1 秒 · 2.1 MB</code></td><td>正在录。旁边的 <code>stop recording</code> 结束并关文件</td></tr>
+    <tr><td><code>playing back 文件名 · 1204 轮 · 602.1 秒 · 第 401 轮，共 1204 轮</code></td><td>正在看文件。旁边是 <code>back to live</code> 与 <code>open a recording</code></td></tr>
+  </tbody>
+</table>
+
+<p><strong>录的是界面看到的每一轮</strong>：表里的每个字段、发现区的每条判断、泳道的每个采样，
+回放时都一模一样。任务视图的轮次约两秒一轮，所以一段十分钟的记录只有几百轮、几兆字节。</p>
+
+<p><strong>回放时时间线就是进度条</strong>：在色带上点一下（钉住一个时刻），表格、发现、选中详情
+就都换成那一刻的样子；说明行里的"第几轮，共几轮"跟着走。不钉的时候停在最后一轮。
+拖动窗口、缩放窗口都只改看哪一段，不改看哪一轮。</p>
+
+<div class="note">
+  <strong>录制与回放不会同时成立</strong>
+  回放时开始采集会把文件关掉（新的采集是新的时间轴）；录制的过程中开始采集也会先把文件收尾——
+  一轮记录只属于一次采集，跨两次采集会在同一根时间轴上画两段互不相干的运行。
+  回放时采集可以继续跑：变量视图照常更新，任务视图只显示文件。
+</div>
+
 <h3>任务表</h3>
 <table>
   <thead><tr><th>列</th><th>含义</th></tr></thead>
@@ -608,7 +636,10 @@
 <ul>
   <li>默认地址 <code>http://127.0.0.1:7807/mcp</code>，只监听本机</li>
   <li>裸 JSON-RPC，不需要令牌，也不需要先握手</li>
-  <li>提供 49 个工具，覆盖变量、绘图区、组、数据读取、采集、记录器、烧录、工程八大类</li>
+  <li>提供 57 个工具，覆盖变量、绘图区、组、数据读取、采集、记录器、烧录、工程、任务视图与实例信息</li>
+  <li>任务视图那五个是录制与回放：<code>start_rtos_recording</code> / <code>stop_rtos_recording</code> /
+      <code>open_rtos_recording</code> / <code>close_rtos_recording</code> / <code>show_rtos_round</code>，
+      也就是面板上那两行按钮能做的事。它们改的是本机文件与这个视图，不碰目标，但和别的改状态的工具一样需要打开"允许 API 写入"</li>
   <li>脚本调用时注意绕开系统代理，否则会拿到代理返回的错误</li>
 </ul>
 

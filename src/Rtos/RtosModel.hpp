@@ -9,6 +9,7 @@
 
 #include "RtosSnapshot.hpp"
 #include "RtosEventHistory.hpp"
+#include "RtosRecording.hpp"
 #include "RtosTimeline.hpp"
 
 /*
@@ -117,6 +118,67 @@ class RtosModel
 	void beginSession(const std::string& sessionId);
 
 	/*
+	 * Writing a recording.
+	 *
+	 * The rounds are handed to the file from `publish`, which runs on the
+	 * sampling thread: a recording that went through the interface would drop
+	 * whichever rounds the interface happened not to draw.
+	 */
+	bool startRecording(const std::string& path, RtosRecording::Problem& problem);
+	void stopRecording();
+
+	bool isRecording() const
+	{
+		return recording.isWriting();
+	}
+
+	RtosRecording::Info recordingStats() const
+	{
+		return recording.stats();
+	}
+
+	/* Where it is going, for the line on screen. Set once by `startRecording`,
+	   so reading it without the lock is reading a value that is not changing. */
+	const std::string& recordingPath() const
+	{
+		return recording.path();
+	}
+
+	/*
+	 * Reading one back.
+	 *
+	 * Opening fills the timeline from the file and shows the last round; the
+	 * interface then moves through the rounds by asking for them. A recording
+	 * and a live target are never shown at once: `beginSession` - which is
+	 * what starting an acquisition does - ends the playback first.
+	 */
+	bool openRecording(const std::string& path, RtosRecording::Problem& problem);
+	void closePlayback();
+
+	bool isPlayback() const
+	{
+		return playback;
+	}
+
+	struct PlaybackInfo
+	{
+		std::string path;
+		size_t rounds = 0;
+		size_t current = 0;
+		double firstSecond = 0.0;
+		double lastSecond = 0.0;
+	};
+
+	PlaybackInfo playbackInfo() const;
+
+	/* Shows one round of the recording. Out of range is ignored rather than
+	   clamped silently: the interface asks for a round it just read the count
+	   of, and a wrong index is a bug worth seeing. */
+	void showPlaybackRound(size_t round);
+
+	size_t nearestPlaybackRound(double atSeconds) const;
+
+	/*
 	 * Builds a snapshot out of one enumeration.
 	 *
 	 * The collector uses this so that the fields the interface depends on are
@@ -135,6 +197,12 @@ class RtosModel
 
 	RtosTimeline timeline;
 	RtosEventHistory eventHistory;
+
+	/* The recording, in whichever of its two roles is active. Read and written
+	   under `modelMutex` for its flags, and internally for the file itself. */
+	mutable RtosRecording recording;
+	bool playback = false;
+	size_t playbackRound = 0;
 
 	mutable std::mutex modelMutex;
 	Stats counters;

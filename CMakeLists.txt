@@ -224,6 +224,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosEventHistory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosTimeline.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosRecording.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer/CSVStreamer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/I18n/I18n.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/VariableHandler/VariableHandler.cpp

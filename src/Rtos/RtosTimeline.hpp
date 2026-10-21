@@ -128,6 +128,16 @@ class RtosTimeline
 	/* Keeps one round. The oldest sample is dropped once the ring is full. */
 	void add(const RtosSnapshot& snapshot);
 
+	/*
+	 * Makes room for at least `count` samples, keeping the ones already held.
+	 *
+	 * The ring is sized for a live session, where what matters is the last few
+	 * minutes. A recording is bounded and known, and its lanes have to be the
+	 * whole file: a strip that showed the last forty-five seconds of a ten
+	 * minute recording would be an answer about the wrong thing.
+	 */
+	void ensureCapacity(size_t count);
+
 	/* Forgets everything: a new session is a new history, and two runs drawn
 	   on one axis would be a picture of neither. */
 	void clear();
