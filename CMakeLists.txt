@@ -222,6 +222,8 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosCpuLoad.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosDiagnostics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosWaitGraph.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTraceTypes.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTraceClock.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosEventRing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosCsvExport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
@@ -360,6 +362,7 @@ target_include_directories(${EXECUTABLE} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Statistics
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ElfParser
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace
     ${CMAKE_CURRENT_SOURCE_DIR}/src/PlotGroupHandler
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CSVStreamer
     ${CMAKE_CURRENT_SOURCE_DIR}/src/I18n
