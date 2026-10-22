@@ -1,0 +1,16 @@
+{
+  "file": "one-of-each",
+  "records": [
+    {"index": 0, "type": 1, "typeName": "EpochBegin", "sequence": 1, "subject": 0, "object": 0, "arg0": 0, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 0, "payloadBytes": 4},
+    {"index": 1, "type": 2, "typeName": "ClockSync", "sequence": 2, "subject": 0, "object": 0, "arg0": 168000000, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 0, "payloadBytes": 0},
+    {"index": 2, "type": 16, "typeName": "TaskCreate", "sequence": 3, "subject": 536875008, "object": 0, "arg0": 3, "arg1": 1, "hasTargetTicks": 1, "targetTicks": 168, "payloadBytes": 0},
+    {"index": 3, "type": 19, "typeName": "TaskSwitchIn", "sequence": 4, "subject": 536875008, "object": 0, "arg0": 0, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 200, "payloadBytes": 0},
+    {"index": 4, "type": 22, "typeName": "TaskBlock", "sequence": 5, "subject": 536875072, "object": 536879104, "arg0": 4294967295, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 240, "payloadBytes": 0},
+    {"index": 5, "type": 34, "typeName": "WaitBegin", "sequence": 6, "subject": 536875072, "object": 536879104, "arg0": 100, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 260, "payloadBytes": 0},
+    {"index": 6, "type": 48, "typeName": "IsrEnter", "sequence": 7, "subject": 0, "object": 0, "arg0": 15, "arg1": 1, "hasTargetTicks": 1, "targetTicks": 300, "payloadBytes": 0},
+    {"index": 7, "type": 64, "typeName": "Fault", "sequence": 8, "subject": 0, "object": 0, "arg0": 0, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 320, "payloadBytes": 12},
+    {"index": 8, "type": 80, "typeName": "Alloc", "sequence": 9, "subject": 0, "object": 0, "arg0": 536887296, "arg1": 64, "hasTargetTicks": 1, "targetTicks": 400, "payloadBytes": 0}
+  ],
+  "unknownTypes": 0,
+  "truncatedBytes": 0
+}

@@ -1,0 +1,9 @@
+{
+  "file": "unknown-type",
+  "records": [
+    {"index": 0, "type": 19, "typeName": "TaskSwitchIn", "sequence": 20, "subject": 536875008, "object": 0, "arg0": 0, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 100, "payloadBytes": 0},
+    {"index": 1, "type": 19, "typeName": "TaskSwitchIn", "sequence": 22, "subject": 536875072, "object": 0, "arg0": 0, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 300, "payloadBytes": 0}
+  ],
+  "unknownTypes": 1,
+  "truncatedBytes": 0
+}

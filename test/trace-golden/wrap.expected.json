@@ -1,0 +1,11 @@
+{
+  "file": "wrap",
+  "records": [
+    {"index": 0, "type": 2, "typeName": "ClockSync", "sequence": 10, "subject": 0, "object": 0, "arg0": 1000, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 0, "payloadBytes": 0},
+    {"index": 1, "type": 19, "typeName": "TaskSwitchIn", "sequence": 11, "subject": 536875008, "object": 0, "arg0": 0, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 4294967280, "payloadBytes": 0},
+    {"index": 2, "type": 19, "typeName": "TaskSwitchIn", "sequence": 12, "subject": 536875072, "object": 0, "arg0": 0, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 16, "payloadBytes": 0},
+    {"index": 3, "type": 19, "typeName": "TaskSwitchIn", "sequence": 13, "subject": 536875008, "object": 0, "arg0": 0, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 400, "payloadBytes": 0}
+  ],
+  "unknownTypes": 0,
+  "truncatedBytes": 0
+}

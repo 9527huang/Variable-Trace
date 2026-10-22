@@ -1,0 +1,9 @@
+{
+  "file": "truncated",
+  "records": [
+    {"index": 0, "type": 19, "typeName": "TaskSwitchIn", "sequence": 30, "subject": 536875008, "object": 0, "arg0": 0, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 100, "payloadBytes": 0},
+    {"index": 1, "type": 19, "typeName": "TaskSwitchIn", "sequence": 31, "subject": 536875072, "object": 0, "arg0": 0, "arg1": 0, "hasTargetTicks": 1, "targetTicks": 200, "payloadBytes": 0}
+  ],
+  "unknownTypes": 0,
+  "truncatedBytes": 10
+}

@@ -122,6 +122,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTraceClock.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosIdentityStore.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTracePipeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/Rtec2Decoder.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosEventRing.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosCsvExport.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
@@ -218,6 +219,7 @@ add_executable(${EXECUTABLE} main.cpp
     RtosTraceClockTest.cpp
     RtosIdentityStoreTest.cpp
     RtosTracePipelineTest.cpp
+    Rtec2DecoderTest.cpp
     RtosEventRingTest.cpp
     RtosItmDecoderTest.cpp
     RtosEventHistoryTest.cpp
@@ -229,6 +231,11 @@ add_executable(${EXECUTABLE} main.cpp
     ${SOURCES})
 
 add_compile_options(-Wall -Wextra -Wpedantic)
+
+# Where the golden vectors live. Passed in rather than derived from the working
+# directory: a test that finds its data by luck works on one machine.
+target_compile_definitions(${EXECUTABLE} PRIVATE
+    RTEC2_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/trace-golden")
 
 target_link_libraries(${EXECUTABLE}
     PRIVATE

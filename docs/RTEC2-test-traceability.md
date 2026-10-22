@@ -9,13 +9,13 @@
 
 | ID | 需求来源 | 用例 | 层 | 状态 |
 |---|---|---|---|---|
-| ENC-01 | 线格式 §3.1 | 每种记录类型各解码一次，字段逐一比对 golden vector | C++/Python | 待写 |
-| ENC-02 | §3 | 未知类型整条跳过，`unknownRecords` 加一，不报错 | C++/Python | 待写 |
+| ENC-01 | 线格式 §3.1 | 每种记录类型各解码一次，字段逐一比对 golden vector | C++/Python | **已过**（`one-of-each`，两侧都过） |
+| ENC-02 | §3 | 未知类型整条跳过，`unknownRecords` 加一，不报错 | C++/Python | **已过**（`unknown-type`） |
 | ENC-03 | §2.1 | 截断帧被拒，重同步在 4096 字节内找到下一帧 | C++ | 待写 |
 | ENC-04 | §2.1 | CRC 错帧被拒，不影响后续帧 | C++ | 待写 |
-| ENC-05 | §2.1 | 随机噪声输入不崩溃、不越界 | C++ | 待写 |
+| ENC-05 | §2.1 | 随机噪声输入不崩溃、不越界 | C++ | **已过**（`NoiseNeitherCrashesNorInventsRecords`） |
 | ENC-06 | §3 | 跨帧边界的记录被正确拼接（`isContinuation`） | C++ | 待写 |
-| ENC-07 | §10 | 三个解码器对同一 golden 向量输出逐字段一致的 JSON | CI | 待写 |
+| ENC-07 | §10 | 三个解码器对同一 golden 向量输出逐字段一致的 JSON | CI | **已过**（C 期望 / C++ gtest / `compare.py`，5 个向量） |
 
 ## 二、时间（TIME）
 
@@ -131,8 +131,11 @@
 | 2026-10-22 | Phase 0 文档四份（线格式、产物、租约、本表） | `04c313a` |
 | 2026-10-22 | `RtosTraceTypes` + `IRtosTraceSource`；`TIME-01`、`TIME-02`、`ATM-02` 已过 | `61af9e9`、`b48314a` |
 | 2026-10-22 | `RtosIdentityStore`；`IDN-01`、`IDN-03`、`IDN-05` 已过，`IDN-04`、`IDN-07` 部分 | `c6d5926` |
-| 2026-10-22 | `RtosTracePipeline` + `RtosModel` 双历史；`ATM-01` 已过；**source → model → query 通路打通** | 本次提交 |
+| 2026-10-22 | `RtosTracePipeline` + `RtosModel` 双历史；`ATM-01` 已过；**source → model → query 通路打通** | `ca4b211` |
+| 2026-10-22 | golden corpus（`gen.c` 生成、`Rtec2Decoder` 与 `decode.py` 消费、`compare.py` 比对）；ENC-01/02/05/07 已过 | 本次提交 |
 
-Phase 1 的退出条件已经满足（构造事件从 fake source 一路到查询；句柄复用、回绕、缺口各有单测）。
-下一步是第一迭代第 5 步：golden corpus（C 编码器生成、Python 与 C++ 消费、CI 比对），
-再往后才是 MTF v1 与 SWD v2 适配器。
+第一迭代的五步做完：文档 → 类型与接口 → 时钟与身份 → 双历史 → golden corpus。
+三端已经钉在同一批字节上（`tools/trace-golden/`）。
+
+下一步是 Phase 2：MTF v1 与 SWD v2 适配器。先做 MTF（无目标时间，规则全部
+`NotApplicable`），再做 SWD（游标、撕裂、丢失），每步都拿 golden 向量交叉验证。
