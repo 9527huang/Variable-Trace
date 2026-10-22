@@ -116,6 +116,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosStackSweep.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosCpuLoad.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosDiagnostics.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/RtosWaitGraph.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosEventRing.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosCsvExport.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
@@ -207,6 +208,7 @@ add_executable(${EXECUTABLE} main.cpp
     RtosStackSweepTest.cpp
     RtosCpuLoadTest.cpp
     RtosDiagnosticsTest.cpp
+    RtosWaitGraphTest.cpp
     RtosEventRingTest.cpp
     RtosItmDecoderTest.cpp
     RtosEventHistoryTest.cpp

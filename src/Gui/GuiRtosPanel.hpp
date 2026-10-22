@@ -18,6 +18,7 @@
 #include "RtosDiagnostics.hpp"
 #include "I18n.hpp"
 #include "RtosCsvExport.hpp"
+#include "RtosWaitGraph.hpp"
 #include "RtosEventQuery.hpp"
 #include "RtosModel.hpp"
 #include "RtosSyncEnumerator.hpp"
@@ -50,6 +51,19 @@
 class GuiRtosPanel
 {
    public:
+	/* Which of the three blocks under the table is showing. One place, because
+	   what this half of the view is for is reading one thing at a time: the
+	   detail of the selected task, the chain it is stuck in, or the switch
+	   records. */
+	enum class LowerTab
+	{
+		SelectedTask,
+		Chain,
+		Events,
+	};
+
+	inline static LowerTab lowerTabShown = LowerTab::SelectedTask;
+
 	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation, uint32_t stackAlertFreePercent, RtosViewSettings& view,
 	                 IFileHandler* fileHandler)
 	{
@@ -219,44 +233,51 @@ class GuiRtosPanel
 
 		ImGui::Separator();
 
-		if (lowerTab(false, I18n::tr("Selected task")))
-			lowerTabEvents = false;
-
+		lowerTabButton(LowerTab::SelectedTask, I18n::tr("Selected task"));
 		ImGui::SameLine(0.0f, 4.0f * GuiHelper::contentScale);
-
-		if (lowerTab(true, I18n::tr("Events")))
-			lowerTabEvents = true;
+		lowerTabButton(LowerTab::Chain, I18n::tr("Waiting chain"));
+		ImGui::SameLine(0.0f, 4.0f * GuiHelper::contentScale);
+		lowerTabButton(LowerTab::Events, I18n::tr("Events"));
 
 		const float used = ImGui::GetCursorPosY() - blockTop;
 		const float blockHeight = std::max(reserve - used, bodyFloor);
 
 		ImGui::BeginChild("##rtosLowerBlock", ImVec2(0.0f, blockHeight), false, ImGuiWindowFlags_NoBackground);
 
-		if (lowerTabEvents)
-			drawEvents(*model, rows);
-		else
-			drawSelectedTaskSection(*model, *snapshot, findings);
+		switch (lowerTabShown)
+		{
+			case LowerTab::Events:
+				drawEvents(*model, rows);
+				break;
+
+			case LowerTab::Chain:
+				drawWaitingChain(*snapshot);
+				break;
+
+			case LowerTab::SelectedTask:
+			default:
+				drawSelectedTaskSection(*model, *snapshot, findings);
+				break;
+		}
 
 		ImGui::EndChild();
 	}
 
 	/* One tab of the block under the table. The active one reads as a filled
-	   button rather than a word: two plain words side by side leave the reader
+	   button rather than a word: plain words side by side leave the reader
 	   working out which of them is the one on screen. */
-	static bool lowerTab(bool active, const char* label)
+	static void lowerTabButton(LowerTab tab, const char* label)
 	{
+		const bool active = lowerTabShown == tab;
+
 		if (active)
-		{
 			ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_Header));
-			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_Text));
-		}
 
-		const bool pressed = ImGui::SmallButton(label);
+		if (ImGui::SmallButton(label))
+			lowerTabShown = tab;
 
 		if (active)
-			ImGui::PopStyleColor(2);
-
-		return pressed;
+			ImGui::PopStyleColor();
 	}
 
 	/*
@@ -518,11 +539,6 @@ class GuiRtosPanel
 	   choice rather than the round's data. */
 	inline static RtosTaskTableQuery query{};
 	inline static bool stackAlertSeeded = false;
-
-	/* Which of the two blocks under the table is showing: the detail of the
-	   selected task, or the switch records. One place, because the rows are
-	   what this half of the view is for and both of them are rows. */
-	inline static bool lowerTabEvents = false;
 
 	/* The event list: whether it is following the end, what it is showing, and
 	   how much arrived while it was not. */
@@ -2526,6 +2542,165 @@ class GuiRtosPanel
 	 * the machine keeps running. What arrived meanwhile is counted beside the
 	 * box, because a list that silently stops is a list that lies.
 	 */
+	/*
+	 * What is blocking the selected task, drawn as the chain it is.
+	 *
+	 * The detail block says "waiting on mtx_a", and the objects table says who
+	 * holds mtx_a - two answers in two places, and the reader has to hold both
+	 * in their head to see that the holder is itself waiting. Here the relation
+	 * is the picture: a box per task, a box per object, and an arrow for each
+	 * "waits for" and "held by". A ring closes on the first box instead of
+	 * repeating it.
+	 *
+	 * Task boxes take the lane colours for their state, so a box here and a
+	 * band on the strip are recognisably the same task; clicking one reads that
+	 * task, exactly as clicking its row does.
+	 */
+	static void drawWaitingChain(const RtosSnapshot& snapshot)
+	{
+		const float scale = GuiHelper::contentScale;
+
+		if (selection().task == 0)
+		{
+			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("Click a row in the table, a finding or a lane to read one task here."));
+
+			return;
+		}
+
+		const RtosWaitGraph::Chain chain = RtosWaitGraph::from(snapshot, selection().task);
+
+		if (chain.nodes.empty())
+		{
+			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("The task that was selected is not in this round."));
+
+			return;
+		}
+
+		if (chain.steps.empty())
+		{
+			/* Two reasons for an empty chain, and they are not the same: a task
+			   waiting on nothing, and a task waiting on something the registry
+			   cannot name. Saying the first for the second would be a claim
+			   about the target. */
+			const RtosTask* task = snapshot.find(selection().task);
+
+			if (task != nullptr && !task->waitingOn.empty())
+				GuiHelper::drawSecondaryTextWrapped(I18n::tr("It waits on %s, which the kernel's registry does not list, so the chain stops at that name."),
+				                                    task->waitingOn.c_str());
+			else
+				GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("It is waiting on nothing, so nothing is blocking it."));
+
+			return;
+		}
+
+		drawChainBoxes(chain, scale);
+	}
+
+	/* The boxes and arrows of one chain, drawn straight into the block. */
+	static void drawChainBoxes(const RtosWaitGraph::Chain& chain, float scale)
+	{
+		ImDrawList* draw = ImGui::GetWindowDrawList();
+
+		const ImVec2 start = ImGui::GetCursorScreenPos();
+		const float boxWidth = std::min(std::max(ImGui::GetContentRegionAvail().x - 12.0f * scale, 160.0f * scale), 460.0f * scale);
+		const float boxHeight = 26.0f * scale;
+		const float gap = 20.0f * scale;
+		const float lineX = start.x + 11.0f * scale;
+		const ImU32 muted = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+		for (size_t index = 0; index < chain.nodes.size(); index++)
+		{
+			const RtosWaitGraph::Node& node = chain.nodes[index];
+			const ImVec2 topLeft(start.x, start.y + static_cast<float>(index) * (boxHeight + gap));
+			const ImVec2 bottomRight(topLeft.x + boxWidth, topLeft.y + boxHeight);
+
+			drawChainBox(node, topLeft, bottomRight, scale);
+
+			/* The box is a handle as well as a picture. */
+			ImGui::SetCursorScreenPos(topLeft);
+			ImGui::PushID(static_cast<int>(index));
+			ImGui::InvisibleButton("##waitNode", ImVec2(boxWidth, boxHeight));
+			ImGui::PopID();
+
+			if (ImGui::IsItemClicked() && node.kind == RtosWaitGraph::NodeKind::Task)
+				selection().task = node.address;
+
+			if (index + 1 >= chain.nodes.size())
+				continue;
+
+			const RtosWaitGraph::Step& step = chain.steps[index];
+			const char* label = step.heldBy ? I18n::tr("held by") : I18n::tr("waits for");
+
+			const float from = topLeft.y + boxHeight;
+			const ImU32 colour = step.heldBy ? muted : ImGui::GetColorU32(ImGuiCol_Text);
+
+			draw->AddLine(ImVec2(lineX, from), ImVec2(lineX, from + gap - 5.0f * scale), colour, 1.3f * scale);
+			draw->AddTriangleFilled(ImVec2(lineX - 4.0f * scale, from + gap - 7.0f * scale), ImVec2(lineX + 4.0f * scale, from + gap - 7.0f * scale),
+			                        ImVec2(lineX, from + gap - 1.0f * scale), colour);
+
+			draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.85f, ImVec2(lineX + 9.0f * scale, from + 1.0f * scale),
+			              step.closesCycle ? ImGui::GetColorU32(GuiHelper::orangeLight()) : muted, label);
+		}
+
+		/* The ring: the holder of the last object is the task the walk started
+		   at. Drawn as one more arrow that turns back rather than a fifth box,
+		   because the point is the shape, and a repeated box reads as a longer
+		   chain than there is. */
+		if (chain.cycle)
+		{
+			char back[128] = {};
+			std::snprintf(back, sizeof(back), I18n::tr("back to %s"), chain.nodes.front().name.c_str());
+
+			const float from = start.y + static_cast<float>(chain.nodes.size()) * (boxHeight + gap) - gap;
+
+			draw->AddLine(ImVec2(lineX, from), ImVec2(lineX, from + gap - 5.0f * scale), ImGui::GetColorU32(GuiHelper::orangeLight()), 1.3f * scale);
+			draw->AddCircle(ImVec2(lineX, from + gap - 2.0f * scale), 3.0f * scale, ImGui::GetColorU32(GuiHelper::orangeLight()), 8, 1.3f * scale);
+			draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.85f, ImVec2(lineX + 9.0f * scale, from + 1.0f * scale),
+			              ImGui::GetColorU32(GuiHelper::orangeLight()), back);
+		}
+
+		ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + static_cast<float>(chain.nodes.size()) * (boxHeight + gap)));
+		ImGui::Dummy(ImVec2(1.0f, 1.0f));
+	}
+
+	/* One box: the state colour down its left edge, the name, and what the
+	   reader needs to tell two tasks apart without a table beside it. */
+	static void drawChainBox(const RtosWaitGraph::Node& node, ImVec2 topLeft, ImVec2 bottomRight, float scale)
+	{
+		ImDrawList* draw = ImGui::GetWindowDrawList();
+
+		const bool isTask = node.kind == RtosWaitGraph::NodeKind::Task;
+		const ImU32 accent = isTask ? GuiRtosPanelTimeline::getStateColour(node.state) : ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+		draw->AddRectFilled(topLeft, bottomRight, ImGui::GetColorU32(ImGuiCol_FrameBg), 3.0f * scale);
+		draw->AddRect(topLeft, bottomRight, accent, 3.0f * scale, 0, 1.2f * scale);
+		draw->AddRectFilled(topLeft, ImVec2(topLeft.x + 3.0f * scale, bottomRight.y), accent, 3.0f * scale);
+
+		const float padding = 10.0f * scale;
+		const float textY = topLeft.y + (bottomRight.y - topLeft.y - ImGui::GetFontSize()) * 0.5f;
+
+		draw->AddText(ImVec2(topLeft.x + padding, textY), ImGui::GetColorU32(ImGuiCol_Text),
+		              node.name.empty() ? I18n::tr("(unnamed)") : node.name.c_str());
+
+		char detail[96] = {};
+
+		if (isTask)
+		{
+			if (node.hasPriority)
+				std::snprintf(detail, sizeof(detail), I18n::tr("%s, priority %u"), RtosTableModel::taskStateLabel(node.state), node.priority);
+			else
+				std::snprintf(detail, sizeof(detail), "%s", RtosTableModel::taskStateLabel(node.state));
+		}
+		else if (node.hasCounts)
+			std::snprintf(detail, sizeof(detail), I18n::tr("%s %u/%u, %u waiting"), toString(node.syncKind), node.items, node.capacity, node.waitingOnThis);
+		else
+			std::snprintf(detail, sizeof(detail), "%s", toString(node.syncKind));
+
+		const ImVec2 size = ImGui::CalcTextSize(detail);
+
+		draw->AddText(ImVec2(bottomRight.x - padding - size.x, textY), ImGui::GetColorU32(ImGuiCol_TextDisabled), detail);
+	}
+
 	static void drawEvents(const RtosModel& model, const std::vector<RtosTaskRow>& rows)
 	{
 		const float scale = GuiHelper::contentScale;

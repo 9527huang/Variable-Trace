@@ -922,6 +922,18 @@ EXTRA = {
     "Wrote %u rows; %u rounds could not be read and were left out.": "写了 %u 行；有 %u 轮读不出来，已略过。",
     "CSV files": "CSV 文件",
 
+    # 阻塞关系图：三个页签之一，以及链上的两种箭头与环的收尾。
+    "Waiting chain": "等待链",
+    "waits for": "等待",
+    "held by": "持有者是",
+    "back to %s": "回到 %s",
+    "It is waiting on nothing, so nothing is blocking it.": "它没有在等任何东西，也就没有谁在挡它。",
+    "It waits on %s, which the kernel's registry does not list, so the chain stops at that name.":
+        "它在等 %s，这个名字不在内核的登记表里，所以链到这里就断了。",
+    "(unnamed)": "(无名)",
+    "%s, priority %u": "%s，优先级 %u",
+    "%s %u/%u, %u waiting": "%s %u/%u，%u 个在等",
+
     # 旧版记录里没有切换记录，事件列表要说清楚这是"没记"而不是"没切"。
     "This recording was written before switch records were kept in it, so there is nothing to list. Recording a new one writes them.":
         "这份记录写在开始保留切换记录之前，所以没有可列的内容。录一份新的就会带上。",
