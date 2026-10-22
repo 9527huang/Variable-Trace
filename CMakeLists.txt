@@ -232,6 +232,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTraceReconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosRecordingV3.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTraceReducer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTraceWindow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosEventRing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosCsvExport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
