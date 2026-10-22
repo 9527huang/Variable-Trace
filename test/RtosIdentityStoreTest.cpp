@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <set>
+
 namespace
 {
 	RtosEntityRef task(uint32_t handle, uint32_t generation = 0)
@@ -196,4 +198,29 @@ TEST(RtosIdentityStoreTest, AnEventWithNoHandleBelongsToNoEntity)
 
 	EXPECT_EQ(0u, outcome.key.rawHandle);
 	EXPECT_EQ(0u, store.entityCount());
+}
+
+TEST(RtosIdentityStoreTest, TenThousandLifetimesOfOneAddressNeverShareAKey)
+{
+	/* The number from the release gate: reuse of one TCB address must not join
+	   two histories. Ten thousand kills and creations is more than any bench
+	   run will see, and it is cheap enough to keep in the suite. */
+	RtosIdentityStore store;
+
+	std::set<uint32_t> generations;
+
+	for (int round = 0; round < 10000; round++)
+	{
+		const RtosIdentityStore::Outcome created = store.observe(task(0x20001B60u), RtosTraceEventType::TaskCreate, 1);
+
+		generations.insert(created.key.generation);
+
+		store.observe(task(0x20001B60u), RtosTraceEventType::TaskDelete, 1);
+	}
+
+	/* One key per lifetime: no repeats, and no generation reused. Ten thousand
+	   lifetimes leave ten thousand entities - the delete closes the one the
+	   create opened rather than making a second. */
+	EXPECT_EQ(10000u, generations.size());
+	EXPECT_EQ(10000u, store.entityCount());
 }

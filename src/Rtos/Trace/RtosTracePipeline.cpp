@@ -1,5 +1,7 @@
 #include "RtosTracePipeline.hpp"
 
+#include <string>
+
 RtosTracePipeline::RtosTracePipeline(std::unique_ptr<IRtosTraceSource> source) : traceSource(std::move(source))
 {
 }
@@ -88,6 +90,16 @@ RtosTracePipeline::Pump RtosTracePipeline::pump(double budgetSeconds)
 
 		const uint64_t ticks = incoming.hasTargetTicks ? traceClock.extend(incoming.targetTicks) : 0;
 
+		/* The frequency the event was running at, and then any explicit sync.
+		   Both are how the clock learns its intervals; without one of them a
+		   duration is not computable and the display time stays absent rather
+		   than defaulting to zero. */
+		if (incoming.hasTargetTicks && incoming.targetHz != 0)
+			traceClock.noteFrequency(ticks, incoming.targetHz);
+
+		if (incoming.type == RtosTraceEventType::ClockSync && incoming.arg0 != 0)
+			traceClock.noteFrequency(ticks, incoming.arg0);
+
 		if (incoming.hasTargetTicks)
 		{
 			if (!haveFirstTicks)
@@ -102,9 +114,6 @@ RtosTracePipeline::Pump RtosTracePipeline::pump(double budgetSeconds)
 				normalized.displaySeconds = *seconds;
 			}
 		}
-
-		if (incoming.type == RtosTraceEventType::ClockSync && incoming.arg0 != 0)
-			traceClock.noteFrequency(ticks, incoming.arg0);
 
 		if (incoming.type == RtosTraceEventType::Gap)
 		{
@@ -181,4 +190,22 @@ void RtosTracePipeline::clearHistory()
 	firstTicks = 0;
 	haveFirstTicks = false;
 	droppedTotal = 0;
+}
+
+std::vector<std::string> RtosTracePipeline::missingCapabilities() const
+{
+	std::vector<std::string> missing;
+
+	const RtosTraceCapabilities available = capabilities();
+
+	/* Bits zero to ten are the ones the documents name. The reserved ones are
+	   not reported: a source is not "missing" something that does not exist
+	   yet. */
+	for (uint32_t bit = 0; bit <= 10; bit++)
+	{
+		if (!available.has(bit))
+			missing.emplace_back(capabilityName(bit));
+	}
+
+	return missing;
 }

@@ -32,7 +32,7 @@
 | ID | 需求来源 | 用例 | 层 | 状态 |
 |---|---|---|---|---|
 | IDN-01 | §8 | `Create` → `Delete` → 同地址 `Create`：两次实体键不同（代次递增） | C++ | **已过**（`RtosIdentityStoreTest`） |
-| IDN-02 | §8 | 同地址连续创建/删除 10,000 次不串线 | C++ | 待写 |
+| IDN-02 | §8 | 同地址连续创建/删除 10,000 次不串线 | C++ | **已过**（`TenThousandLifetimesOfOneAddressNeverShareAKey`） |
 | IDN-03 | §8 | 缺 `Create` 的先见事件建立 `generation=unknown`，后续快照只补显示名 | C++ | **已过**（store 层） |
 | IDN-04 | §8 | `Gap` 跨过 `Create`/`Delete` 时相关实体降为 `UnknownAfterGap` | C++ | **部分**（store 打标已测；降级到规则层待接线） |
 | IDN-05 | §8 | epoch 变化关闭全部实体与未完成区间 | C++ | **已过**（store 层 `clear`） |
@@ -132,10 +132,30 @@
 | 2026-10-22 | `RtosTraceTypes` + `IRtosTraceSource`；`TIME-01`、`TIME-02`、`ATM-02` 已过 | `61af9e9`、`b48314a` |
 | 2026-10-22 | `RtosIdentityStore`；`IDN-01`、`IDN-03`、`IDN-05` 已过，`IDN-04`、`IDN-07` 部分 | `c6d5926` |
 | 2026-10-22 | `RtosTracePipeline` + `RtosModel` 双历史；`ATM-01` 已过；**source → model → query 通路打通** | `ca4b211` |
-| 2026-10-22 | golden corpus（`gen.c` 生成、`Rtec2Decoder` 与 `decode.py` 消费、`compare.py` 比对）；ENC-01/02/05/07 已过 | 本次提交 |
+| 2026-10-22 | golden corpus（`gen.c` 生成、`Rtec2Decoder` 与 `decode.py` 消费、`compare.py` 比对）；ENC-01/02/05/07 已过 | `35b01d0` |
+| 2026-10-22 | Phase 2 适配器：`MtfTraceAdapter` / `SwdTraceAdapter`，能力缺口名单；`IDN-02` 已过 | 本次提交 |
 
-第一迭代的五步做完：文档 → 类型与接口 → 时钟与身份 → 双历史 → golden corpus。
-三端已经钉在同一批字节上（`tools/trace-golden/`）。
+第一迭代的五步做完；Phase 2 的适配器层已落地（`MtfTraceAdapter`、`SwdTraceAdapter`）。
+三端钉在同一批字节上（`tools/trace-golden/`）。
 
-下一步是 Phase 2：MTF v1 与 SWD v2 适配器。先做 MTF（无目标时间，规则全部
-`NotApplicable`），再做 SWD（游标、撕裂、丢失），每步都拿 golden 向量交叉验证。
+### Phase 2 完成情况与两条边界
+
+已完成：
+
+- 两种**本仓库已有的载体**包成 `IRtosTraceSource`：SWO/ITM 字节（经 `RtosItmDecoder`
+  分帧）与内存环记录（`RtosEventRing::Record`）。二者都产 `TaskSwitchIn` 事件，
+  `timeUs` 作为 1 MHz 的目标时间。
+- `lost` 变成 `Gap` 事件而不是更长的一段运行；环重新开始时发 `EpochBegin` 并递增 epoch，
+  而不是把两次会话接在一根轴上。
+- 能力位如实上报：MTF 没有丢失检测与生命周期，SWD 有丢失检测；两者都没有序列号。
+  `RtosTracePipeline::missingCapabilities()` 给出**名字**而不是位数。
+
+边界（未做，原因在右）：
+
+| 未做 | 原因 |
+|---|---|
+| mdkdebug 的 MTF v1 / SWD v2 **线格式**解码 | 这两份规格与 golden vector 在 mdkdebug 仓库，本仓库没有；现在的适配器包的是本仓库自己的两种载体，接口与能力位已就位，拿到规格后只替换解码入口 |
+| `ViewerDataHandler` 切换事件路径 | 现有 `RtosEventRing` → `eventHistory` 在生产使用，替换需要真机验证；接线点已留（`RtosModel::attachTraceSource`） |
+| 与 Python 解码器交叉比对 MTF/SWD | 同上：需要 mdkdebug 产出的 golden 向量 |
+
+下一步是 Phase 3：目标侧 RTEC2 记录器与完整句柄事件（含代次），届时上面的第一条边界才解除。

@@ -227,6 +227,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosIdentityStore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTracePipeline.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/Rtec2Decoder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/TraceAdapters.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosEventRing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosCsvExport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp

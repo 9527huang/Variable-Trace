@@ -134,6 +134,17 @@ class RtosTracePipeline
 		return epoch;
 	}
 
+	/*
+	 * The capabilities this build would like to have and the source does not.
+	 *
+	 * Named rather than counted: "no ISR events" is something a reader can act
+	 * on, "three bits clear" is not. The interface shows this as the reason a
+	 * lane or a rule is missing, which is the difference between an empty lane
+	 * that means "the target has no interrupts" and one that means "this
+	 * carrier does not carry them".
+	 */
+	std::vector<std::string> missingCapabilities() const;
+
 	/* The events of one lifetime, oldest first. Pointers stay valid until the
 	   next pump that appends; a caller that keeps them across a pump is asking
 	   for a dangling pointer and the type cannot stop it. */
