@@ -149,7 +149,7 @@ offset size field
 offset size field
 0      4    magic = 'R','T','C','2'
 4      2    wireVersion = 2
-6      2    slotBytes     // 首期 48
+6      2    slotBytes     // 首期 56
 8      4    capacity      // 槽数，2 的幂
 12     4    epoch 低 32 位
 16     4    epoch 高 32 位
@@ -167,24 +167,23 @@ offset size field
 
 `head` 与 `tail` 是**序号**不是索引；槽索引 = `序号 & (capacity - 1)`。序号 32 位回绕由主机侧扩展（§5.2），目标侧只要求单调递增。
 
-### 4.2 槽（48 字节）
+### 4.2 槽（56 字节）
+
+槽里装的是 §3 的**完整记录**（24 字节头 + 可选的两段尾），外面套两个哨兵：
 
 ```
 offset size field
-0      4    seq         // 0 = 空；写入时最后写
-4      4    seqCheck    // = ~seq；写入时最先写
-8      1    type
-9      1    flags
-10     2    coreId
-12     4    subject
-16     4    object
-20     4    arg0
-24     4    arg1
-28     4    targetTicks   // 0 表示该事件无目标时间（配合 flags.bit0 判定）
-32     8    payload       // 前 payloadBytes 字节有效
-40     4    tailCheck    // = ~seq；写入时第二最后写
-44     4    reserved = 0
+0      4    seq           // 0 = 空；写入时最后写
+4      4    seqCheck      // = ~seq；写入时最先写
+8     44    record        // §3 的记录原样，最长 41 字节（12 字节 payload 的 Fault）
+52     4    tailCheck     // = ~seq；写入时倒数第二写
 ```
+
+44 字节放得下最长的记录是 24 + 4（ticks）+ 1（长度）+ 12（payload）= 41。
+
+> 初稿把槽写成 48 字节、payload 8 字节，算下来连一条 Fault 都放不下——
+> 记录最长 41 字节，加两个哨兵是 49。这里改正的是文档，不是把 payload 截短：
+> 截短会让 Fault 少一半寄存器，而 Fault 恰恰是最需要完整的那种记录。
 
 ### 4.3 写入顺序（写者）
 
@@ -281,7 +280,7 @@ SWD 的 slot 压缩只能用于**传输缓存**：`DefineSlot` 必须携带完�
 | `wireVersion` 次版本更高 | 接受；未知类型跳过；未知能力位忽略 |
 | `magic` 不符 | 不是 RTEC2 数据源，报 `not-a-trace-source` |
 | `capacity` 非 2 的幂或 < 16 | 拒绝，报 `control-block-corrupt` |
-| `slotBytes != 48` | 拒绝（首期定长；扩展槽需要新 wireVersion） |
+| `slotBytes != 56` | 拒绝（首期定长；扩展槽需要新 wireVersion） |
 | epoch 回退 | 拒绝该批，请求新 epoch |
 
 ## 10. Golden vector
@@ -301,7 +300,7 @@ Phase 1 之前必须产出 `test/trace-golden/` 下的二进制样例，C 编码
 以下条目自本文合并起不再开放讨论，变更需新版本：
 
 1. 记录固定 24 字节头；可选尾只有 `targetTicks` 与 `payload`。
-2. 槽 48 字节，`seqCheck` / `tailCheck` 双哨兵。
+2. 槽 56 字节 = 两个哨兵 + 一条最长记录（44 字节空间，最长记录 41）。
 3. 记录里不带代次；代次只在 `Create` 上给。
 4. 名字只经字典，不进事件流。
 5. `Fault` 缺失字段用 flags 声明，不用 0 代替。

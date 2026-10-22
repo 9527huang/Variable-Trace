@@ -91,6 +91,22 @@ class RtosIdentityStore
 	/* The entity a key belongs to, or null. */
 	const Entity* find(const RtosEntityKey& key) const;
 
+	/*
+	 * Every lifetime the store knows, in key order.
+	 *
+	 * Read only, for the one caller that has to reconcile a round of the table
+	 * against the events: it knows addresses, not generations, and an address
+	 * on its own only identifies an entity while one lifetime of it is open.
+	 */
+	const std::map<RtosEntityKey, Entity>& all() const
+	{
+		return entities;
+	}
+
+	/* The open lifetime of a handle, or null. Used by the reconciler, which is
+	   the only thing that asks "who is 0x20001B60 right now". */
+	const Entity* openEntityFor(RtosEntityKind kind, uint32_t rawHandle) const;
+
 	/* Fills in a display name for an entity created from an ordinary event.
 	   Only the name: the identity was decided when the entity was opened and a
 	   later snapshot cannot improve it. */

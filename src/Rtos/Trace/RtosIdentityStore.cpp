@@ -191,3 +191,17 @@ size_t RtosIdentityStore::openCount() const
 
 	return count;
 }
+
+const RtosIdentityStore::Entity* RtosIdentityStore::openEntityFor(RtosEntityKind kind, uint32_t rawHandle) const
+{
+	for (const auto& entry : entities)
+	{
+		if (entry.second.closed)
+			continue;
+
+		if (entry.first.kind == kind && entry.first.rawHandle == rawHandle)
+			return &entry.second;
+	}
+
+	return nullptr;
+}

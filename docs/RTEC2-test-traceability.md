@@ -45,9 +45,9 @@
 |---|---|---|---|---|
 | ATM-01 | §4.3 | 写者写到一半被读：双哨兵检测出撕裂，记录不进模型 | C++ | **已过**（`RtosTracePipelineTest`：撕裂批不进历史） |
 | ATM-02 | §4.4 | 整批中有一条失败，`tail` 不前移 | C++ | **已过**（`RtosTraceTypesTest` 的 `committedCursor`，2026-10-22） |
-| ATM-03 | §4.3 | 读者落后 capacity 时按编译策略覆盖或丢弃，计数正确 | C++ | 待写 |
+| ATM-03 | §4.3 | 读者落后 capacity 时按编译策略覆盖或丢弃，计数正确 | C++ | **已过**（`FallingMoreThanARingBehindIsCountedAsLost`） |
 | ATM-04 | 目标侧 §4.4 | ISR 嵌套时不可重入的写入被拒并计入 `rejected` | C（目标） | 待写 |
-| ATM-05 | §4.4 | 连续 3 次撕裂 → 请求新 epoch | C++ | 待写 |
+| ATM-05 | §4.4 | 连续 3 次撕裂 → 请求新 epoch | C++ | **部分**（撕裂即整批放弃已测；计数与请求新 epoch 待接读取循环） |
 
 ## 五、诊断（DIAG）
 
@@ -66,6 +66,16 @@
 | DIAG-NEW | `snapshot-event-divergence` / `identity-ambiguous` / `manifest-elf-mismatch` / `capability-mismatch` | 对账或校验出现冲突 |
 
 执行顺序固定为：能力 → 数据质量 → 身份/时间归一化 → 语义规则；上游不满足则下游 `Unknown`（DIAG-ORDER-01 专门验证这条）。
+
+## 五之二、对账（RECN）
+
+| ID | 需求来源 | 用例 | 层 | 状态 |
+|---|---|---|---|---|
+| RECN-01 | 计划 §5.3 | 快照看得到、事件从未提及的任务被报出来 | C++ | **已过**（`RtosTraceReconcilerTest`） |
+| RECN-02 | 计划 §5.3 | 事件里开放的生命周期在快照缺席时**不当作删除** | C++ | **已过** |
+| RECN-03 | 计划 §5.3 | 两侧名字不同只报告，不改写任何一侧 | C++ | **已过** |
+| RECN-04 | 计划 §5.3 | 收尾的生命周期缺席是正常，不产生结论 | C++ | **已过** |
+| RECN-05 | 计划 §5.3 | 列表按地址排序，轮次之间不抖动 | C++ | **已过** |
 
 ## 六、录制（REC）
 
@@ -133,7 +143,8 @@
 | 2026-10-22 | `RtosIdentityStore`；`IDN-01`、`IDN-03`、`IDN-05` 已过，`IDN-04`、`IDN-07` 部分 | `c6d5926` |
 | 2026-10-22 | `RtosTracePipeline` + `RtosModel` 双历史；`ATM-01` 已过；**source → model → query 通路打通** | `ca4b211` |
 | 2026-10-22 | golden corpus（`gen.c` 生成、`Rtec2Decoder` 与 `decode.py` 消费、`compare.py` 比对）；ENC-01/02/05/07 已过 | `35b01d0` |
-| 2026-10-22 | Phase 2 适配器：`MtfTraceAdapter` / `SwdTraceAdapter`，能力缺口名单；`IDN-02` 已过 | 本次提交 |
+| 2026-10-22 | Phase 2 适配器：`MtfTraceAdapter` / `SwdTraceAdapter`，能力缺口名单；`IDN-02` 已过 | `0cd82b4` |
+| 2026-10-22 | Phase 3 主机侧：`Rtec2RingReader`（双哨兵、整批放弃、覆盖计数）、`RtosTraceReconciler`（三条对账） | 本次提交 |
 
 第一迭代的五步做完；Phase 2 的适配器层已落地（`MtfTraceAdapter`、`SwdTraceAdapter`）。
 三端钉在同一批字节上（`tools/trace-golden/`）。
@@ -158,4 +169,23 @@
 | `ViewerDataHandler` 切换事件路径 | 现有 `RtosEventRing` → `eventHistory` 在生产使用，替换需要真机验证；接线点已留（`RtosModel::attachTraceSource`） |
 | 与 Python 解码器交叉比对 MTF/SWD | 同上：需要 mdkdebug 产出的 golden 向量 |
 
-下一步是 Phase 3：目标侧 RTEC2 记录器与完整句柄事件（含代次），届时上面的第一条边界才解除。
+### Phase 3 完成情况
+
+已完成（主机侧）：
+
+- `Rtec2RingReader`：控制块解析（magic、wire 版本、slotBytes、capacity 必须是 2 的幂），
+  逐槽双哨兵校验，**一个坏槽放弃整批**，落后超过一圈计 `lost`，head 倒退判 `restarted`。
+- `RtosTraceReconciler`：快照与事件双向对账三条（只在快照、只在事件、名字不同），
+  只报告不改写；列表按地址排序不抖动。
+
+**发现并改了文档的一处错**：线格式初稿写槽 48 字节、payload 8 字节，算下来最长记录
+41 字节加两个哨兵要 49——连一条 Fault 都放不下。已把槽改成 56 字节，并注明改的是
+文档而不是把 payload 截短。
+
+未做（目标侧，需 mdkdebug 仓库）：
+
+- `mdk_trace_rtec2_blob` 控制块与槽写入、原子提交（奇偶 generation、发布屏障）；
+- FreeRTOS 的 create/delete/switch/block/wake hook；
+- epoch 递增与序号回绕强制新 epoch；
+- 这些的验收（Phase 3 退出条件：同址复用 10,000 次不串线、复位/重烧/断连都产生
+  新 epoch、撕裂数据从不进模型）需要真机。
