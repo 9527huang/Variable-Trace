@@ -64,6 +64,26 @@ class GuiRtosPanel
 
 	inline static LowerTab lowerTabShown = LowerTab::SelectedTask;
 
+	/*
+	 * The chain on screen, held.
+	 *
+	 * A round arrives about twice a second, and a blocked task's chain is
+	 * exactly the thing that changes between two of them: the lock moves, the
+	 * holder becomes ready, the wait turns into a run. Rebuilt every round the
+	 * picture was unreadable - not because it was wrong, but because nobody can
+	 * follow five boxes that rearrange themselves twice a second.
+	 *
+	 * So the chain is taken once, when the task is chosen, and kept. `follow`
+	 * gives the live picture back to whoever wants to watch it move, and the
+	 * line above the boxes says which of the two is on screen and whether the
+	 * target has moved on since it was taken.
+	 */
+	inline static RtosWaitGraph::Chain heldChain;
+	inline static uint32_t heldChainTask = 0;
+	inline static double heldChainAt = 0.0;
+	inline static bool followChain = false;
+	inline static bool chainMovedSince = false;
+
 	static void draw(const std::shared_ptr<RtosModel>& model, const std::string& explanation, uint32_t stackAlertFreePercent, RtosViewSettings& view,
 	                 IFileHandler* fileHandler)
 	{
@@ -2567,7 +2587,26 @@ class GuiRtosPanel
 			return;
 		}
 
-		const RtosWaitGraph::Chain chain = RtosWaitGraph::from(snapshot, selection().task);
+		/* Taken once per task, then held: see the note on `heldChain`. The
+		   comparison against this round is only for the line above the boxes -
+		   a reader who is looking at a held picture should be told when it
+		   stopped being the current one. */
+		const RtosWaitGraph::Chain current = RtosWaitGraph::from(snapshot, selection().task);
+		const bool chosenAnotcherTask = selection().task != heldChainTask;
+
+		if (chosenAnotcherTask || followChain)
+		{
+			heldChain = current;
+			heldChainTask = selection().task;
+			heldChainAt = snapshot.captureStartedAt;
+			chainMovedSince = false;
+		}
+		else
+			chainMovedSince = !current.nodes.empty() && !RtosWaitGraph::sameShape(heldChain, current);
+
+		drawChainHeader(snapshot, current.nodes.empty(), scale);
+
+		const RtosWaitGraph::Chain& chain = heldChain;
 
 		if (chain.nodes.empty())
 		{
@@ -2594,6 +2633,42 @@ class GuiRtosPanel
 		}
 
 		drawChainBoxes(chain, scale);
+	}
+
+	/*
+	 * The line above the boxes: whether this is the picture from now or the one
+	 * that was taken, and the two controls that change which.
+	 *
+	 * A held picture is only honest if it says so. Everything else in this view
+	 * is the newest round, so the boxes have to carry their own age - otherwise
+	 * a reader compares a five second old chain with a table that is half a
+	 * second old and concludes something about the target.
+	 */
+	static void drawChainHeader(const RtosSnapshot& snapshot, bool taskIsMissingNow, float scale)
+	{
+		if (ImGui::SmallButton(I18n::tr("refresh")))
+		{
+			heldChain = RtosWaitGraph::from(snapshot, selection().task);
+			heldChainTask = selection().task;
+			heldChainAt = snapshot.captureStartedAt;
+			chainMovedSince = false;
+		}
+
+		ImGui::SameLine(0.0f, 8.0f * scale);
+		ImGui::Checkbox(I18n::tr("follow"), &followChain);
+
+		ImGui::SameLine(0.0f, 10.0f * scale);
+
+		const double age = std::max(snapshot.captureStartedAt - heldChainAt, 0.0);
+
+		if (followChain)
+			GuiHelper::drawSecondaryText("%s", I18n::tr("following the newest round"));
+		else if (taskIsMissingNow)
+			ImGui::TextColored(GuiHelper::orangeLight(), "%s", I18n::tr("held from %.1f s ago; the task is not in this round"));
+		else if (chainMovedSince)
+			ImGui::TextColored(GuiHelper::orangeLight(), "%s", I18n::tr("held from %.1f s ago; the chain has changed since"));
+		else
+			GuiHelper::drawSecondaryText(I18n::tr("held from %.1f s ago"), age);
 	}
 
 	/* The boxes and arrows of one chain, drawn straight into the block. */

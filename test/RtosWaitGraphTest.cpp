@@ -148,3 +148,69 @@ TEST(RtosWaitGraphTest, AnswersWithNothingForATaskThatIsNotInTheRound)
 	EXPECT_TRUE(chain.nodes.empty());
 	EXPECT_TRUE(chain.steps.empty());
 }
+
+TEST(RtosWaitGraphTest, TwoWalksOfTheSameTargetGiveTheSameShape)
+{
+	const RtosSnapshot snapshot = makeSnapshot();
+
+	const RtosWaitGraph::Chain first = RtosWaitGraph::from(snapshot, 0x1000);
+	RtosSnapshot later = makeSnapshot();
+
+	/* The numbers inside the boxes move between rounds; the picture does not. */
+	later.tasks[0].state = RtosTaskState::Ready;
+	later.syncObjects[0].items = 1;
+	later.syncObjects[0].waitingToReceive = 3;
+
+	const RtosWaitGraph::Chain second = RtosWaitGraph::from(later, 0x1000);
+
+	EXPECT_TRUE(RtosWaitGraph::sameShape(first, second));
+}
+
+TEST(RtosWaitGraphTest, ADifferentHolderIsADifferentShape)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+	const RtosWaitGraph::Chain first = RtosWaitGraph::from(snapshot, 0x1000);
+
+	/* The lock moved to a third task: one box is replaced by another. */
+	snapshot.tasks.push_back(makeTask(0x1080, "other", ""));
+	snapshot.syncObjects[0].holder = 0x1080;
+
+	const RtosWaitGraph::Chain second = RtosWaitGraph::from(snapshot, 0x1000);
+
+	EXPECT_FALSE(RtosWaitGraph::sameShape(first, second));
+}
+
+TEST(RtosWaitGraphTest, AChainThatStopsEarlierIsADifferentShape)
+{
+	RtosSnapshot snapshot = makeSnapshot();
+	const RtosWaitGraph::Chain first = RtosWaitGraph::from(snapshot, 0x1000);
+
+	/* Same task, same object, but nobody holds it any more. */
+	snapshot.syncObjects[0].holder = 0;
+	snapshot.syncObjects[0].hasHolder = false;
+
+	const RtosWaitGraph::Chain second = RtosWaitGraph::from(snapshot, 0x1000);
+
+	EXPECT_FALSE(RtosWaitGraph::sameShape(first, second));
+}
+
+TEST(RtosWaitGraphTest, ARingAndAnOpenChainAreNotTheSameShape)
+{
+	RtosSnapshot ring;
+
+	ring.tasks.push_back(makeTask(0x1000, "worker", "mtx_a"));
+	ring.tasks.push_back(makeTask(0x1040, "holder", "mtx_b"));
+	ring.syncObjects.push_back(makeObject(0x2000, "mtx_a", 0x1040, 1));
+	ring.syncObjects.push_back(makeObject(0x2040, "mtx_b", 0x1000, 1));
+
+	const RtosWaitGraph::Chain closed = RtosWaitGraph::from(ring, 0x1000);
+
+	RtosSnapshot open = ring;
+	open.tasks[1].waitingOn.clear();
+
+	const RtosWaitGraph::Chain unbounded = RtosWaitGraph::from(open, 0x1000);
+
+	EXPECT_TRUE(closed.cycle);
+	EXPECT_FALSE(unbounded.cycle);
+	EXPECT_FALSE(RtosWaitGraph::sameShape(closed, unbounded));
+}

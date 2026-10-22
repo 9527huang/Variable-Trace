@@ -95,6 +95,17 @@ class RtosWaitGraph
 	 * block it goes in; the cut is visible because no ring is marked.
 	 */
 	static Chain from(const RtosSnapshot& snapshot, uint32_t task, size_t limit = 6);
+
+	/*
+	 * Whether two chains are the same picture.
+	 *
+	 * Same boxes at the same addresses in the same order, and the same steps
+	 * between them. What it does not compare is the numbers inside the boxes -
+	 * a state or a count that moved is still the same chain, and holds the
+	 * drawing still while the target is running, which is the whole point:
+	 * a picture that redraws itself every round is a picture nobody can read.
+	 */
+	static bool sameShape(const Chain& left, const Chain& right);
 };
 
 #endif

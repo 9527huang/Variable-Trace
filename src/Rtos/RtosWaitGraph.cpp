@@ -143,3 +143,29 @@ RtosWaitGraph::Chain RtosWaitGraph::from(const RtosSnapshot& snapshot, uint32_t 
 
 	return chain;
 }
+
+bool RtosWaitGraph::sameShape(const Chain& left, const Chain& right)
+{
+	if (left.nodes.size() != right.nodes.size() || left.steps.size() != right.steps.size())
+		return false;
+
+	if (left.cycle != right.cycle)
+		return false;
+
+	for (size_t index = 0; index < left.nodes.size(); index++)
+	{
+		if (left.nodes[index].kind != right.nodes[index].kind || left.nodes[index].address != right.nodes[index].address)
+			return false;
+	}
+
+	for (size_t index = 0; index < left.steps.size(); index++)
+	{
+		if (left.steps[index].from != right.steps[index].from || left.steps[index].to != right.steps[index].to)
+			return false;
+
+		if (left.steps[index].heldBy != right.steps[index].heldBy || left.steps[index].closesCycle != right.steps[index].closesCycle)
+			return false;
+	}
+
+	return true;
+}

@@ -934,6 +934,14 @@ EXTRA = {
     "%s, priority %u": "%s，优先级 %u",
     "%s %u/%u, %u waiting": "%s %u/%u，%u 个在等",
 
+    # 关系图是定格的：表头要说清这一张是什么时候的，以及两个按钮。
+    "refresh": "刷新",
+    "follow": "跟随",
+    "following the newest round": "跟随最新一轮",
+    "held from %.1f s ago": "定格于 %.1f 秒前",
+    "held from %.1f s ago; the chain has changed since": "定格于 %.1f 秒前，链已经变了",
+    "held from %.1f s ago; the task is not in this round": "定格于 %.1f 秒前，这个任务这一轮不在表里",
+
     # 旧版记录里没有切换记录，事件列表要说清楚这是"没记"而不是"没切"。
     "This recording was written before switch records were kept in it, so there is nothing to list. Recording a new one writes them.":
         "这份记录写在开始保留切换记录之前，所以没有可列的内容。录一份新的就会带上。",
