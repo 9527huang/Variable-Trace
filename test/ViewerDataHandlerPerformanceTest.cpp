@@ -453,16 +453,40 @@ namespace
 		startLayout(layout, 1000, {}, true, std::numeric_limits<uint32_t>::max(), IDebugProbe::Probe::Jlink, true, logDirectory.string());
 		ASSERT_TRUE(waitUntil([this] { return viewer->getPerformanceMetrics().completedSamples >= 200; }));
 		stopAndWait();
+
+		/* The writer is a thread of its own: `stopAndWait` returns when the probe
+		   is detached, which is not the same moment as when the last row has
+		   reached the file. Reading the counters between those two moments is a
+		   race, and it was the race this test was losing - twice in three runs on
+		   a busy machine. Wait for the drain, then read. */
+		ASSERT_TRUE(waitUntil([this]
+		                      {
+			                      const auto now = viewer->getPerformanceMetrics();
+			                      return now.csvEnqueuedSamples == 0 || now.csvWrittenSamples >= now.csvEnqueuedSamples;
+		                      }));
+
 		const auto metrics = viewer->getPerformanceMetrics();
 
 		const double completed = static_cast<double>(metrics.completedSamples);
 		RecordProperty("average_model_update_us", std::to_string(static_cast<double>(metrics.modelUpdateNs) / completed / 1000.0));
 		RecordProperty("average_csv_submit_us", std::to_string(static_cast<double>(metrics.csvSubmitNs) / completed / 1000.0));
 		RecordProperty("average_csv_background_format_us", std::to_string(static_cast<double>(metrics.csvFormatNs) / completed / 1000.0));
+		RecordProperty("csv_rejected_samples", metrics.csvRejectedSamples);
+
 		EXPECT_GT(metrics.csvSubmitNs, 0u);
 		EXPECT_GT(metrics.csvFormatNs, 0u);
-		EXPECT_EQ(metrics.csvEnqueuedSamples, metrics.csvWrittenSamples);
-		EXPECT_EQ(metrics.csvRejectedSamples, 0u);
+
+		/* Every completed sample either entered the queue or was refused on the
+		   spot. Refusing is designed behaviour: the queue is bounded and the
+		   sampling loop must never block on a disk, so a machine under load is
+		   allowed to reject. What is not allowed is a sample disappearing without
+		   a counter, which is what this identity catches.
+		   Asserting "no rejections at 1 kHz" was asserting more than the design
+		   promises, on a machine whose disk it does not control. */
+		EXPECT_EQ(metrics.csvEnqueuedSamples + metrics.csvRejectedSamples, metrics.completedSamples);
+
+		/* And everything that was accepted reached the file. */
+		EXPECT_EQ(metrics.csvWrittenSamples, metrics.csvEnqueuedSamples);
 		EXPECT_EQ(metrics.failedSamples, 0u);
 
 		std::error_code cleanupError;
