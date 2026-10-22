@@ -31,13 +31,13 @@
 
 | ID | 需求来源 | 用例 | 层 | 状态 |
 |---|---|---|---|---|
-| IDN-01 | §8 | `Create` → `Delete` → 同地址 `Create`：两次实体键不同（代次递增） | C++ | 待写 |
+| IDN-01 | §8 | `Create` → `Delete` → 同地址 `Create`：两次实体键不同（代次递增） | C++ | **已过**（`RtosIdentityStoreTest`） |
 | IDN-02 | §8 | 同地址连续创建/删除 10,000 次不串线 | C++ | 待写 |
-| IDN-03 | §8 | 缺 `Create` 的先见事件建立 `generation=unknown`，后续快照只补显示名 | C++ | 待写 |
-| IDN-04 | §8 | `Gap` 跨过 `Create`/`Delete` 时相关实体降为 `UnknownAfterGap` | C++ | 待写 |
-| IDN-05 | §8 | epoch 变化关闭全部实体与未完成区间 | C++ | 待写 |
+| IDN-03 | §8 | 缺 `Create` 的先见事件建立 `generation=unknown`，后续快照只补显示名 | C++ | **已过**（store 层） |
+| IDN-04 | §8 | `Gap` 跨过 `Create`/`Delete` 时相关实体降为 `UnknownAfterGap` | C++ | **部分**（store 打标已测；降级到规则层待接线） |
+| IDN-05 | §8 | epoch 变化关闭全部实体与未完成区间 | C++ | **已过**（store 层 `clear`） |
 | IDN-06 | §7 | 字典槽被复用后旧引用失效，名称按 hash 校验作废 | C++ | 待写 |
-| IDN-07 | §4.3 | 同 handle 已打开时再 `Create` → `ImplicitClose` + 数据质量 Finding | C++ | 待写 |
+| IDN-07 | §4.3 | 同 handle 已打开时再 `Create` → `ImplicitClose` + 数据质量 Finding | C++ | **部分**（`implicitClose` 已测；Finding 待规则层） |
 
 ## 四、原子性与并发（ATM）
 
@@ -130,6 +130,7 @@
 |---|---|---|
 | 2026-10-22 | Phase 0 文档四份（线格式、产物、租约、本表） | `04c313a` |
 | 2026-10-22 | `RtosTraceTypes` + `IRtosTraceSource`；`TIME-01`、`TIME-02`、`ATM-02` 已过 | `61af9e9`、`b48314a` |
+| 2026-10-22 | `RtosIdentityStore`；`IDN-01`、`IDN-03`、`IDN-05` 已过，`IDN-04`、`IDN-07` 部分 | 本次提交 |
 
-下一步（第一迭代第 3 步余下部分）：`RtosIdentityStore` —— `IDN-01` 到 `IDN-07` 全靠它。
-之后是第 4 步 `RtosModel` 双历史接线（用 fake source，不接真实探针），第 5 步 golden corpus。
+下一步是第一迭代第 4 步：`RtosModel` 双历史接线（fake source，不接真实探针）。
+再往后是 golden corpus 与 MTF/SWD 适配器。

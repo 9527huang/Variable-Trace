@@ -224,6 +224,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosWaitGraph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTraceTypes.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTraceClock.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosIdentityStore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosEventRing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosCsvExport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
