@@ -101,12 +101,18 @@ offset size field
 每 64 个数据块追加一个 `IndexCheckpoint`，payload 是数组：
 
 ```
-每条 24 字节：
-  u32 blockSequence
-  u64 payloadOffset     // 文件绝对偏移
-  u32 payloadBytes
-  u64 firstTicks        // 该块最早事件的目标 ticks（无则为 0）
-  u64 lastTicks
+每条 24 字节（4 + 8 + 4 + 4 + 4）：
+
+```
+0   u32 blockSequence
+4   u64 payloadOffset   // 文件绝对偏移
+12  u32 payloadBytes
+16  u32 firstTicks      // 该块最早事件的目标 ticks，32 位，无则 0
+20  u32 lastTicks        // 与线格式的 ticks 同为 32 位；扩展是主机侧的事
+```
+
+> 初稿把这里也写成了 24 字节却列了 5 个字段共 32 字节。要么字段变少，要么条目变长——
+> 这里让 ticks 保持 32 位（线格式就是这么发的），条目正好 24。
 ```
 
 打开时只读**最后一个**检查点即可定位任意时间窗；没有检查点时退回全文件扫描（与 v2 行为一致）。
