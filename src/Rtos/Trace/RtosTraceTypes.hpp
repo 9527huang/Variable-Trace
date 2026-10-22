@@ -255,6 +255,12 @@ struct RtosTraceEvent
 	uint32_t arg0 = 0;
 	uint32_t arg1 = 0;
 
+	/* The record's own bytes, when it has any. A fault frame carries its
+	   registers here and nowhere else; a rule that wanted them would otherwise
+	   have to go back to the decoder with the sequence number and hope. */
+	uint8_t payloadBytes = 0;
+	uint8_t payload[12] = {};
+
 	RtosEvidenceQuality quality = RtosEvidenceQuality::Unknown;
 };
 

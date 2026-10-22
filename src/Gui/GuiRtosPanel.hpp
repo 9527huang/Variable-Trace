@@ -18,6 +18,7 @@
 #include "RtosDiagnostics.hpp"
 #include "I18n.hpp"
 #include "RtosCsvExport.hpp"
+#include "RtosTraceReducer.hpp"
 #include "RtosWaitGraph.hpp"
 #include "RtosEventQuery.hpp"
 #include "RtosModel.hpp"
@@ -60,6 +61,7 @@ class GuiRtosPanel
 		SelectedTask,
 		Chain,
 		Events,
+		Tracks,
 	};
 
 	inline static LowerTab lowerTabShown = LowerTab::SelectedTask;
@@ -78,6 +80,12 @@ class GuiRtosPanel
 	 * line above the boxes says which of the two is on screen and whether the
 	 * target has moved on since it was taken.
 	 */
+	/* The projection is rebuilt when the history grew, not every frame: folding
+	   a few hundred thousand events sixty times a second would cost more than
+	   the view is worth, and the fold is a function of the history alone. */
+	inline static RtosTrackProjection tracks;
+	inline static size_t tracksBuiltAt = static_cast<size_t>(-1);
+
 	inline static RtosWaitGraph::Chain heldChain;
 	inline static uint32_t heldChainTask = 0;
 	inline static double heldChainAt = 0.0;
@@ -258,6 +266,8 @@ class GuiRtosPanel
 		lowerTabButton(LowerTab::Chain, I18n::tr("Waiting chain"));
 		ImGui::SameLine(0.0f, 4.0f * GuiHelper::contentScale);
 		lowerTabButton(LowerTab::Events, I18n::tr("Events"));
+		ImGui::SameLine(0.0f, 4.0f * GuiHelper::contentScale);
+		lowerTabButton(LowerTab::Tracks, I18n::tr("Tracks"));
 
 		const float used = ImGui::GetCursorPosY() - blockTop;
 		const float blockHeight = std::max(reserve - used, bodyFloor);
@@ -272,6 +282,10 @@ class GuiRtosPanel
 
 			case LowerTab::Chain:
 				drawWaitingChain(*snapshot);
+				break;
+
+			case LowerTab::Tracks:
+				drawTracks(*model);
 				break;
 
 			case LowerTab::SelectedTask:
@@ -2562,6 +2576,104 @@ class GuiRtosPanel
 	 * the machine keeps running. What arrived meanwhile is counted beside the
 	 * box, because a list that silently stops is a list that lies.
 	 */
+	/*
+	 * The other four tracks, as counts and their most recent entries.
+	 *
+	 * The bands themselves belong on the strip, and that is where they will go
+	 * once the strip can query an event window instead of walking the whole
+	 * history - sliding a window over a hundred thousand events per frame is
+	 * the one thing this view cannot afford. What is here is the part that can
+	 * be answered now: does this source carry each track at all, how much of it
+	 * arrived, and what did the last few say.
+	 *
+	 * A track a source cannot carry says so. An empty ISR row on a carrier that
+	 * does not send interrupts is not the same statement as an empty ISR row on
+	 * a target that had none, and the difference is the whole reason the
+	 * capability bits exist.
+	 */
+	static void drawTracks(const RtosModel& model)
+	{
+		const float scale = GuiHelper::contentScale;
+
+		if (model.trace() == nullptr || !model.trace()->attached())
+		{
+			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("No event source is attached: this view is built from snapshots only."));
+
+			return;
+		}
+
+		const std::vector<RtosNormalizedEvent>& events = model.trace()->events();
+
+		if (events.size() != tracksBuiltAt)
+		{
+			tracks = RtosTraceReducer::project(events);
+			tracksBuiltAt = events.size();
+		}
+
+		const std::vector<std::string> missing = model.trace()->missingCapabilities();
+
+		GuiHelper::drawSecondaryText("%s · %u events", model.trace()->sourceName(), static_cast<uint32_t>(events.size()));
+
+		if (!missing.empty())
+		{
+			std::string line;
+
+			for (const std::string& name : missing)
+			{
+				if (!line.empty())
+					line += ", ";
+
+				line += name;
+			}
+
+			GuiHelper::drawSecondaryTextWrapped(I18n::tr("This source does not carry: %s"), line.c_str());
+		}
+
+		trackRow(I18n::tr("ISR"), tracks.isr.size(), tracks.unclosedIsr, I18n::tr("intervals"), scale);
+		trackRow(I18n::tr("Fault"), tracks.fault.size(), 0, I18n::tr("marks"), scale);
+		trackRow(I18n::tr("Sync"), tracks.sync.size(), tracks.unclosedSync, I18n::tr("waits"), scale);
+		trackRow(I18n::tr("Heap"), tracks.heap.size(), tracks.heapUnknownSize, I18n::tr("marks"), scale);
+		trackRow(I18n::tr("Gap"), tracks.gap.size(), 0, I18n::tr("records lost"), scale);
+
+		/* The most recent entry of each track that has one: enough to see that
+		   the decoder is producing something sensible without pretending to be
+		   the timeline. */
+		drawLastEntry(I18n::tr("ISR"), tracks.isr, scale);
+		drawLastEntry(I18n::tr("Fault"), tracks.fault, scale);
+		drawLastEntry(I18n::tr("Sync"), tracks.sync, scale);
+		drawLastEntry(I18n::tr("Heap"), tracks.heap, scale);
+	}
+
+	/* One summary line: "ISR  12 intervals, 1 never finished". */
+	static void trackRow(const char* label, size_t count, uint32_t incomplete, const char* unit, float scale)
+	{
+		ImGui::TextUnformatted(label);
+		ImGui::SameLine(70.0f * scale);
+		GuiHelper::drawSecondaryText("%u %s", static_cast<uint32_t>(count), unit);
+
+		if (incomplete > 0)
+		{
+			ImGui::SameLine(0.0f, 8.0f * scale);
+			ImGui::TextColored(GuiHelper::orangeLight(), "%u %s", incomplete, I18n::tr("unfinished"));
+		}
+	}
+
+	static void drawLastEntry(const char* label, const std::vector<RtosTrackEntry>& entries, float scale)
+	{
+		if (entries.empty())
+			return;
+
+		const RtosTrackEntry& entry = entries.back();
+
+		ImGui::TextUnformatted(label);
+		ImGui::SameLine(70.0f * scale);
+
+		if (entry.hasSeconds)
+			GuiHelper::drawSecondaryText("%.3f s · %s", entry.toSeconds, entry.name.c_str());
+		else
+			GuiHelper::drawSecondaryText("%s", I18n::tr("no target time · %s"), entry.name.c_str());
+	}
+
 	/*
 	 * What is blocking the selected task, drawn as the chain it is.
 	 *

@@ -922,6 +922,18 @@ EXTRA = {
     "Wrote %u rows; %u rounds could not be read and were left out.": "写了 %u 行；有 %u 轮读不出来，已略过。",
     "CSV files": "CSV 文件",
 
+    # 轨道页签：五条轨道的摘要与"这份源不提供什么"。
+    "Tracks": "轨道",
+    "intervals": "个区间",
+    "marks": "条标记",
+    "waits": "次等待",
+    "records lost": "条记录丢失",
+    "unfinished": "未完成",
+    "This source does not carry: %s": "这份源不提供：%s",
+    "No event source is attached: this view is built from snapshots only.": "没有接事件源：这个视图只用快照构建。",
+    "no target time · %s": "没有目标时间 · %s",
+    "%s · %u events": "%s · %u 个事件",
+
     # 阻塞关系图：三个页签之一，以及链上的两种箭头与环的收尾。
     "Waiting chain": "等待链",
     "waits for": "等待",

@@ -210,6 +210,11 @@ Rtec2DecodeResult Rtec2Decoder::decode(const uint8_t* bytes, size_t size)
 		{
 			decoded.payloadBytes = record[cursor];
 			std::memcpy(decoded.payload, record + cursor + 1, decoded.payloadBytes);
+
+			/* The event carries it too: a fault's registers are part of what the
+			   event says, not a separate lookup. */
+			decoded.event.payloadBytes = decoded.payloadBytes;
+			std::memcpy(decoded.event.payload, decoded.payload, decoded.payloadBytes);
 		}
 
 		if (decoded.event.type == RtosTraceEventType::Unknown)

@@ -106,7 +106,7 @@
 
 | ID | 需求来源 | 用例 | 层 | 状态 |
 |---|---|---|---|---|
-| UI-01 | 计划 §6.3 | 五类轨道可独立开关；Fault 与 Gap 不被 LOD 隐藏 | 手动 | 待写 |
+| UI-01 | 计划 §6.3 | 五类轨道可独立开关；Fault 与 Gap 不被 LOD 隐藏 | 手动 | **部分**（`Tracks` 页签给出五条轨道的计数、未完成数与最近一条；**带状轨道与开关**要等时间窗查询） |
 | UI-02 | 计划 §6.3 | 缩放、平移后轨道与变量曲线时间轴对齐 | 手动 | 待写 |
 | UI-03 | 计划 §7.1 | `NotApplicable` 与 `Unknown` 不显示成"没有问题" | 手动 | 待写 |
 | UI-04 | 计划 §6.3 | 10 万事件流畅；100 万事件可打开并交互 | 基准 | 待写 |
@@ -160,7 +160,8 @@
 | 2026-10-22 | Phase 2 适配器：`MtfTraceAdapter` / `SwdTraceAdapter`，能力缺口名单；`IDN-02` 已过 | `0cd82b4` |
 | 2026-10-22 | Phase 3 主机侧：`Rtec2RingReader`（双哨兵、整批放弃、覆盖计数）、`RtosTraceReconciler`（三条对账） | `141f936` |
 | 2026-10-22 | Phase 3 目标侧参考实现：`example/rtec2_port/`（C 写、C++ 读闭环）；WRT-01..08 已过 | `bce6222` |
-| 2026-10-22 | 录制 v3 容器：`RtosRecordingV3`（分块、CRC-32/MPEG-2、commit 标记、崩溃只恢复到最后一个完整块、索引检查点）；REC-01/02 已过、REC-05 部分 | 本次提交 |
+| 2026-10-22 | 录制 v3 容器：`RtosRecordingV3`（分块、CRC-32/MPEG-2、commit 标记、崩溃只恢复到最后一个完整块、索引检查点）；REC-01/02 已过、REC-05 部分 | `5fe0779` |
+| 2026-10-22 | Phase 4 投影层与 `Tracks` 页签：`RtosTraceReducer`（ISR 栈式配对、wait 按任务+对象配对、Fault 寄存器按 flags 取、堆净值与未知大小分开）；UI-01 部分 | 本次提交 |
 
 第一迭代的五步做完；Phase 2 的适配器层已落地（`MtfTraceAdapter`、`SwdTraceAdapter`）。
 三端钉在同一批字节上（`tools/trace-golden/`）。
