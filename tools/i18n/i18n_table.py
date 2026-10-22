@@ -921,6 +921,10 @@ EXTRA = {
     "Wrote %u rows from %u rounds to %s": "从 %u 轮写出 %u 行，保存到 %s",
     "Wrote %u rows; %u rounds could not be read and were left out.": "写了 %u 行；有 %u 轮读不出来，已略过。",
     "CSV files": "CSV 文件",
+
+    # 旧版记录里没有切换记录，事件列表要说清楚这是"没记"而不是"没切"。
+    "This recording was written before switch records were kept in it, so there is nothing to list. Recording a new one writes them.":
+        "这份记录写在开始保留切换记录之前，所以没有可列的内容。录一份新的就会带上。",
 }
 
 

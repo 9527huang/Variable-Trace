@@ -352,7 +352,7 @@ bool RtosRecording::begin(const std::string& path, Problem& problem)
 	return true;
 }
 
-void RtosRecording::write(const RtosSnapshot& snapshot)
+void RtosRecording::write(const RtosSnapshot& snapshot, const std::vector<RtosEventRing::Interval>& events)
 {
 	if (!writing)
 		return;
@@ -412,6 +412,18 @@ void RtosRecording::write(const RtosSnapshot& snapshot)
 
 	for (const RtosSyncObject& object : snapshot.syncObjects)
 		writeObject(sink, object);
+
+	/* The switch records that arrived with this round. Written last so that a
+	   file from before they existed is a record that ends here, which is
+	   exactly what the reader of a version 1 file expects. */
+	sink.u32(static_cast<uint32_t>(events.size()));
+
+	for (const RtosEventRing::Interval& run : events)
+	{
+		sink.u32(run.tcbAddress);
+		sink.d(run.fromSeconds);
+		sink.d(run.toSeconds);
+	}
 
 	uint8_t recordHeader[recordHeaderBytes] = {};
 	const uint32_t payloadBytes = static_cast<uint32_t>(buffer.size());
@@ -516,7 +528,7 @@ bool RtosRecording::open(const std::string& path, Problem& problem)
 	uint32_t version = 0;
 	std::memcpy(&version, header + 8, sizeof(version));
 
-	if (version != formatVersion)
+	if (version < oldestReadableVersion || version > formatVersion)
 	{
 		std::fclose(opened);
 		problem = Problem::WrittenByAnotherVersion;
@@ -587,6 +599,7 @@ bool RtosRecording::open(const std::string& path, Problem& problem)
 		std::lock_guard<std::mutex> lock(mtx);
 		file = opened;
 		filePath = path;
+		fileVersion = version;
 		reading = true;
 	}
 
@@ -662,8 +675,15 @@ size_t RtosRecording::nearestRound(double atSeconds) const
 
 std::shared_ptr<RtosSnapshot> RtosRecording::roundAt(size_t round) const
 {
+	return roundWithEvents(round).snapshot;
+}
+
+RtosRecording::Round RtosRecording::roundWithEvents(size_t round) const
+{
+	Round decoded;
+
 	if (round >= index.size())
-		return nullptr;
+		return decoded;
 
 	const IndexEntry& entry = index[round];
 
@@ -671,7 +691,7 @@ std::shared_ptr<RtosSnapshot> RtosRecording::roundAt(size_t round) const
 	   thirty-two bits here: two gigabytes is three hours of rounds, and a file
 	   that big is refused rather than read from the wrong place. */
 	if (entry.offset > static_cast<uint64_t>(LONG_MAX))
-		return nullptr;
+		return decoded;
 
 	/* The read happens under the lock that `close` takes: a handle closed
 	   while it is being read is a crash, and rounds are read at the speed of
@@ -679,21 +699,21 @@ std::shared_ptr<RtosSnapshot> RtosRecording::roundAt(size_t round) const
 	std::lock_guard<std::mutex> lock(mtx);
 
 	if (file == nullptr)
-		return nullptr;
+		return decoded;
 
 	if (std::fseek(file, static_cast<long>(entry.offset), SEEK_SET) != 0)
-		return nullptr;
+		return decoded;
 
 	std::vector<uint8_t> bytes(entry.payloadBytes);
 
 	if (std::fread(bytes.data(), 1, bytes.size(), file) != bytes.size())
-		return nullptr;
+		return decoded;
 
 	Source source;
 	source.bytes = bytes.data();
 	source.size = bytes.size();
 
-	auto snapshot = std::make_shared<RtosSnapshot>();
+	std::shared_ptr<RtosSnapshot> snapshot = std::make_shared<RtosSnapshot>();
 
 	snapshot->captureStartedAt = source.d();
 	snapshot->captureFinishedAt = source.d();
@@ -750,10 +770,30 @@ std::shared_ptr<RtosSnapshot> RtosRecording::roundAt(size_t round) const
 	for (uint32_t index = 0; index < objects && source.ok; index++)
 		snapshot->syncObjects.push_back(readObject(source));
 
-	if (!source.ok)
-		return nullptr;
+	/* Version 1 ends here; a version 2 record carries the runs as well. The
+	   index was built before anyone knew which round would be read, so the
+	   version is kept beside the handle rather than per record. */
+	if (fileVersion >= 2)
+	{
+		const uint32_t runs = source.u32();
 
-	return snapshot;
+		for (uint32_t index = 0; index < runs && source.ok; index++)
+		{
+			RtosEventRing::Interval run;
+			run.tcbAddress = source.u32();
+			run.fromSeconds = source.d();
+			run.toSeconds = source.d();
+
+			decoded.events.push_back(run);
+		}
+	}
+
+	if (!source.ok)
+		return decoded;
+
+	decoded.snapshot = std::move(snapshot);
+
+	return decoded;
 }
 
 RtosRecording::Info RtosRecording::info() const

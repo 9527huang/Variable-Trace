@@ -5,6 +5,7 @@
 #include <fstream>
 #include <string>
 
+#include "RtosModel.hpp"
 #include "RtosRecording.hpp"
 
 namespace
@@ -314,4 +315,154 @@ TEST_F(RtosRecordingTest, TheBytesOnDiskStayWithTheRound)
 
 	EXPECT_GT(info.bytes, 500u);
 	EXPECT_LT(info.bytes, 8000u);
+}
+
+TEST_F(RtosRecordingTest, KeepsTheSwitchRecordsWithTheRoundTheyCameWith)
+{
+	const std::string file = path("events.vtrec");
+
+	RtosEventRing::Interval first;
+	first.tcbAddress = 0x20001000u;
+	first.fromSeconds = 1.25;
+	first.toSeconds = 1.30;
+
+	RtosEventRing::Interval second;
+	second.tcbAddress = 0x20001040u;
+	second.fromSeconds = 1.30;
+	second.toSeconds = 1.35;
+
+	{
+		RtosRecording writer;
+		RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+		ASSERT_TRUE(writer.begin(file, problem)) << RtosRecording::describe(problem);
+		writer.write(makeRound(1.25, 2), {first, second});
+		writer.write(makeRound(1.35, 2), {});
+		writer.finish();
+	}
+
+	RtosRecording reader;
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	ASSERT_TRUE(reader.open(file, problem)) << RtosRecording::describe(problem);
+	EXPECT_TRUE(reader.hasEventRecords());
+
+	const RtosRecording::Round content = reader.roundWithEvents(0);
+
+	ASSERT_NE(nullptr, content.snapshot);
+	ASSERT_EQ(2u, content.events.size());
+	EXPECT_EQ(0x20001000u, content.events[0].tcbAddress);
+	EXPECT_DOUBLE_EQ(1.25, content.events[0].fromSeconds);
+	EXPECT_DOUBLE_EQ(1.30, content.events[0].toSeconds);
+	EXPECT_EQ(0x20001040u, content.events[1].tcbAddress);
+
+	/* A round that brought no runs still reads as a round. */
+	const RtosRecording::Round quiet = reader.roundWithEvents(1);
+
+	ASSERT_NE(nullptr, quiet.snapshot);
+	EXPECT_TRUE(quiet.events.empty());
+}
+
+TEST_F(RtosRecordingTest, ReadsAFileWrittenBeforeSwitchRecordsWereKept)
+{
+	const std::string file = path("legacy.vtrec");
+
+	{
+		RtosRecording writer;
+		RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+		ASSERT_TRUE(writer.begin(file, problem)) << RtosRecording::describe(problem);
+		writer.write(makeRound(1.0, 2));
+		writer.finish();
+	}
+
+	/* Turn the file into a version 1 one: the version field goes back, and the
+	   events block - four bytes of count with nothing after it - comes off the
+	   end of the only record. Written by hand here because the writer no
+	   longer produces that layout, and a reader that cannot open last week's
+	   file is a reader that broke something. */
+	{
+		std::fstream patch(file, std::ios::in | std::ios::out | std::ios::binary);
+		ASSERT_TRUE(patch.is_open());
+
+		patch.seekp(8, std::ios::beg);
+
+		const uint32_t version = 1;
+		patch.write(reinterpret_cast<const char*>(&version), sizeof(version));
+
+		/* The record header sits right after the sixteen byte file header:
+		   magic (4) then the payload length (4). It shrinks by the four bytes of
+		   the events count that a version 1 record never had. */
+		patch.seekp(16, std::ios::beg);
+
+		uint32_t recordHeader[2] = {};
+		patch.read(reinterpret_cast<char*>(recordHeader), sizeof(recordHeader));
+		recordHeader[1] -= 4;
+
+		patch.seekp(16, std::ios::beg);
+		patch.write(reinterpret_cast<const char*>(recordHeader), sizeof(recordHeader));
+
+		patch.seekp(0, std::ios::end);
+		const std::streamoff end = patch.tellp();
+		patch.close();
+
+		/* And the file itself is four bytes shorter, or the record would claim
+		   less than it holds and the next read would land mid-record. */
+		std::filesystem::resize_file(file, static_cast<uintmax_t>(end) - 4);
+	}
+
+	RtosRecording reader;
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	ASSERT_TRUE(reader.open(file, problem)) << RtosRecording::describe(problem);
+	EXPECT_FALSE(reader.hasEventRecords());
+	EXPECT_EQ(1u, reader.roundCount());
+
+	const RtosRecording::Round content = reader.roundWithEvents(0);
+
+	ASSERT_NE(nullptr, content.snapshot);
+	EXPECT_EQ(2u, content.snapshot->tasks.size());
+	EXPECT_TRUE(content.events.empty());
+}
+
+TEST_F(RtosRecordingTest, OpeningARecordingBringsItsSwitchRecordsBack)
+{
+	const std::string file = path("lanes.vtrec");
+
+	RtosEventRing::Interval first;
+	first.tcbAddress = 0x20001000u;
+	first.fromSeconds = 2.0;
+	first.toSeconds = 2.5;
+
+	RtosEventRing::Interval second;
+	second.tcbAddress = 0x20001040u;
+	second.fromSeconds = 2.5;
+	second.toSeconds = 3.0;
+
+	{
+		RtosRecording writer;
+		RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+		ASSERT_TRUE(writer.begin(file, problem)) << RtosRecording::describe(problem);
+		writer.write(makeRound(2.0, 2), {first});
+		writer.write(makeRound(2.5, 2), {second});
+		writer.finish();
+	}
+
+	RtosModel model;
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	ASSERT_TRUE(model.openRecording(file, problem)) << RtosRecording::describe(problem);
+
+	/* The lanes and the event list read from the same history, so opening the
+	   file has to fill it: otherwise a recording plays back as a table with an
+	   empty strip and an empty list, which reads as a target that never
+	   switched. */
+	EXPECT_TRUE(model.playbackHasEventRecords());
+	EXPECT_EQ(2u, model.events().size());
+
+	model.closePlayback();
+
+	EXPECT_FALSE(model.playbackHasEventRecords());
+	EXPECT_EQ(0u, model.events().size());
 }

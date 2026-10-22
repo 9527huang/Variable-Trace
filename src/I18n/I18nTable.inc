@@ -455,6 +455,7 @@ static const Entry table[] = {
 	{"This build was compiled without the DWARF library, so this parser cannot read a file.", "此构建编译时未包含 DWARF 库，该解析器无法读取文件。"},
 	{"This kernel keeps no registry of its queues.", "这个内核不保留队列登记表。"},
 	{"This recording holds no rounds.", "这份记录里没有任何轮次。"},
+	{"This recording was written before switch records were kept in it, so there is nothing to list. Recording a new one writes them.", "这份记录写在开始保留切换记录之前，所以没有可列的内容。录一份新的就会带上。"},
 	{"This round did not read this task, so every column is a slash. The row stays: the task is there, the reading is not. Its last reading was %.1f s before this round.", "这一轮没有读到这个任务，所以每一列都是斜杠。行留着:任务还在，读数没有。上一次读到它是在 %.1f 秒之前。"},
 	{"This task has not been switched in during the runs the view keeps.", "在这段记录里，这个任务没有被切入过。"},
 	{"Time", "时间"},

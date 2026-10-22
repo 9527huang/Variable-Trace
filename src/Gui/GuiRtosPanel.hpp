@@ -2580,11 +2580,16 @@ class GuiRtosPanel
 
 		if (eventsCache.empty())
 		{
-			/* Three reasons and they are not the same: nothing was ever written
-			   by the target, the reader has just opened the view, or the task
-			   being looked at was never switched in. */
+			/* Four reasons and they are not the same: the target wrote nothing,
+			   the reader has just opened the view, the task being looked at was
+			   never switched in, or the file being read was written before this
+			   program kept switch records in it. The last one is the one worth
+			   separating - "nothing switched" and "nobody wrote it down" are
+			   opposite readings of the same empty box. */
 			if (eventsTask != 0)
 				GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("This task has not been switched in during the runs the view keeps."));
+			else if (model.isPlayback() && !model.playbackHasEventRecords())
+				GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("This recording was written before switch records were kept in it, so there is nothing to list. Recording a new one writes them."));
 			else
 				GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("No switch records yet. The target writes them from its own timer interrupt, or sends them over SWO/RTT; the timeline's runs are the same records."));
 

@@ -36,9 +36,20 @@ void RtosModel::publish(std::shared_ptr<RtosSnapshot> snapshot)
 	timeline.add(*snapshot);
 
 	/* And written down before it is handed over, for the same reason: what the
-	   file holds is what the view was shown, one round at a time. */
+	   file holds is what the view was shown, one round at a time. The runs that
+	   arrived since the last round go with it, so a file read back has lanes
+	   and an event list rather than only the table. */
 	if (recording.isWriting())
-		recording.write(*snapshot);
+	{
+		std::vector<RtosEventRing::Interval> events;
+
+		{
+			std::lock_guard<std::mutex> lock(modelMutex);
+			events.swap(pendingEvents);
+		}
+
+		recording.write(*snapshot, events);
+	}
 
 	published.store(std::move(snapshot));
 }
@@ -52,6 +63,11 @@ bool RtosModel::startRecording(const std::string& path, RtosRecording::Problem& 
 		problem = RtosRecording::Problem::AnotherRecordingIsOpen;
 
 		return false;
+	}
+
+	{
+		std::lock_guard<std::mutex> lock(modelMutex);
+		pendingEvents.clear();
 	}
 
 	return recording.begin(path, problem);
@@ -107,21 +123,31 @@ bool RtosModel::openRecording(const std::string& path, RtosRecording::Problem& p
 	   window. */
 	std::shared_ptr<RtosSnapshot> last;
 
+	/* Long enough for every run in the file: the history prunes by a window,
+	   and a window shorter than the recording would drop the beginning of the
+	   lanes the file was brought here to show. */
+	const double keepSeconds = recording.info().durationSeconds() + 60.0;
+
 	for (size_t round = 0; round < rounds; round++)
 	{
-		std::shared_ptr<RtosSnapshot> snapshot = recording.roundAt(round);
+		RtosRecording::Round content = recording.roundWithEvents(round);
 
-		if (snapshot == nullptr)
+		if (content.snapshot == nullptr)
 			continue;
 
-		timeline.add(*snapshot);
+		timeline.add(*content.snapshot);
+
+		/* Fed through the same append the live view uses, so the seam between
+		   two rounds is joined here exactly as it was joined there. */
+		if (!content.events.empty())
+			eventHistory.append(content.events, keepSeconds);
 
 		{
 			std::lock_guard<std::mutex> lock(modelMutex);
-			roster.observe(*snapshot);
+			roster.observe(*content.snapshot);
 		}
 
-		last = std::move(snapshot);
+		last = std::move(content.snapshot);
 	}
 
 	if (last != nullptr)
@@ -157,6 +183,7 @@ void RtosModel::closePlayback()
 	{
 		std::lock_guard<std::mutex> lock(modelMutex);
 		roster.clear();
+		pendingEvents.clear();
 	}
 
 	published.store(nullptr);

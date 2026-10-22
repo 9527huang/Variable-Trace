@@ -87,6 +87,16 @@ class RtosModel
 	void appendEventIntervals(const std::vector<RtosEventRing::Interval>& intervals, double keepSeconds)
 	{
 		eventHistory.append(intervals, keepSeconds);
+
+		if (!recording.isWriting())
+			return;
+
+		/* Held for the next round to carry into the file. The runs and the
+		   round are produced by the same thread but not in a fixed order, so
+		   the ones that arrive between two rounds travel with the second. */
+		std::lock_guard<std::mutex> lock(modelMutex);
+
+		pendingEvents.insert(pendingEvents.end(), intervals.begin(), intervals.end());
 	}
 
 	void noteLostEvents(uint32_t count)
@@ -174,6 +184,14 @@ class RtosModel
 		return playback;
 	}
 
+	/* Whether the file on screen carries switch records. A recording written
+	   before they were kept opens and looks complete, and its empty event list
+	   means "not recorded" rather than "nothing switched". */
+	bool playbackHasEventRecords() const
+	{
+		return playback && recording.hasEventRecords();
+	}
+
 	struct PlaybackInfo
 	{
 		std::string path;
@@ -232,6 +250,11 @@ class RtosModel
 	RtosTimeline timeline;
 	RtosEventHistory eventHistory;
 	RtosTaskRoster roster;
+
+	/* Runs waiting for the next round to carry them into the file. Emptied on
+	   every publish and on every stop, so a recording never opens with runs
+	   that belong to the round before it. */
+	std::vector<RtosEventRing::Interval> pendingEvents;
 
 	/* The recording, in whichever of its two roles is active. Read and written
 	   under `modelMutex` for its flags, and internally for the file itself. */

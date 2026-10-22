@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "RtosEventRing.hpp"
 #include "RtosSnapshot.hpp"
 
 /*
@@ -40,8 +41,14 @@ class RtosRecording
    public:
 	/* Bumped when the fields below change. A file from another version is
 	   refused with a sentence rather than read as far as it happens to make
-	   sense: half a round decoded as a whole one is worse than no file. */
-	static constexpr uint32_t formatVersion = 1;
+	   sense: half a round decoded as a whole one is worse than no file.
+	   2: each round carries the switch records that arrived with it. A file
+	   from version 1 still opens - it simply has none, and the event list says
+	   so instead of claiming the target never switched. */
+	static constexpr uint32_t formatVersion = 2;
+
+	/* The oldest layout this reader understands. */
+	static constexpr uint32_t oldestReadableVersion = 1;
 
 	/*
 	 * Why an attempt to open or start failed.
@@ -122,7 +129,16 @@ class RtosRecording
 	 * same lock.
 	 */
 	bool begin(const std::string& path, Problem& problem);
-	void write(const RtosSnapshot& snapshot);
+	/*
+	 * One round, and the switch records that arrived with it.
+	 *
+	 * The runs travel with the round that saw them rather than in a section of
+	 * their own: the file is read one round at a time, and a reader that wants
+	 * a round's lanes should not have to walk an index twice. They are also the
+	 * same runs the live view merges at batch seams, so a file read back
+	 * through the same merge gives the same lanes.
+	 */
+	void write(const RtosSnapshot& snapshot, const std::vector<RtosEventRing::Interval>& events = {});
 	void finish();
 
 	bool isWriting() const
@@ -173,6 +189,25 @@ class RtosRecording
 	   application down with it. */
 	std::shared_ptr<RtosSnapshot> roundAt(size_t round) const;
 
+	/* A round together with the runs that came with it, decoded in one pass.
+	   Opening a file wants both and doing them separately would decode the
+	   same record twice. */
+	struct Round
+	{
+		std::shared_ptr<RtosSnapshot> snapshot;
+		std::vector<RtosEventRing::Interval> events;
+	};
+
+	Round roundWithEvents(size_t round) const;
+
+	/* Whether this file holds switch records at all. A file written before
+	   they were kept opens and looks complete; only this tells the reader that
+	   an empty event list means "not recorded" rather than "nothing switched". */
+	bool hasEventRecords() const
+	{
+		return fileVersion >= 2;
+	}
+
 	Info info() const;
 
    private:
@@ -194,6 +229,11 @@ class RtosRecording
 	bool reading = false;
 
 	std::string filePath;
+
+	/* The version the open file declares, which decides whether a record has an
+	   events block at its end. */
+	uint32_t fileVersion = formatVersion;
+
 	uint64_t roundsWritten = 0;
 	double firstWrittenSecond = 0.0;
 	double lastWrittenSecond = 0.0;
