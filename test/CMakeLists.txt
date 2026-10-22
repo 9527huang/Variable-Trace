@@ -38,6 +38,7 @@ include_directories(${EXECUTABLE}
     ${CMAKE_SOURCE_DIR}/src/ElfParser
     ${CMAKE_SOURCE_DIR}/src/Rtos
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace
+    ${CMAKE_SOURCE_DIR}/example/rtec2_port
     ${CMAKE_SOURCE_DIR}/src/Variable
     ${CMAKE_SOURCE_DIR}/src/VariableHandler
     ${CMAKE_SOURCE_DIR}/src/McpServer
@@ -126,6 +127,8 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/TraceAdapters.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/Rtec2RingReader.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTraceReconciler.cpp
+    # 目标侧参考实现：测试里由 C 写入、由 C++ 读回，闭环验证线格式。
+    ${CMAKE_SOURCE_DIR}/example/rtec2_port/rtec2_writer.c
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosEventRing.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosCsvExport.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
@@ -225,6 +228,7 @@ add_executable(${EXECUTABLE} main.cpp
     Rtec2DecoderTest.cpp
     TraceAdaptersTest.cpp
     Rtec2RingReaderTest.cpp
+    Rtec2WriterTest.cpp
     RtosTraceReconcilerTest.cpp
     RtosEventRingTest.cpp
     RtosItmDecoderTest.cpp

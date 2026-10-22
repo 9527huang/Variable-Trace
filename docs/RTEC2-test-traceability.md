@@ -77,6 +77,20 @@
 | RECN-04 | 计划 §5.3 | 收尾的生命周期缺席是正常，不产生结论 | C++ | **已过** |
 | RECN-05 | 计划 §5.3 | 列表按地址排序，轮次之间不抖动 | C++ | **已过** |
 
+## 五之三、目标侧写者（WRT）
+
+| ID | 需求来源 | 用例 | 层 | 状态 |
+|---|---|---|---|---|
+| WRT-01 | 线格式 §4.3 | 写进去的每条记录，读者读回来字段一致 | C/C++ | **已过**（`Rtec2WriterTest`） |
+| WRT-02 | §3.4 | 12 字节 Fault 完整往返 | C/C++ | **已过** |
+| WRT-03 | §3 | payload 超过 12 字节被拒并计数，head 不动 | C/C++ | **已过** |
+| WRT-04 | §4.3 | 环满按策略覆盖，`overwritten` 计数，读者报 `lost` | C/C++ | **已过** |
+| WRT-05 | §4.3 | 环满按策略丢弃，`rejected` 计数 | C/C++ | **已过** |
+| WRT-06 | §8 | 新 epoch 时 head 归 1，读者判 `restarted` | C/C++ | **已过** |
+| WRT-07 | §4.4 | 槽写到一半被读：双哨兵拦下，整批放弃 | C/C++ | **已过** |
+| WRT-08 | §7 | 字典接受短名、拒绝超长名；名字哈希稳定 | C/C++ | **已过** |
+| WRT-09 | §4.3 | 写入顺序（seqCheck → 内容 → tailCheck → seq → head） | C/C++ | **部分**（顺序写在代码里并有注释；没有专门制造乱序的用例） |
+
 ## 六、录制（REC）
 
 | ID | 需求来源 | 用例 | 层 | 状态 |
@@ -144,7 +158,8 @@
 | 2026-10-22 | `RtosTracePipeline` + `RtosModel` 双历史；`ATM-01` 已过；**source → model → query 通路打通** | `ca4b211` |
 | 2026-10-22 | golden corpus（`gen.c` 生成、`Rtec2Decoder` 与 `decode.py` 消费、`compare.py` 比对）；ENC-01/02/05/07 已过 | `35b01d0` |
 | 2026-10-22 | Phase 2 适配器：`MtfTraceAdapter` / `SwdTraceAdapter`，能力缺口名单；`IDN-02` 已过 | `0cd82b4` |
-| 2026-10-22 | Phase 3 主机侧：`Rtec2RingReader`（双哨兵、整批放弃、覆盖计数）、`RtosTraceReconciler`（三条对账） | 本次提交 |
+| 2026-10-22 | Phase 3 主机侧：`Rtec2RingReader`（双哨兵、整批放弃、覆盖计数）、`RtosTraceReconciler`（三条对账） | `141f936` |
+| 2026-10-22 | Phase 3 目标侧参考实现：`example/rtec2_port/`（C 写、C++ 读闭环）；WRT-01..08 已过 | 本次提交 |
 
 第一迭代的五步做完；Phase 2 的适配器层已落地（`MtfTraceAdapter`、`SwdTraceAdapter`）。
 三端钉在同一批字节上（`tools/trace-golden/`）。
@@ -182,10 +197,15 @@
 41 字节加两个哨兵要 49——连一条 Fault 都放不下。已把槽改成 56 字节，并注明改的是
 文档而不是把 payload 截短。
 
-未做（目标侧，需 mdkdebug 仓库）：
+目标侧（参考实现已完成，`example/rtec2_port/`）：
 
-- `mdk_trace_rtec2_blob` 控制块与槽写入、原子提交（奇偶 generation、发布屏障）；
-- FreeRTOS 的 create/delete/switch/block/wake hook；
-- epoch 递增与序号回绕强制新 epoch；
-- 这些的验收（Phase 3 退出条件：同址复用 10,000 次不串线、复位/重烧/断连都产生
-  新 epoch、撕裂数据从不进模型）需要真机。
+- 控制块与槽写入、五步提交顺序、奇偶 generation、拒绝与覆盖计数、epoch 归零、
+  名字字典（FNV-1a + 16 字节截断拒绝）。
+- **闭环验证**：同一份 C 代码写进内存，`Rtec2RingReader` 读回来，8 条用例覆盖
+  往返、12 字节 Fault、超长拒绝、覆盖/丢弃、新 epoch、撕裂、字典。不需要板子。
+
+仍未做（需要 mdkdebug 仓库与板子）：
+
+- FreeRTOS 的 create/delete/switch/block/wake hook 真接（README 给了宏映射，未编译验证）；
+- 复位/重烧/断连在真机上产生新 epoch；
+- 真机下的单事件开销（P99 ≤ 2 µs @100 MHz）与 8 小时稳定性。
