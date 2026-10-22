@@ -261,6 +261,7 @@ static const Entry table[] = {
 	{"No bottleneck", "无性能瓶颈"},
 	{"No debug probes found!", "未找到调试器！"},
 	{"No device was picked in the J-Link dialog, the current Target name was kept.", "J-Link 对话框中没有选择器件，保留了当前的目标名称。"},
+	{"No event here carries a target time, so there is nothing to place on an axis.", "这里没有任何事件带目标时间，放不到时间轴上。"},
 	{"No event source is attached: this view is built from snapshots only.", "没有接事件源：这个视图只用快照构建。"},
 	{"No firmware file configured. Provide 'file' or set it in Options -> Flashing.", "未配置固件文件。请提供 file 参数或在「选项 -> 烧录」中设置。"},
 	{"No plan selected", "未选择计划"},
@@ -692,6 +693,7 @@ static const Entry table[] = {
 	{"unknown", "未知"},
 	{"unknown error", "未知错误"},
 	{"unpin", "取消固定"},
+	{"untimed", "条无时间"},
 	{"update from *.elf/*.axf:", "从 *.elf/*.axf 更新:"},
 	{"value", "数值"},
 	{"variable does not exist!", "变量不存在！"},
@@ -702,6 +704,7 @@ static const Entry table[] = {
 	{"waiting with no timeout", "无超时等待"},
 	{"waits", "次等待"},
 	{"waits for", "等待"},
+	{"window", "时间窗"},
 	{"write", "写入"},
 	{"write limits:", "写入限制:"},
 };

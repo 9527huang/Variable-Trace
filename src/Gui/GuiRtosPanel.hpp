@@ -19,6 +19,7 @@
 #include "I18n.hpp"
 #include "RtosCsvExport.hpp"
 #include "RtosTraceReducer.hpp"
+#include "RtosTraceWindow.hpp"
 #include "RtosWaitGraph.hpp"
 #include "RtosEventQuery.hpp"
 #include "RtosModel.hpp"
@@ -2629,19 +2630,157 @@ class GuiRtosPanel
 			GuiHelper::drawSecondaryTextWrapped(I18n::tr("This source does not carry: %s"), line.c_str());
 		}
 
-		trackRow(I18n::tr("ISR"), tracks.isr.size(), tracks.unclosedIsr, I18n::tr("intervals"), scale);
-		trackRow(I18n::tr("Fault"), tracks.fault.size(), 0, I18n::tr("marks"), scale);
-		trackRow(I18n::tr("Sync"), tracks.sync.size(), tracks.unclosedSync, I18n::tr("waits"), scale);
-		trackRow(I18n::tr("Heap"), tracks.heap.size(), tracks.heapUnknownSize, I18n::tr("marks"), scale);
-		trackRow(I18n::tr("Gap"), tracks.gap.size(), 0, I18n::tr("records lost"), scale);
+		/* The window the bands cover: every timed entry the tracks hold. A band
+		   that stopped at the last event would look busy at its right edge for
+		   no reason. */
+		double windowFrom = 0.0;
+		double windowTo = 0.0;
 
-		/* The most recent entry of each track that has one: enough to see that
-		   the decoder is producing something sensible without pretending to be
-		   the timeline. */
-		drawLastEntry(I18n::tr("ISR"), tracks.isr, scale);
-		drawLastEntry(I18n::tr("Fault"), tracks.fault, scale);
-		drawLastEntry(I18n::tr("Sync"), tracks.sync, scale);
-		drawLastEntry(I18n::tr("Heap"), tracks.heap, scale);
+		if (!timedSpan(tracks, windowFrom, windowTo))
+		{
+			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("No event here carries a target time, so there is nothing to place on an axis."));
+
+			/* The rows still draw, empty, so that the reader sees which tracks
+			   exist and which of them the source cannot fill. */
+			drawTrackBand(I18n::tr("ISR"), tracks.isr, 0.0, 1.0, tracks.unclosedIsr, I18n::tr("intervals"), scale);
+			drawTrackBand(I18n::tr("Fault"), tracks.fault, 0.0, 1.0, 0, I18n::tr("marks"), scale);
+			drawTrackBand(I18n::tr("Sync"), tracks.sync, 0.0, 1.0, tracks.unclosedSync, I18n::tr("waits"), scale);
+			drawTrackBand(I18n::tr("Heap"), tracks.heap, 0.0, 1.0, tracks.heapUnknownSize, I18n::tr("marks"), scale);
+			drawTrackBand(I18n::tr("Gap"), tracks.gap, 0.0, 1.0, 0, I18n::tr("records lost"), scale);
+
+			return;
+		}
+
+		GuiHelper::drawSecondaryText("%s %.3f s → %.3f s", I18n::tr("window"), windowFrom, windowTo);
+
+		drawTrackBand(I18n::tr("ISR"), tracks.isr, windowFrom, windowTo, tracks.unclosedIsr, I18n::tr("intervals"), scale);
+		drawTrackBand(I18n::tr("Fault"), tracks.fault, windowFrom, windowTo, 0, I18n::tr("marks"), scale);
+		drawTrackBand(I18n::tr("Sync"), tracks.sync, windowFrom, windowTo, tracks.unclosedSync, I18n::tr("waits"), scale);
+		drawTrackBand(I18n::tr("Heap"), tracks.heap, windowFrom, windowTo, tracks.heapUnknownSize, I18n::tr("marks"), scale);
+		drawTrackBand(I18n::tr("Gap"), tracks.gap, windowFrom, windowTo, 0, I18n::tr("records lost"), scale);
+	}
+
+	/* The earliest and latest moment any track can be placed at. False when no
+	   entry has a target time, which is a different answer from "empty". */
+	static bool timedSpan(const RtosTrackProjection& projection, double& from, double& to)
+	{
+		bool any = false;
+
+		const auto visit = [&](const std::vector<RtosTrackEntry>& entries)
+		{
+			for (const RtosTrackEntry& entry : entries)
+			{
+				if (!entry.hasSeconds)
+					continue;
+
+				if (!any)
+				{
+					from = entry.fromSeconds;
+					to = entry.toSeconds;
+					any = true;
+
+					continue;
+				}
+
+				from = std::min(from, entry.fromSeconds);
+				to = std::max(to, entry.toSeconds);
+			}
+		};
+
+		visit(projection.isr);
+		visit(projection.fault);
+		visit(projection.sync);
+		visit(projection.heap);
+		visit(projection.gap);
+
+		/* A single instant would give a zero width axis; a few milliseconds
+		   either side keeps the band drawable without inventing content. */
+		if (any && to <= from)
+			to = from + 0.001;
+
+		return any;
+	}
+
+	/*
+	 * One band: the track over the window, one mark per pixel column.
+	 *
+	 * The column is the unit because the window can hold more entries than there
+	 * are pixels, and a picture that draws them all is a picture of the same
+	 * column painted a hundred times. What a column says is how busy it was, and
+	 * - for faults and gaps - that something happened at all: those two are never
+	 * allowed to be averaged into silence (see `RtosTraceWindow`).
+	 */
+	static void drawTrackBand(const char* label, const std::vector<RtosTrackEntry>& entries, double from, double to, uint32_t incomplete,
+	                          const char* unit, float scale)
+	{
+		const float labelWidth = 56.0f * scale;
+		const float bandHeight = 12.0f * scale;
+		const float rightWidth = 120.0f * scale;
+
+		ImGui::TextUnformatted(label);
+		ImGui::SameLine(labelWidth);
+
+		const ImVec2 origin = ImGui::GetCursorScreenPos();
+		const float width = std::max(ImGui::GetContentRegionAvail().x - rightWidth, 40.0f * scale);
+		const int pixels = std::max(static_cast<int>(width / scale), 1);
+
+		ImDrawList* draw = ImGui::GetWindowDrawList();
+
+		draw->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + bandHeight), ImGui::GetColorU32(ImGuiCol_FrameBg), 2.0f * scale);
+
+		RtosTraceWindow::Options options;
+		options.fromSeconds = from;
+		options.toSeconds = to;
+		options.pixels = pixels;
+
+		const RtosTraceWindow::Result window = RtosTraceWindow::query(entries, options);
+
+		const float column = width / static_cast<float>(pixels);
+
+		for (int index = 0; index < pixels; index++)
+		{
+			const RtosTraceWindow::Bucket& bucket = window.buckets[static_cast<size_t>(index)];
+
+			if (bucket.count == 0)
+				continue;
+
+			/* Three steps rather than a gradient: a reader has to be able to
+			   tell a busy column from a very busy one, and a smooth ramp makes
+			   that a judgement call. */
+			ImU32 colour = ImGui::GetColorU32(ImGuiCol_Text);
+
+			if (bucket.hasFault)
+				colour = ImGui::GetColorU32(GuiHelper::redLight());
+			else if (bucket.hasGap)
+				colour = ImGui::GetColorU32(GuiHelper::orangeLight());
+			else if (bucket.count > 8)
+				colour = ImGui::GetColorU32(ImGuiCol_Text);
+			else if (bucket.count > 1)
+				colour = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+			else
+				colour = ImGui::GetColorU32(ImGuiCol_PlotLines);
+
+			const float left = origin.x + column * index;
+			const float right = left + std::max(column, 1.0f);
+
+			draw->AddRectFilled(ImVec2(left, origin.y + 1.0f * scale), ImVec2(right, origin.y + bandHeight - 1.0f * scale), colour);
+		}
+
+		ImGui::SetCursorScreenPos(ImVec2(origin.x + width + 8.0f * scale, origin.y));
+
+		GuiHelper::drawSecondaryText("%u %s", static_cast<uint32_t>(entries.size()), unit);
+
+		if (incomplete > 0)
+		{
+			ImGui::SameLine(0.0f, 6.0f * scale);
+			ImGui::TextColored(GuiHelper::orangeLight(), "%u %s", incomplete, I18n::tr("unfinished"));
+		}
+
+		if (window.untimed > 0)
+		{
+			ImGui::SameLine(0.0f, 6.0f * scale);
+			GuiHelper::drawSecondaryText("%u %s", window.untimed, I18n::tr("untimed"));
+		}
 	}
 
 	/* One summary line: "ISR  12 intervals, 1 never finished". */

@@ -933,6 +933,10 @@ EXTRA = {
     "No event source is attached: this view is built from snapshots only.": "没有接事件源：这个视图只用快照构建。",
     "no target time · %s": "没有目标时间 · %s",
     "%s · %u events": "%s · %u 个事件",
+    "window": "时间窗",
+    "untimed": "条无时间",
+    "No event here carries a target time, so there is nothing to place on an axis.":
+        "这里没有任何事件带目标时间，放不到时间轴上。",
 
     # 阻塞关系图：三个页签之一，以及链上的两种箭头与环的收尾。
     "Waiting chain": "等待链",

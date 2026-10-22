@@ -106,7 +106,7 @@
 
 | ID | 需求来源 | 用例 | 层 | 状态 |
 |---|---|---|---|---|
-| UI-01 | 计划 §6.3 | 五类轨道可独立开关；Fault 与 Gap 不被 LOD 隐藏 | 手动 | **部分**（`Tracks` 页签给出五条轨道的计数、未完成数与最近一条；**带状轨道与开关**要等时间窗查询） |
+| UI-01 | 计划 §6.3 | 五类轨道可独立开关；Fault 与 Gap 不被 LOD 隐藏 | 手动 | **部分**（`Tracks` 页签画五条带子，按列聚合；空数据也画框。**未在真机看到**：没有地方调用 `attachTraceSource`，见下表） |
 | UI-02 | 计划 §6.3 | 缩放、平移后轨道与变量曲线时间轴对齐 | 手动 | 待写 |
 | UI-03 | 计划 §7.1 | `NotApplicable` 与 `Unknown` 不显示成"没有问题" | 手动 | 待写 |
 | UI-04 | 计划 §6.3 | 10 万事件流畅；100 万事件可打开并交互 | 基准 | **部分**（`RtosTraceWindow` 的列聚合已就绪，11 条用例；界面尚未接，真机基准未做） |
@@ -162,7 +162,13 @@
 | 2026-10-22 | Phase 3 目标侧参考实现：`example/rtec2_port/`（C 写、C++ 读闭环）；WRT-01..08 已过 | `bce6222` |
 | 2026-10-22 | 录制 v3 容器：`RtosRecordingV3`（分块、CRC-32/MPEG-2、commit 标记、崩溃只恢复到最后一个完整块、索引检查点）；REC-01/02 已过、REC-05 部分 | `5fe0779` |
 | 2026-10-22 | Phase 4 投影层与 `Tracks` 页签：`RtosTraceReducer`（ISR 栈式配对、wait 按任务+对象配对、Fault 寄存器按 flags 取、堆净值与未知大小分开）；UI-01 部分 | `d559ddd` |
-| 2026-10-22 | Phase 4 窗口查询：`RtosTraceWindow`（列聚合、跨边界计入、无时间条目不落轴、Fault/Gap 永不被聚合掩盖）；UI-04 部分 | 本次提交 |
+| 2026-10-22 | Phase 4 窗口查询：`RtosTraceWindow`（列聚合、跨边界计入、无时间条目不落轴、Fault/Gap 永不被聚合掩盖）；UI-04 部分 | `65b7ad8` |
+| 2026-10-22 | 带状渲染：`drawTrackBand`（每像素列一标记、三档密疏、Fault 红 / Gap 橙、右侧计数与未完成、无时间计数） | 本次提交 |
+
+**带状渲染为什么还没被看见**：`Tracks` 页签的数据来自 `model.trace()`，而工程里**没有任何地方调用
+`RtosModel::attachTraceSource`**——事件源只在测试里挂过。所以界面上的 `Tracks` 只会显示"没有接事件源"。
+要让它有东西可画，下一步是让采集线程挂上 `SwdTraceAdapter`/`MtfTraceAdapter`（Phase 5 第 2 步），
+或者等 mdkdebug 的 RTEC2 源。
 
 第一迭代的五步做完；Phase 2 的适配器层已落地（`MtfTraceAdapter`、`SwdTraceAdapter`）。
 三端钉在同一批字节上（`tools/trace-golden/`）。
