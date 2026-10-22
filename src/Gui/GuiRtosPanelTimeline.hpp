@@ -53,7 +53,7 @@ class GuiRtosPanelTimeline
 	 */
 	static void draw(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<double>& plotCursors,
 	                 const std::vector<RtosTaskRow>& rows, const std::vector<uint32_t>& lanes, size_t rosterSize,
-	                 GuiRtosSelection& selection)
+	                 GuiRtosSelection& selection, float reservedBelow)
 	{
 		const RtosTimeline& history = model.history();
 
@@ -118,13 +118,13 @@ class GuiRtosPanelTimeline
 		{
 			drawCounts(history, samples, true);
 
-			drawGrid(snapshot, rows, lanes, samples, runs, plotCursors, rosterSize, selection);
+			drawGrid(snapshot, rows, lanes, samples, runs, plotCursors, rosterSize, selection, reservedBelow);
 		}
 		else
 		{
 			drawCounts(history, samples, false);
 
-			drawGrid(snapshot, rows, lanes, samples, {}, plotCursors, rosterSize, selection);
+			drawGrid(snapshot, rows, lanes, samples, {}, plotCursors, rosterSize, selection, reservedBelow);
 		}
 	}
 
@@ -509,7 +509,8 @@ class GuiRtosPanelTimeline
 
 	static void drawGrid(const RtosSnapshot& snapshot, const std::vector<RtosTaskRow>& rows, const std::vector<uint32_t>& lanes,
 	                     const std::vector<RtosTimeline::Sample>& samples, const std::vector<RtosEventRing::Interval>& runs,
-	                     const std::vector<double>& plotCursors, size_t rosterSize, GuiRtosSelection& selection)
+	                     const std::vector<double>& plotCursors, size_t rosterSize, GuiRtosSelection& selection,
+	                     float reservedBelow)
 	{
 		if (lanes.empty())
 		{
@@ -583,9 +584,24 @@ class GuiRtosPanelTimeline
 		 * sizing by it means the strip stands still while a filter comes and
 		 * goes, and grows by one lane the day a task is created.
 		 */
+		/*
+		 * The strip takes what the blocks under it leave, not a share of the
+		 * pane.
+		 *
+		 * It used to stop at its own content height, so that a target with four
+		 * tasks did not leave a band of nothing under the last lane. What that
+		 * missed is that the band has to be somewhere: with the event list gone
+		 * to the other half, the alternative was the same band under the pinned
+		 * moment, where it reads as a pane that failed to draw. A chart area
+		 * with room to spare is what a chart area looks like; its height now
+		 * depends on the window and not on how many tasks the target has, which
+		 * is one moving part fewer than before.
+		 */
 		const size_t lanesForHeight = std::max<size_t>(rosterSize, lanes.size());
-		const float height = std::clamp(std::min(available * 0.52f, rowHeight * static_cast<float>(lanesForHeight) + axisHeight),
-		                                90.0f * scale, std::max(available - 2.0f, 90.0f * scale));
+		(void)lanesForHeight;
+
+		const float fill = std::max(available - reservedBelow, 90.0f * scale);
+		const float height = std::clamp(fill, 90.0f * scale, std::max(available - 2.0f, 90.0f * scale));
 		const float plotHeight = height - axisHeight;
 
 		/* How far the lanes are scrolled, and how far they can be. */

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "GuiHelper.hpp"
@@ -68,7 +69,6 @@ class GuiRtosPanel
 			query.mode = filterModeFrom(view.filterMode);
 			query.shareFloorPercent = view.shareFloorPercent;
 
-			selectedTaskOpen = view.selectedTaskOpen;
 			GuiRtosPanelTimeline::setWindowSeconds(view.timelineWindowSeconds);
 			GuiRtosPanelTimeline::setFollowPlotCursors(view.followPlotCursors);
 			GuiRtosPanelTimeline::setFollowTableOrder(view.timelineFollowsTable);
@@ -84,7 +84,6 @@ class GuiRtosPanel
 		view.onlyStackAlerts = query.onlyStackAlerts;
 		view.filterMode = static_cast<uint32_t>(query.mode);
 		view.shareFloorPercent = query.shareFloorPercent;
-		view.selectedTaskOpen = selectedTaskOpen;
 		view.timelineWindowSeconds = GuiRtosPanelTimeline::getWindowSeconds();
 		view.followPlotCursors = GuiRtosPanelTimeline::getFollowPlotCursors();
 		view.timelineFollowsTable = GuiRtosPanelTimeline::getFollowTableOrder();
@@ -184,8 +183,15 @@ class GuiRtosPanel
 		 */
 		const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
 		const float room = ImGui::GetContentRegionAvail().y;
-		const float folded = lineHeight + 4.0f * GuiHelper::contentScale;
-		const float reserve = selectedTaskOpen ? std::clamp(room * 0.34f, folded, 12.0f * lineHeight) : folded;
+		/* The tab row costs a line of its own, so it is part of the reserve for
+		   the block rather than extra: the block below the table is a tab row
+		   plus a body, and the sum is what the table has to leave. */
+		const float tabRow = lineHeight + 8.0f * GuiHelper::contentScale;
+		const float bodyFloor = 4.0f * lineHeight;
+		/* Enough for the detail a task normally has - eleven rows - plus the
+		   three of its recent switches, without the last one landing half cut
+		   at the edge of the block. */
+		const float reserve = std::clamp(room * 0.36f, tabRow + 7.0f * lineHeight, tabRow + 15.0f * lineHeight);
 		/* The table takes what its rows need, not what is left.
 		 *
 		 * Filling the pane left a column of empty table under the last row and
@@ -198,7 +204,59 @@ class GuiRtosPanel
 
 		drawTable(snapshot, rows, tableHeight);
 
-		drawSelectedTaskSection(*model, *snapshot, findings);
+		/*
+		 * Two blocks, one place, chosen between.
+		 *
+		 * The detail of the selected task and the switch records are both rows
+		 * to read, and both used to fight for the same strip of height: the
+		 * detail under the table, the list at the bottom of the other half. A
+		 * tab keeps one of them at full height instead of two of them at half.
+		 * The tab row costs one line, and that line is part of the height the
+		 * table left for this block rather than extra - the pane must not gain
+		 * a line and start scrolling.
+		 */
+		const float blockTop = ImGui::GetCursorPosY();
+
+		ImGui::Separator();
+
+		if (lowerTab(false, I18n::tr("Selected task")))
+			lowerTabEvents = false;
+
+		ImGui::SameLine(0.0f, 4.0f * GuiHelper::contentScale);
+
+		if (lowerTab(true, I18n::tr("Events")))
+			lowerTabEvents = true;
+
+		const float used = ImGui::GetCursorPosY() - blockTop;
+		const float blockHeight = std::max(reserve - used, bodyFloor);
+
+		ImGui::BeginChild("##rtosLowerBlock", ImVec2(0.0f, blockHeight), false, ImGuiWindowFlags_NoBackground);
+
+		if (lowerTabEvents)
+			drawEvents(*model, rows);
+		else
+			drawSelectedTaskSection(*model, *snapshot, findings);
+
+		ImGui::EndChild();
+	}
+
+	/* One tab of the block under the table. The active one reads as a filled
+	   button rather than a word: two plain words side by side leave the reader
+	   working out which of them is the one on screen. */
+	static bool lowerTab(bool active, const char* label)
+	{
+		if (active)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_Header));
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_Text));
+		}
+
+		const bool pressed = ImGui::SmallButton(label);
+
+		if (active)
+			ImGui::PopStyleColor(2);
+
+		return pressed;
 	}
 
 	/*
@@ -258,7 +316,11 @@ class GuiRtosPanel
 		const std::vector<uint32_t> lanes = GuiRtosPanelTimeline::getFollowTableOrder() ? RtosTableModel::addressesOf(rows)
 		                                                                               : RtosTableModel::laneOrderOf(rows);
 
-		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, rows, lanes, model->rosterSize(), selection());
+		/* What the two blocks under the strip take, so that the strip can be
+		   given everything else instead of a share of the pane. */
+		const float blocksBelow = ImGui::GetTextLineHeightWithSpacing() * (8.0f + 5.0f) + 12.0f * GuiHelper::contentScale;
+
+		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, rows, lanes, model->rosterSize(), selection(), blocksBelow);
 
 		/*
 		 * In a recording the strip is also the scrubber.
@@ -295,10 +357,6 @@ class GuiRtosPanel
 		   been pinned. What they do not use is left blank. */
 		fixedRows(8.0f, "##rtosSyncObjects", [&] { drawSyncObjects(*snapshot); });
 		fixedRows(5.0f, "##rtosPinnedMoment", [&] { drawPinnedMoment(*model, *snapshot); });
-
-		/* The last block, and the one that takes what is left: a list is read
-		   by scrolling it, so a short window costs rows rather than frames. */
-		drawEvents(*model, rows);
 
 		/*
 		 * The detail takes what is left rather than a fixed number of rows.
@@ -461,10 +519,10 @@ class GuiRtosPanel
 	inline static RtosTaskTableQuery query{};
 	inline static bool stackAlertSeeded = false;
 
-	/* Whether the detail block under the table is open. Kept with the rest of
-	   what the reader set up: a fold that reopens on every start is a fold that
-	   has to be folded again on every start. */
-	inline static bool selectedTaskOpen = true;
+	/* Which of the two blocks under the table is showing: the detail of the
+	   selected task, or the switch records. One place, because the rows are
+	   what this half of the view is for and both of them are rows. */
+	inline static bool lowerTabEvents = false;
 
 	/* The event list: whether it is following the end, what it is showing, and
 	   how much arrived while it was not. */
@@ -2363,8 +2421,15 @@ class GuiRtosPanel
 	template <typename Block>
 	static void fixedRows(float rows, const char* id, Block&& block)
 	{
-		const float height = ImGui::GetTextLineHeightWithSpacing() * rows;
+		fixedPixels(ImGui::GetTextLineHeightWithSpacing() * rows, id, std::forward<Block>(block));
+	}
 
+	/* The same box, for the one block that takes what is left rather than a
+	   number of rows: the objects table, which holds as many as the target
+	   registered and is the only block on this side that can use more height. */
+	template <typename Block>
+	static void fixedPixels(float height, const char* id, Block&& block)
+	{
 		/* No padding inside the box: the blocks were drawn straight into the
 		   pane before, and an inset here would put their headings a few pixels
 		   right of every other heading in it. */
@@ -2466,8 +2531,6 @@ class GuiRtosPanel
 		const float scale = GuiHelper::contentScale;
 		const RtosEventHistory& history = model.events();
 
-		ImGui::Separator();
-
 		if (ImGui::Checkbox(I18n::tr("pause"), &eventsPaused))
 		{
 			/* Leaving the pause has to rebuild, because while it was held the
@@ -2478,9 +2541,6 @@ class GuiRtosPanel
 				eventsCachedTotal = 0;
 			}
 		}
-
-		ImGui::SameLine(0.0f, 8.0f * scale);
-		ImGui::TextUnformatted(I18n::tr("Events"));
 
 		/*
 		 * Rebuilt when the history grew or when the question changed, and not
@@ -2680,12 +2740,9 @@ class GuiRtosPanel
 	{
 		const float scale = GuiHelper::contentScale;
 
-		ImGui::Separator();
-
-		if (ImGui::ArrowButton("##rtosSelectedTaskFold", selectedTaskOpen ? ImGuiDir_Down : ImGuiDir_Right))
-			selectedTaskOpen = !selectedTaskOpen;
-
-		ImGui::SameLine(0.0f, 6.0f * scale);
+		/* The heading stays, the fold arrow went: the tab that got the reader
+		   here already says which block this is, and a second control that
+		   hides the same block would be a second way to do one thing. */
 		ImGui::TextUnformatted(I18n::tr("Selected task"));
 
 		if (selection().task != 0)
@@ -2699,13 +2756,10 @@ class GuiRtosPanel
 			}
 		}
 
-		if (!selectedTaskOpen)
-			return;
-
 		const ImVec2 room = ImGui::GetContentRegionAvail();
 
-		/* What is left, and no more: see the note on the event list, which is
-		   the same block on the other side of the split. */
+		/* What is left of the block, and no more: the two tabs share one height,
+		   so the list of one and the rows of the other end at the same pixel. */
 		ImGui::BeginChild("##rtosSelectedTask", ImVec2(0.0f, std::max(room.y, 1.0f)), false,
 		                  ImGuiWindowFlags_NoBackground);
 
@@ -2881,7 +2935,11 @@ class GuiRtosPanel
 		std::vector<RtosEventRing::Interval> switchRuns;
 		model.events().copyRange(switchFrom, newest, switchRuns);
 
-		const RtosEventQuery::Selection switches = RtosEventQuery::select(switchRuns, row.tcbAddress, 3);
+		/* Two rows, not three: the block holds the detail of one task and the
+		   last few switches that go with it, and the third row was the one that
+		   landed half cut at the bottom of it. Two still answer the question a
+		   reader has here - whether it is switched in at all, and how often. */
+		const RtosEventQuery::Selection switches = RtosEventQuery::select(switchRuns, row.tcbAddress, 2);
 
 		ImGui::TextUnformatted(I18n::tr("Switches (5 s)"));
 		ImGui::SameLine(120.0f * scale);
@@ -2936,10 +2994,10 @@ class GuiRtosPanel
 		/* As tall as what is in it, within what the strip above has left. A
 		   table given no height with `ScrollY` takes everything that remains,
 		   which would put the objects under the bottom of the window. */
-		const float objectRowHeight = ImGui::GetTextLineHeightWithSpacing();
-		constexpr size_t objectRows = 4;
-		const float objectHeight = ImGui::GetFrameHeight() + objectRowHeight * static_cast<float>(objectRows) + ImGui::GetStyle().CellPadding.y * 2.0f;
-		const ImVec2 objectSize(0.0f, objectHeight);
+		/* As tall as the block it was given. The block already decides how much
+		   of the pane this table gets, and asking for a fixed number of rows
+		   inside it would leave a strip of nothing at its bottom. */
+		const ImVec2 objectSize(0.0f, std::max(ImGui::GetContentRegionAvail().y, ImGui::GetFrameHeight()));
 
 		if (!ImGui::BeginTable("rtosSyncObjects-v2", 6, flags, objectSize))
 			return;
