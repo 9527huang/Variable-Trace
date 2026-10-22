@@ -12,6 +12,7 @@
 #include "RtosRecording.hpp"
 #include "RtosTaskRoster.hpp"
 #include "RtosTimeline.hpp"
+#include "RtosTracePipeline.hpp"
 
 /*
  * The one place a snapshot is published and the one place it is read.
@@ -44,6 +45,28 @@ class RtosModel
 	};
 
 	RtosModel() = default;
+
+	/*
+	 * The second history: events, as opposed to the rounds the table is built
+	 * from.
+	 *
+	 * Kept beside the snapshots rather than inside them. A round is a state,
+	 * an event is a transition; the table needs the first and the timeline
+	 * wants the second, and neither is a view of the other. Nothing in the
+	 * snapshot path depends on a source being attached: with no source there
+	 * are no events, and everything that reads rounds works exactly as before.
+	 */
+	void attachTraceSource(std::unique_ptr<IRtosTraceSource> source);
+
+	RtosTracePipeline* trace()
+	{
+		return tracePipeline.get();
+	}
+
+	const RtosTracePipeline* trace() const
+	{
+		return tracePipeline.get();
+	}
 
 	RtosModel(const RtosModel&) = delete;
 	RtosModel& operator=(const RtosModel&) = delete;
@@ -245,6 +268,8 @@ class RtosModel
 	                                                     RtosConsistency consistency);
 
    private:
+	std::unique_ptr<RtosTracePipeline> tracePipeline;
+
 	std::atomic<std::shared_ptr<const RtosSnapshot>> published{nullptr};
 
 	RtosTimeline timeline;

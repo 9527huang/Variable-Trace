@@ -1,5 +1,16 @@
 #include "RtosModel.hpp"
 
+void RtosModel::attachTraceSource(std::unique_ptr<IRtosTraceSource> source)
+{
+	/* Replacing a source stops the old one first: two sources on one probe is
+	   the one thing the lease exists to prevent, and doing it quietly here
+	   would make the lease a lie. */
+	if (tracePipeline != nullptr)
+		tracePipeline->stop();
+
+	tracePipeline = std::make_unique<RtosTracePipeline>(std::move(source));
+}
+
 void RtosModel::publish(std::shared_ptr<RtosSnapshot> snapshot)
 {
 	/* Refusing an empty publish is not defensive tidiness: storing it would

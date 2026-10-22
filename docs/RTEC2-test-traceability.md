@@ -43,7 +43,7 @@
 
 | ID | 需求来源 | 用例 | 层 | 状态 |
 |---|---|---|---|---|
-| ATM-01 | §4.3 | 写者写到一半被读：双哨兵检测出撕裂，记录不进模型 | C++ | 待写 |
+| ATM-01 | §4.3 | 写者写到一半被读：双哨兵检测出撕裂，记录不进模型 | C++ | **已过**（`RtosTracePipelineTest`：撕裂批不进历史） |
 | ATM-02 | §4.4 | 整批中有一条失败，`tail` 不前移 | C++ | **已过**（`RtosTraceTypesTest` 的 `committedCursor`，2026-10-22） |
 | ATM-03 | §4.3 | 读者落后 capacity 时按编译策略覆盖或丢弃，计数正确 | C++ | 待写 |
 | ATM-04 | 目标侧 §4.4 | ISR 嵌套时不可重入的写入被拒并计入 `rejected` | C（目标） | 待写 |
@@ -130,7 +130,9 @@
 |---|---|---|
 | 2026-10-22 | Phase 0 文档四份（线格式、产物、租约、本表） | `04c313a` |
 | 2026-10-22 | `RtosTraceTypes` + `IRtosTraceSource`；`TIME-01`、`TIME-02`、`ATM-02` 已过 | `61af9e9`、`b48314a` |
-| 2026-10-22 | `RtosIdentityStore`；`IDN-01`、`IDN-03`、`IDN-05` 已过，`IDN-04`、`IDN-07` 部分 | 本次提交 |
+| 2026-10-22 | `RtosIdentityStore`；`IDN-01`、`IDN-03`、`IDN-05` 已过，`IDN-04`、`IDN-07` 部分 | `c6d5926` |
+| 2026-10-22 | `RtosTracePipeline` + `RtosModel` 双历史；`ATM-01` 已过；**source → model → query 通路打通** | 本次提交 |
 
-下一步是第一迭代第 4 步：`RtosModel` 双历史接线（fake source，不接真实探针）。
-再往后是 golden corpus 与 MTF/SWD 适配器。
+Phase 1 的退出条件已经满足（构造事件从 fake source 一路到查询；句柄复用、回绕、缺口各有单测）。
+下一步是第一迭代第 5 步：golden corpus（C 编码器生成、Python 与 C++ 消费、CI 比对），
+再往后才是 MTF v1 与 SWD v2 适配器。

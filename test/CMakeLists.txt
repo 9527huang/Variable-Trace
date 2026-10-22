@@ -121,6 +121,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTraceTypes.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTraceClock.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosIdentityStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTracePipeline.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosEventRing.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosCsvExport.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/RtosItmDecoder.cpp
@@ -216,6 +217,7 @@ add_executable(${EXECUTABLE} main.cpp
     RtosTraceTypesTest.cpp
     RtosTraceClockTest.cpp
     RtosIdentityStoreTest.cpp
+    RtosTracePipelineTest.cpp
     RtosEventRingTest.cpp
     RtosItmDecoderTest.cpp
     RtosEventHistoryTest.cpp
