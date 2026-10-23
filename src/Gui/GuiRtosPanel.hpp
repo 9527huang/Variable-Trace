@@ -2752,12 +2752,11 @@ class GuiRtosPanel
 		   of the table below. */
 		const float lineHeight = ImGui::GetTextLineHeight();
 		const float rowAdvance = ImGui::GetTextLineHeightWithSpacing();
+		ImDrawList* draw = ImGui::GetWindowDrawList();
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
 		const float bandTop = origin.y + (lineHeight - bandHeight) * 0.5f;
 		const float width = aligned ? axisWidth : std::max(ImGui::GetContentRegionAvail().x - rightWidth, 40.0f * scale);
 		const int pixels = std::max(static_cast<int>(width / scale), 1);
-
-		ImDrawList* draw = ImGui::GetWindowDrawList();
 
 		draw->AddRectFilled(ImVec2(origin.x, bandTop), ImVec2(origin.x + width, bandTop + bandHeight), ImGui::GetColorU32(ImGuiCol_FrameBg), 2.0f * scale);
 
@@ -2785,24 +2784,49 @@ class GuiRtosPanel
 			full = I18n::tr("this source does not carry it");
 		}
 
+		/*
+		 * Label and value are placed by hand, on the draw list.
+		 *
+		 * They were laid out by ImGui - label, `SameLine`, right-aligned value -
+		 * and the result was `Task3700` and, before that, a number drawn straight
+		 * over its own label. In a column thirty pixels wide, every layout rule
+		 * ImGui has is a guess about how much room the other thing took.
+		 *
+		 * Placing them means measuring them: the value is dropped to the bare
+		 * number, then dropped entirely, until it fits to the left of the axis.
+		 * Nothing can be drawn on top of anything else because the two positions
+		 * are computed from each other.
+		 */
+		const float gap = 8.0f * scale;
+		const float labelWidthUsed = ImGui::CalcTextSize(label).x;
+
 		std::string shown = full;
 
-		if (ImGui::CalcTextSize(shown.c_str()).x > columnWidth)
-		{
+		if (labelWidthUsed + gap + ImGui::CalcTextSize(shown.c_str()).x > columnWidth)
 			shown = carried ? std::to_string(entries.size()) : I18n::tr("none");
+
+		if (labelWidthUsed + gap + ImGui::CalcTextSize(shown.c_str()).x > columnWidth)
+			shown.clear();
+
+		const float valueWidth = shown.empty() ? 0.0f : ImGui::CalcTextSize(shown.c_str()).x;
+
+		draw->AddText(ImVec2(rowLeft, rowTop), ImGui::GetColorU32(ImGuiCol_Text), label);
+
+		if (!shown.empty())
+		{
+			draw->AddText(ImVec2(columnRight - valueWidth, rowTop), ImGui::GetColorU32(ImGuiCol_TextDisabled), shown.c_str());
 		}
 
-		ImGui::TextUnformatted(label);
-		ImGui::SameLine(0.0f, 0.0f);
+		/* The tooltip needs something hoverable, and nothing in this row is an
+		   ImGui item any more. */
+		ImGui::PushID(label);
+		ImGui::SetCursorScreenPos(ImVec2(rowLeft, rowTop));
+		ImGui::InvisibleButton("##trackRow", ImVec2(std::max(columnWidth, 1.0f), lineHeight));
 
-		ImGui::SetCursorScreenPos(ImVec2(columnRight - ImGui::CalcTextSize(shown.c_str()).x, rowTop));
-
-		GuiHelper::drawSecondaryText("%s", shown.c_str());
-
-		if (ImGui::IsItemHovered())
+		if (ImGui::IsItemHovered() && !full.empty())
 			ImGui::SetTooltip("%s", full.c_str());
 
-		ImGui::SameLine(0.0f, 0.0f);
+		ImGui::PopID();
 
 		const float column = width / static_cast<float>(pixels);
 
