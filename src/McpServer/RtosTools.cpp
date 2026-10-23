@@ -31,6 +31,38 @@ namespace mcp
 		}
 	}
 
+	/* What the event side holds, or that there is no source. `missing` names the
+	   capabilities this build does not have from it - an empty ISR track means
+	   two different things depending on whether the carrier sends interrupts. */
+	Json traceJson(const std::shared_ptr<RtosModel>& model)
+	{
+		if (model->trace() == nullptr || !model->trace()->attached())
+			return Json::object({{"attached", false}});
+
+		Json missing = Json::array();
+
+		for (const std::string& name : model->trace()->missingCapabilities())
+			missing.push_back(name);
+
+		/* Counted here rather than kept as a second counter in the pipeline: the
+		   two would disagree the first time one of them was updated and the
+		   other was not. */
+		uint32_t untimed = 0;
+
+		for (const RtosNormalizedEvent& event : model->trace()->events())
+		{
+			if (!event.hasDisplaySeconds)
+				untimed++;
+		}
+
+		return Json::object({{"attached", true},
+		                     {"source", model->trace()->sourceName()},
+		                     {"events", static_cast<uint32_t>(model->trace()->eventCount())},
+		                     {"untimed", untimed},
+		                     {"epoch", static_cast<uint32_t>(model->trace()->currentEpoch())},
+		                     {"missing", missing}});
+	}
+
 	Json findingsJson(const RtosSnapshot* snapshot, const RtosTimeline& history)
 	{
 		Json findings = Json::array();
@@ -410,6 +442,13 @@ namespace mcp
 								                {"lost", model->events().lostRecords()},
 								                {"oldest_s", model->events().oldestSeconds()},
 								                {"newest_s", model->events().newestSeconds()}})},
+								 /* The event side, which the tracks page draws from.
+								    Its own history rather than the runs above: that one is
+								    what the lanes read, this one is what the tracks and the
+								    findings will read, and they are fed by the same call
+								    only so long as somebody remembers to. Reporting both
+								    makes the difference visible. */
+								 {"trace", traceJson(model)},
 								 {"history_samples", static_cast<uint32_t>(model->history().size())},
 								 {"history_oldest_s", model->history().oldestSeconds()},
 								 /* The stack water marks are read a few tasks a round, so the
