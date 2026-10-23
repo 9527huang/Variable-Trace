@@ -1,6 +1,8 @@
 #include "RtosSampler.hpp"
 
 #include <cstdio>
+
+#include <cstdio>
 #include <cstring>
 #include <utility>
 
@@ -441,7 +443,14 @@ RtosSampler::Round RtosSampler::collect(IRtosMemory& memory, const std::string& 
 
 			for (const RtosSyncObject& object : objects.objects)
 			{
-				const std::string name = object.name.empty() ? ("the object at 0x" + std::to_string(object.address)) : object.name;
+				/* Hexadecimal with a hexadecimal prefix. `to_string` prints
+				   decimal, and the result read as "0x3412824" - an address that
+				   is not an address - which sent one investigation after a
+				   string read as a pointer that never happened. */
+				char addressText[16] = {};
+				std::snprintf(addressText, sizeof(addressText), "%08X", object.address);
+
+				const std::string name = object.name.empty() ? ("the object at 0x" + std::string(addressText)) : object.name;
 
 				waitSources.push_back({name + " (waiting to send)", object.waitingToSendList, RtosTaskState::Blocked, false, false});
 				waitSources.push_back({name + " (waiting to receive)", object.waitingToReceiveList, RtosTaskState::Blocked, false, false});
