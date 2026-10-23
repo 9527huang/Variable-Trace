@@ -2684,9 +2684,9 @@ class GuiRtosPanel
 	{
 		bool any = false;
 
-		const auto visit = [&](const std::vector<RtosTrackEntry>& entries)
+		for (const std::vector<RtosTrackEntry>* track : projection.tracks())
 		{
-			for (const RtosTrackEntry& entry : entries)
+			for (const RtosTrackEntry& entry : *track)
 			{
 				if (!entry.hasSeconds)
 					continue;
@@ -2703,13 +2703,7 @@ class GuiRtosPanel
 				from = std::min(from, entry.fromSeconds);
 				to = std::max(to, entry.toSeconds);
 			}
-		};
-
-		visit(projection.isr);
-		visit(projection.fault);
-		visit(projection.sync);
-		visit(projection.heap);
-		visit(projection.gap);
+		}
 
 		/* A single instant would give a zero width axis; a few milliseconds
 		   either side keeps the band drawable without inventing content. */

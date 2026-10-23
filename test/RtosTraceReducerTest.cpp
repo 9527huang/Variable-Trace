@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <set>
+
 namespace
 {
 	RtosNormalizedEvent make(RtosTraceEventType type, uint32_t subject, uint32_t object, uint32_t arg0, uint32_t arg1)
@@ -223,4 +225,22 @@ TEST(RtosTraceReducerTest, ASwitchWithoutATimeIsStillTrackedButHasNoPlace)
 
 	ASSERT_EQ(1u, projection.task.size());
 	EXPECT_FALSE(projection.task[0].hasSeconds);
+}
+
+TEST(RtosTraceReducerTest, EveryTrackIsListedOnceForTheCallersThatNeedAllOfThem)
+{
+	/* The window the bands are drawn against has to consider every track. It did
+	   not, when the task track was added, and the bands drew against a made up
+	   0..1 second axis - a picture that looked like data over an axis that was
+	   fiction. This list is the thing those callers loop over. */
+	const RtosTrackProjection projection = RtosTraceReducer::project({});
+
+	EXPECT_EQ(6u, projection.tracks().size());
+
+	std::set<const void*> unique;
+
+	for (const std::vector<RtosTrackEntry>* track : projection.tracks())
+		unique.insert(track);
+
+	EXPECT_EQ(6u, unique.size());
 }

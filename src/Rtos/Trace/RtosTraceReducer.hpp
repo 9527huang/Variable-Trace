@@ -98,6 +98,19 @@ struct RtosTrackProjection
 	   lanes, where a switch is just a boundary between two colours. */
 	std::vector<RtosTrackEntry> task;
 
+	/*
+	 * Every track, once.
+	 *
+	 * Exists because a caller that has to remember all of them will forget one -
+	 * the task track was added and the window calculation went on using the old
+	 * five, which drew the bands against a made up 0..1 second axis. A caller
+	 * that loops over this cannot make that mistake.
+	 */
+	std::vector<const std::vector<RtosTrackEntry>*> tracks() const
+	{
+		return {&task, &isr, &fault, &sync, &heap, &gap};
+	}
+
 	/* Entries that never got their second event. Counted per track because
 	   "the target was stopped inside an interrupt" and "the exit was lost in a
 	   gap" are different problems that look the same in an empty track. */
