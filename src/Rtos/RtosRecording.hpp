@@ -11,6 +11,8 @@
 #include "RtosEventRing.hpp"
 #include "RtosSnapshot.hpp"
 
+class RtosPlaybackV3;
+
 /*
  * The task view, written down.
  *
@@ -39,6 +41,16 @@
 class RtosRecording
 {
    public:
+	/*
+	 * Two containers, one reader.
+	 *
+	 * A version 3 file is a container of blocks; a version 2 file is a run of
+	 * records. Everything above this class - the panel, the export, the tools -
+	 * only ever asks for "how many rounds, and give me that one", so the format
+	 * is decided here and nowhere else. `open` sniffs the file and remembers
+	 * which reader answers.
+	 */
+
 	/* Bumped when the fields below change. A file from another version is
 	   refused with a sentence rather than read as far as it happens to make
 	   sense: half a round decoded as a whole one is worse than no file.
@@ -114,7 +126,10 @@ class RtosRecording
 		}
 	};
 
-	RtosRecording() = default;
+	/* Both out of line: the v3 reader is only forward declared here, so the
+	   construction and destruction of the pointer to it have to happen where
+	   the type is complete. */
+	RtosRecording();
 	~RtosRecording();
 
 	RtosRecording(const RtosRecording&) = delete;
@@ -170,10 +185,7 @@ class RtosRecording
 		return reading;
 	}
 
-	size_t roundCount() const
-	{
-		return index.size();
-	}
+	size_t roundCount() const;
 
 	/* The moment a round was taken, on the same clock the live view uses. */
 	double atSeconds(size_t round) const;
@@ -215,10 +227,7 @@ class RtosRecording
 	/* Whether this file holds switch records at all. A file written before
 	   they were kept opens and looks complete; only this tells the reader that
 	   an empty event list means "not recorded" rather than "nothing switched". */
-	bool hasEventRecords() const
-	{
-		return fileVersion >= 2;
-	}
+	bool hasEventRecords() const;
 
 	Info info() const;
 
@@ -239,6 +248,14 @@ class RtosRecording
 
 	bool writing = false;
 	bool reading = false;
+
+	/* Set when the open file is a version 3 container. Null for v1/v2 and while
+	   writing: only one of the two readers is ever live. */
+	std::unique_ptr<RtosPlaybackV3> v3;
+
+	/* The v1/v2 reader's own teardown, split out so that `close` can free
+	   whichever of the two readers is live without repeating itself. */
+	void closeV2();
 
 	std::string filePath;
 

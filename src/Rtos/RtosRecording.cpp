@@ -1,5 +1,7 @@
 #include "RtosRecording.hpp"
 
+#include "RtosPlaybackV3.hpp"
+
 #include <algorithm>
 #include <climits>
 #include <cmath>
@@ -292,6 +294,8 @@ namespace
 	}
 }  // namespace
 
+RtosRecording::RtosRecording() = default;
+
 RtosRecording::~RtosRecording()
 {
 	finish();
@@ -511,6 +515,24 @@ bool RtosRecording::open(const std::string& path, Problem& problem)
 	if (reading)
 		close();
 
+	/* A version 3 file is a container of blocks, not a run of records. The
+	   sniff happens before anything else reads a magic, because the two formats
+	   share nothing after the first four bytes and a v3 file read as v2 would
+	   fail at a place that has nothing to do with what went wrong. */
+	if (RtosRecordingV3::looksLikeV3(path))
+	{
+		auto container = std::make_unique<RtosPlaybackV3>();
+
+		if (!container->open(path, problem))
+			return false;
+
+		v3 = std::move(container);
+		reading = true;
+		fileVersion = 3;
+
+		return true;
+	}
+
 	std::FILE* opened = std::fopen(path.c_str(), "rb");
 
 	if (opened == nullptr)
@@ -613,6 +635,17 @@ bool RtosRecording::open(const std::string& path, Problem& problem)
 
 void RtosRecording::close()
 {
+	if (v3 != nullptr)
+	{
+		v3->close();
+		v3.reset();
+	}
+
+	closeV2();
+}
+
+void RtosRecording::closeV2()
+{
 	std::FILE* closing = nullptr;
 
 	{
@@ -636,8 +669,26 @@ void RtosRecording::close()
 		std::fclose(closing);
 }
 
+size_t RtosRecording::roundCount() const
+{
+	/* Whichever reader opened the file. A v3 container indexes its blocks at
+	   open and hands rounds over on demand, so this is a number either way. */
+	return v3 != nullptr ? v3->roundCount() : index.size();
+}
+
+bool RtosRecording::hasEventRecords() const
+{
+	if (v3 != nullptr)
+		return v3->hasEventRecords();
+
+	return fileVersion >= 2;
+}
+
 double RtosRecording::atSeconds(size_t round) const
 {
+	if (v3 != nullptr)
+		return v3->atSeconds(round);
+
 	if (round >= index.size())
 		return 0.0;
 
@@ -646,6 +697,41 @@ double RtosRecording::atSeconds(size_t round) const
 
 size_t RtosRecording::nearestRound(double atSeconds) const
 {
+	/* Written against `roundCount`/`atSeconds` rather than the v2 index: a v3
+	   container keeps its times the same way, and a second copy of this search
+	   would be a second place for the two formats to answer differently. */
+	if (v3 != nullptr)
+	{
+		const size_t count = v3->roundCount();
+
+		if (count == 0)
+			return 0;
+
+		if (!(atSeconds > v3->atSeconds(0)))
+			return 0;
+
+		if (atSeconds >= v3->atSeconds(count - 1))
+			return count - 1;
+
+		size_t low = 0;
+		size_t high = count - 1;
+
+		while (low + 1 < high)
+		{
+			const size_t middle = (low + high) / 2;
+
+			if (v3->atSeconds(middle) <= atSeconds)
+				low = middle;
+			else
+				high = middle;
+		}
+
+		const double toLow = std::abs(atSeconds - v3->atSeconds(low));
+		const double toHigh = std::abs(v3->atSeconds(high) - atSeconds);
+
+		return toHigh < toLow ? high : low;
+	}
+
 	if (index.empty())
 		return 0;
 
@@ -685,6 +771,17 @@ std::shared_ptr<RtosSnapshot> RtosRecording::roundAt(size_t round) const
 
 RtosRecording::Round RtosRecording::roundWithEvents(size_t round) const
 {
+	if (v3 != nullptr)
+	{
+		const RtosPlaybackV3::Round fromV3 = v3->roundWithEvents(round);
+
+		Round converted;
+		converted.snapshot = fromV3.snapshot;
+		converted.events = fromV3.events;
+
+		return converted;
+	}
+
 	Round decoded;
 
 	if (round >= index.size())
@@ -814,6 +911,21 @@ bool RtosRecording::decodeRound(const uint8_t* bytes, size_t size, bool withEven
 RtosRecording::Info RtosRecording::info() const
 {
 	Info result;
+
+	if (v3 != nullptr)
+	{
+		result.rounds = v3->roundCount();
+		result.bytes = v3->bytes();
+
+		if (result.rounds > 0)
+		{
+			result.firstSecond = v3->atSeconds(0);
+			result.lastSecond = v3->atSeconds(result.rounds - 1);
+		}
+
+		return result;
+	}
+
 	result.rounds = index.size();
 
 	if (!index.empty())

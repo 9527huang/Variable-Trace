@@ -208,3 +208,45 @@ TEST(RtosPlaybackV3Test, OtherBlocksInTheFileAreListedButDoNotBecomeRounds)
 	std::error_code ignored;
 	std::filesystem::remove(file, ignored);
 }
+
+/*
+ * And through the class everything else already uses.
+ *
+ * The panel, the export and the tools all go through `RtosRecording`. If it did
+ * not open v3 files, the reader next door would be a library nobody calls.
+ */
+TEST(RtosPlaybackV3Test, RtosRecordingOpensAV3FileAsIfItWereAnOrdinaryOne)
+{
+	const std::filesystem::path file = std::filesystem::temp_directory_path() / "playback-v3-through-v2.vtrec3";
+	const std::string path = writeV3(file, 4, 2);
+
+	RtosRecording recording;
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	ASSERT_TRUE(recording.open(path, problem)) << RtosRecording::describe(problem);
+
+	EXPECT_TRUE(recording.isOpen());
+	EXPECT_EQ(4u, recording.roundCount());
+	EXPECT_TRUE(recording.hasEventRecords());
+
+	/* The index the interface scrolls by comes from the first eight bytes of
+	   each round, so it is right before anything is decoded. */
+	EXPECT_DOUBLE_EQ(11.0, recording.atSeconds(1));
+	EXPECT_EQ(2u, recording.nearestRound(12.0));
+
+	const RtosRecording::Info info = recording.info();
+	EXPECT_EQ(4u, info.rounds);
+	EXPECT_DOUBLE_EQ(10.0, info.firstSecond);
+	EXPECT_DOUBLE_EQ(13.0, info.lastSecond);
+
+	const RtosRecording::Round round = recording.roundWithEvents(3);
+	ASSERT_NE(nullptr, round.snapshot);
+	EXPECT_EQ(std::string("t3"), round.snapshot->tasks[0].name);
+	EXPECT_EQ(1u, round.events.size());
+
+	recording.close();
+	EXPECT_FALSE(recording.isOpen());
+
+	std::error_code ignored;
+	std::filesystem::remove(file, ignored);
+}

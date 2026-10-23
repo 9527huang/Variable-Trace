@@ -100,7 +100,7 @@
 | REC-03 | 产物 §2.6 | v1/v2 文件仍可打开；缺失块按能力降级 | C++ | **已过**（既有 21 条 v1/v2 用例保持绿；v3 容器带轮次后仍能读回同一轮） |
 | REC-04 | 产物 §2.3 | 原始块与归一化事件块序号范围不一致 → 判为损坏 | C++ | 待写 |
 | REC-05 | 产物 §2.4 | 有索引检查点时只读检查点即可定位时间窗 | C++ | **部分**（每 64 块写一个、条目指向真实偏移已测；按时间窗跳读待界面） |
-| REC-06 | 产物 §3 | 采集包与录制 v3 同构；缺必含字段时拒绝导入 | C++ | 待写 |
+| REC-06 | 产物 §3 | 采集包与录制 v3 同构；缺必含字段时拒绝导入 | C++ | **部分**（v3 容器与回放读取已通，`RtosRecording::open` 按 magic 分派；采集包与导入未做） |
 
 ## 七、界面（UI）
 
@@ -164,7 +164,8 @@
 | 2026-10-22 | Phase 4 投影层与 `Tracks` 页签：`RtosTraceReducer`（ISR 栈式配对、wait 按任务+对象配对、Fault 寄存器按 flags 取、堆净值与未知大小分开）；UI-01 部分 | `d559ddd` |
 | 2026-10-22 | Phase 4 窗口查询：`RtosTraceWindow`（列聚合、跨边界计入、无时间条目不落轴、Fault/Gap 永不被聚合掩盖）；UI-04 部分 | `65b7ad8` |
 | 2026-10-22 | 带状渲染：`drawTrackBand`（每像素列一标记、三档密疏、Fault 红 / Gap 橙、右侧计数与未完成、无时间计数） | `7e9f9b1` |
-| 2026-10-23 | v3 能装轮次：`encodeRound`/`decodeRound` 从 v2 抽出共用，`packRounds`/`unpackRounds`，v2 文件转 v3 逐轮一致；REC-03 已过 | 本次提交 |
+| 2026-10-23 | v3 能装轮次：`encodeRound`/`decodeRound` 从 v2 抽出共用，`packRounds`/`unpackRounds`，v2 文件转 v3 逐轮一致；REC-03 已过 | `cceb973` |
+| 2026-10-23 | v3 能当回放源读：`RtosPlaybackV3`，`RtosRecording::open` 嗅 magic 后分派；REC-06 部分 | `3e2954a`、本次提交 |
 
 **带状渲染为什么还没被看见**：`Tracks` 页签的数据来自 `model.trace()`，而工程里**没有任何地方调用
 `RtosModel::attachTraceSource`**——事件源只在测试里挂过。所以界面上的 `Tracks` 只会显示"没有接事件源"。
