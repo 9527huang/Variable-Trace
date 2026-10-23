@@ -128,6 +128,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/Rtec2RingReader.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTraceReconciler.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosRecordingV3.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosPlaybackV3.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTraceReducer.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTraceWindow.cpp
     # 目标侧参考实现：测试里由 C 写入、由 C++ 读回，闭环验证线格式。
@@ -235,6 +236,7 @@ add_executable(${EXECUTABLE} main.cpp
     RtosTraceReconcilerTest.cpp
     RtosRecordingV3Test.cpp
     RtosRecordingV3RoundsTest.cpp
+    RtosPlaybackV3Test.cpp
     RtosTraceReducerTest.cpp
     RtosTraceWindowTest.cpp
     RtosEventRingTest.cpp
