@@ -200,6 +200,29 @@ void SwdTraceAdapter::pushRecords(const std::vector<RtosEventRing::Record>& reco
 		pending.push_back(switchInFrom(record, epoch));
 }
 
+void SwdTraceAdapter::pushSwitchRuns(const std::vector<RtosEventRing::Interval>& runs)
+{
+	for (const RtosEventRing::Interval& run : runs)
+	{
+		/* The runs were already placed on the session's clock by the caller, so
+		   the event carries that moment as ticks at 1 MHz rather than inventing
+		   a target counter nobody read. */
+		RtosTraceEvent event;
+
+		event.epoch = epoch;
+		event.type = RtosTraceEventType::TaskSwitchIn;
+		event.subject.kind = RtosEntityKind::Task;
+		event.subject.rawHandle = run.tcbAddress;
+		event.subject.quality = run.tcbAddress == 0 ? RtosIdentityQuality::Unknown : RtosIdentityQuality::Exact;
+		event.hasTargetTicks = true;
+		event.targetTicks = static_cast<uint32_t>(run.fromSeconds * 1000000.0);
+		event.targetHz = microsecondHz;
+		event.quality = RtosEvidenceQuality::Good;
+
+		pending.push_back(event);
+	}
+}
+
 void SwdTraceAdapter::pushRecords(const std::vector<RtosEventRing::Record>& records)
 {
 	pushRecords(records, 0, false);

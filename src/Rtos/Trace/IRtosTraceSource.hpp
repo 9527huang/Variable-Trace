@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "RtosEventRing.hpp"
 #include "RtosTraceTypes.hpp"
 
 /*
@@ -118,6 +119,21 @@ class IRtosTraceSource
 	virtual const char* name() const = 0;
 
 	virtual RtosTraceBatch poll(double budgetSeconds) = 0;
+
+	/*
+	 * Switch records the caller read, for sources that do not read the target
+	 * themselves.
+	 *
+	 * The acquisition thread already reads the ring every round; a second
+	 * reader on the same probe would fight it. So the adapter that consumes
+	 * records is fed rather than reading, and the ones that do open a transport
+	 * ignore this. Empty by default: a source is not obliged to accept records
+	 * it did not fetch.
+	 */
+	virtual void pushSwitchRuns(const std::vector<RtosEventRing::Interval>& runs)
+	{
+		(void)runs;
+	}
 };
 
 #endif

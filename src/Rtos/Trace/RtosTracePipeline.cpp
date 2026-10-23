@@ -209,3 +209,16 @@ std::vector<std::string> RtosTracePipeline::missingCapabilities() const
 
 	return missing;
 }
+
+size_t RtosTracePipeline::pushSwitchRuns(const std::vector<RtosEventRing::Interval>& runs)
+{
+	if (traceSource == nullptr)
+		return 0;
+
+	traceSource->pushSwitchRuns(runs);
+
+	/* Drained at once rather than on the next tick: the caller has just read
+	   the ring and will not come back for a while, and leaving the events in
+	   the source would put them under whatever epoch the next tick has. */
+	return pump(0.0).applied;
+}

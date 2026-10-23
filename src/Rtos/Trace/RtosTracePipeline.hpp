@@ -94,6 +94,11 @@ class RtosTracePipeline
 
 	Pump pump(double budgetSeconds);
 
+	/* The acquisition thread's switch records: handed to the source if it takes
+	   them, then drained in the same call. One place, because the caller is the
+	   sampling loop and it has exactly one moment to spend here. */
+	size_t pushSwitchRuns(const std::vector<RtosEventRing::Interval>& runs);
+
 	const std::vector<RtosNormalizedEvent>& events() const
 	{
 		return history;

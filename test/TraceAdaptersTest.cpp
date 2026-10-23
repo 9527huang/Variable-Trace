@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "RtosModel.hpp"
 #include "RtosTracePipeline.hpp"
 
 namespace
@@ -220,4 +221,65 @@ TEST(TraceAdaptersTest, ThePipelineCanNameWhatASourceCannotProvide)
 	EXPECT_TRUE(contains("lifecycleEvents"));
 	EXPECT_FALSE(contains("rawHandle32"));
 	EXPECT_FALSE(contains("targetClock"));
+}
+
+/*
+ * The wiring: the acquisition thread reads the ring, and the same runs reach
+ * the event side through one call.
+ *
+ * This is the arrangement the program actually uses - one reader on the probe,
+ * fed to the trace pipeline - so the test drives it the same way rather than
+ * giving the adapter a private feed of its own.
+ */
+TEST(TraceAdaptersTest, TheModelsEventSideGetsTheRunsTheAcquisitionThreadRead)
+{
+	RtosModel model;
+	model.attachTraceSource(std::make_unique<SwdTraceAdapter>());
+
+	RtosTraceProblem problem = RtosTraceProblem::None;
+	ASSERT_TRUE(model.trace()->start(problem));
+
+	RtosEventRing::Interval first;
+	first.tcbAddress = 0x20001000u;
+	first.fromSeconds = 1.25;
+	first.toSeconds = 1.5;
+
+	RtosEventRing::Interval second;
+	second.tcbAddress = 0x20001040u;
+	second.fromSeconds = 1.5;
+	second.toSeconds = 1.75;
+
+	model.appendEventIntervals({first, second}, 60.0);
+
+	ASSERT_NE(nullptr, model.trace());
+	ASSERT_EQ(2u, model.trace()->eventCount());
+
+	const RtosNormalizedEvent& event = model.trace()->events()[0];
+	EXPECT_EQ(RtosTraceEventType::TaskSwitchIn, event.event.type);
+	EXPECT_EQ(0x20001000u, event.event.subject.rawHandle);
+
+	/* The run's start is the moment of the switch, and it is placed on the
+	   session's axis rather than left without a time. */
+	ASSERT_TRUE(event.hasDisplaySeconds);
+	EXPECT_DOUBLE_EQ(0.0, event.displaySeconds);
+
+	/* And the old history still got them: one reader, two histories. */
+	EXPECT_EQ(2u, model.events().size());
+}
+
+TEST(TraceAdaptersTest, WithoutASourceTheRunsStillReachTheOldHistory)
+{
+	RtosModel model;
+
+	RtosEventRing::Interval only;
+	only.tcbAddress = 0x20001000u;
+	only.fromSeconds = 1.0;
+	only.toSeconds = 1.2;
+
+	/* No event source attached: the call must be harmless, which is what keeps
+	   the snapshot path independent of the trace layer. */
+	model.appendEventIntervals({only}, 60.0);
+
+	EXPECT_EQ(nullptr, model.trace());
+	EXPECT_EQ(1u, model.events().size());
 }

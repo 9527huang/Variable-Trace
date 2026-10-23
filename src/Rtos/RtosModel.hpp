@@ -111,6 +111,15 @@ class RtosModel
 	{
 		eventHistory.append(intervals, keepSeconds);
 
+		/* The same runs, to the event side.
+		 *
+		 * Both histories are fed from here because this is where the
+		 * acquisition thread hands over what it read: a second reader on the
+		 * probe would fight the first, and a second place to remember to call
+		 * would be forgotten once. */
+		if (tracePipeline != nullptr && !intervals.empty())
+			tracePipeline->pushSwitchRuns(intervals);
+
 		if (!recording.isWriting())
 			return;
 

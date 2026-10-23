@@ -2,6 +2,7 @@
 
 #include "GdbRtosLayout.hpp"
 #include "RtosFactory.hpp"
+#include "TraceAdapters.hpp"
 #include "RtosItmDecoder.hpp"
 #include "RtosProbeMemory.hpp"
 
@@ -367,7 +368,23 @@ bool ViewerDataHandler::prepareRtos()
 	}
 
 	if (rtosModel == nullptr)
+	{
 		rtosModel = std::make_shared<RtosModel>();
+
+		/* The event side, attached here because this is where the model is
+		   made: the acquisition thread feeds it the runs it reads, and the
+		   tracks page has something to show without a second reader on the
+		   probe. Starting it is `start` on a source that does not read the
+		   target, so it cannot fail for probe reasons. */
+		rtosModel->attachTraceSource(std::make_unique<SwdTraceAdapter>());
+
+		if (rtosModel->trace() != nullptr)
+		{
+			RtosTraceProblem problem = RtosTraceProblem::None;
+
+			rtosModel->trace()->start(problem);
+		}
+	}
 
 	const std::shared_ptr<RtosProfileBase> profile = RtosFactory::create(RtosProfileBase::Type::FreeRtos);
 

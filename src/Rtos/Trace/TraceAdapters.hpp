@@ -97,6 +97,10 @@ class SwdTraceAdapter final : public IRtosTraceSource
 
 	RtosTraceBatch poll(double budgetSeconds) override;
 
+	/* The acquisition thread's runs. Each run began with a switch in, at the
+	   second it says, so one run is one event. */
+	void pushSwitchRuns(const std::vector<RtosEventRing::Interval>& runs) override;
+
    private:
 	std::deque<RtosTraceEvent> pending;
 
