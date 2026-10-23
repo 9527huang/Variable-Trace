@@ -352,15 +352,12 @@ bool RtosRecording::begin(const std::string& path, Problem& problem)
 	return true;
 }
 
-void RtosRecording::write(const RtosSnapshot& snapshot, const std::vector<RtosEventRing::Interval>& events)
+void RtosRecording::encodeRound(const RtosSnapshot& snapshot, const std::vector<RtosEventRing::Interval>& events, std::vector<uint8_t>& out)
 {
-	if (!writing)
-		return;
+	out.clear();
+	out.reserve(1024 + snapshot.tasks.size() * 96 + snapshot.syncObjects.size() * 48);
 
-	buffer.clear();
-	buffer.reserve(1024 + snapshot.tasks.size() * 96 + snapshot.syncObjects.size() * 48);
-
-	Sink sink{buffer};
+	Sink sink{out};
 
 	sink.d(snapshot.captureStartedAt);
 	sink.d(snapshot.captureFinishedAt);
@@ -424,6 +421,14 @@ void RtosRecording::write(const RtosSnapshot& snapshot, const std::vector<RtosEv
 		sink.d(run.fromSeconds);
 		sink.d(run.toSeconds);
 	}
+}
+
+void RtosRecording::write(const RtosSnapshot& snapshot, const std::vector<RtosEventRing::Interval>& events)
+{
+	if (!writing)
+		return;
+
+	encodeRound(snapshot, events, buffer);
 
 	uint8_t recordHeader[recordHeaderBytes] = {};
 	const uint32_t payloadBytes = static_cast<uint32_t>(buffer.size());
@@ -708,10 +713,20 @@ RtosRecording::Round RtosRecording::roundWithEvents(size_t round) const
 
 	if (std::fread(bytes.data(), 1, bytes.size(), file) != bytes.size())
 		return decoded;
+	Round result;
 
+	if (!decodeRound(bytes.data(), bytes.size(), fileVersion >= 2, result))
+		return Round{};
+
+	return result;
+}
+
+
+bool RtosRecording::decodeRound(const uint8_t* bytes, size_t size, bool withEvents, Round& decoded)
+{
 	Source source;
-	source.bytes = bytes.data();
-	source.size = bytes.size();
+	source.bytes = bytes;
+	source.size = size;
 
 	std::shared_ptr<RtosSnapshot> snapshot = std::make_shared<RtosSnapshot>();
 
@@ -773,7 +788,7 @@ RtosRecording::Round RtosRecording::roundWithEvents(size_t round) const
 	/* Version 1 ends here; a version 2 record carries the runs as well. The
 	   index was built before anyone knew which round would be read, so the
 	   version is kept beside the handle rather than per record. */
-	if (fileVersion >= 2)
+	if (withEvents)
 	{
 		const uint32_t runs = source.u32();
 
@@ -789,11 +804,11 @@ RtosRecording::Round RtosRecording::roundWithEvents(size_t round) const
 	}
 
 	if (!source.ok)
-		return decoded;
+		return false;
 
 	decoded.snapshot = std::move(snapshot);
 
-	return decoded;
+	return true;
 }
 
 RtosRecording::Info RtosRecording::info() const

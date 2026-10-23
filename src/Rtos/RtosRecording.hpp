@@ -200,6 +200,18 @@ class RtosRecording
 
 	Round roundWithEvents(size_t round) const;
 
+	/*
+	 * The bytes of one round, without the v2 record header.
+	 *
+	 * Public because the newer container stores the same encoding inside its
+	 * blocks: one definition of what a round looks like, so that a file
+	 * written by either path decodes the same way. `withEvents` says whether
+	 * the tail of switch records is present, which is what the file version
+	 * used to decide.
+	 */
+	static void encodeRound(const RtosSnapshot& snapshot, const std::vector<RtosEventRing::Interval>& events, std::vector<uint8_t>& out);
+	static bool decodeRound(const uint8_t* bytes, size_t size, bool withEvents, Round& out);
+
 	/* Whether this file holds switch records at all. A file written before
 	   they were kept opens and looks complete; only this tells the reader that
 	   an empty event list means "not recorded" rather than "nothing switched". */

@@ -234,6 +234,7 @@ add_executable(${EXECUTABLE} main.cpp
     Rtec2WriterTest.cpp
     RtosTraceReconcilerTest.cpp
     RtosRecordingV3Test.cpp
+    RtosRecordingV3RoundsTest.cpp
     RtosTraceReducerTest.cpp
     RtosTraceWindowTest.cpp
     RtosEventRingTest.cpp

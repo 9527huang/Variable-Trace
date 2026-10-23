@@ -132,6 +132,18 @@ class RtosRecordingV3
 	   the container is not the question, the data is. */
 	bool open(const std::string& path, Contents& contents, Problem& problem);
 
+	/*
+	 * Rounds inside a block.
+	 *
+	 * The payload is: u32 count, then for each round a u32 length and the
+	 * round's bytes in the encoding `RtosRecording::encodeRound` produces. The
+	 * length is repeated per round rather than implied, so that a block written
+	 * by a future version that adds a field still decodes as far as it goes -
+	 * the alternative is one unknown byte shifting every round after it.
+	 */
+	static std::vector<uint8_t> packRounds(const std::vector<std::vector<uint8_t>>& rounds);
+	static bool unpackRounds(const std::vector<uint8_t>& payload, std::vector<std::vector<uint8_t>>& rounds);
+
 	/* ---- helpers shared with the tests ---- */
 
 	/* CRC-32/MPEG-2: polynomial 0x04C11DB7, init 0xFFFFFFFF, no reflection, no

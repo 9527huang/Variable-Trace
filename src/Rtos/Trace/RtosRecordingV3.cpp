@@ -448,3 +448,51 @@ bool RtosRecordingV3::open(const std::string& path, Contents& contents, Problem&
 
 	return true;
 }
+
+std::vector<uint8_t> RtosRecordingV3::packRounds(const std::vector<std::vector<uint8_t>>& rounds)
+{
+	std::vector<uint8_t> payload;
+
+	uint8_t count[4] = {};
+	putU32(count, static_cast<uint32_t>(rounds.size()));
+	payload.insert(payload.end(), count, count + sizeof(count));
+
+	for (const std::vector<uint8_t>& round : rounds)
+	{
+		uint8_t length[4] = {};
+		putU32(length, static_cast<uint32_t>(round.size()));
+		payload.insert(payload.end(), length, length + sizeof(length));
+		payload.insert(payload.end(), round.begin(), round.end());
+	}
+
+	return payload;
+}
+
+bool RtosRecordingV3::unpackRounds(const std::vector<uint8_t>& payload, std::vector<std::vector<uint8_t>>& rounds)
+{
+	rounds.clear();
+
+	if (payload.size() < 4)
+		return false;
+
+	const uint32_t count = readU32(payload.data());
+	size_t at = 4;
+
+	for (uint32_t index = 0; index < count; index++)
+	{
+		if (payload.size() < at + 4)
+			return false;
+
+		const uint32_t length = readU32(payload.data() + at);
+		at += 4;
+
+		if (payload.size() < at + length)
+			return false;
+
+		rounds.emplace_back(payload.begin() + static_cast<std::ptrdiff_t>(at),
+		                    payload.begin() + static_cast<std::ptrdiff_t>(at + length));
+		at += length;
+	}
+
+	return true;
+}
