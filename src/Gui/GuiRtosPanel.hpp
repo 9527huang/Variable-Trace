@@ -2710,9 +2710,18 @@ class GuiRtosPanel
 	static void drawTrackBand(const char* label, const std::vector<RtosTrackEntry>& entries, double from, double to, uint32_t incomplete,
 	                          const char* unit, float scale, bool carried)
 	{
-		const float labelWidth = 56.0f * scale;
 		const float bandHeight = 12.0f * scale;
 		const float rightWidth = 120.0f * scale;
+
+		/* The lanes' axis, not an inset of our own. The strip's left edge is the
+		   name column's width, which changes with the longest task name in the
+		   round: a constant here lined the bands up with the lanes until the
+		   first round with a longer name, and then they were off by a few pixels
+		   with no way to tell why. */
+		const bool aligned = GuiRtosPanelTimeline::hasLastWindow();
+		const float axisLeft = aligned ? GuiRtosPanelTimeline::getAxisLeft() : 0.0f;
+		const float axisWidth = aligned ? GuiRtosPanelTimeline::getAxisWidth() : 0.0f;
+		const float labelWidth = 56.0f * scale;
 
 		/* Not carried by this source: say it in the row instead of drawing an
 		   empty band. "Nothing happened" and "nobody asked" are different
@@ -2726,11 +2735,21 @@ class GuiRtosPanel
 			return;
 		}
 
+		/* The row's top, taken before the label is drawn: afterwards the cursor
+		   has already moved to the next line, and a band placed there would open a
+		   second line under every label. */
+		const float rowTop = ImGui::GetCursorScreenPos().y;
+
 		ImGui::TextUnformatted(label);
-		ImGui::SameLine(labelWidth);
+		ImGui::SameLine(0.0f, 0.0f);
+
+		/* One band per row, starting where the lanes start. When the strip has
+		   not drawn yet there is no axis to line up with, and the band falls back
+		   to its own inset for that one frame. */
+		ImGui::SetCursorScreenPos(aligned ? ImVec2(axisLeft, rowTop) : ImVec2(ImGui::GetCursorScreenPos().x + labelWidth, rowTop));
 
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
-		const float width = std::max(ImGui::GetContentRegionAvail().x - rightWidth, 40.0f * scale);
+		const float width = aligned ? axisWidth : std::max(ImGui::GetContentRegionAvail().x - rightWidth, 40.0f * scale);
 		const int pixels = std::max(static_cast<int>(width / scale), 1);
 
 		ImDrawList* draw = ImGui::GetWindowDrawList();

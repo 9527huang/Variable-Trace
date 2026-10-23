@@ -56,6 +56,27 @@ class GuiRtosPanelTimeline
 	}
 
 	/*
+	 * Where the axis actually starts and how wide it is, in screen pixels.
+	 *
+	 * The bands under the strip have to line up with the lanes to the pixel, and
+	 * lining up means using the same numbers rather than the same formula: the
+	 * strip's left edge is the name column's width, which depends on the longest
+	 * task name in this round, not on a constant the other block could copy.
+	 */
+	inline static float lastAxisLeft = 0.0f;
+	inline static float lastAxisWidth = 0.0f;
+
+	static float getAxisLeft()
+	{
+		return lastAxisLeft;
+	}
+
+	static float getAxisWidth()
+	{
+		return lastAxisWidth;
+	}
+
+	/*
 	 * `lanes` is the order to draw the rows in, handed in by the panel: either
 	 * the stable one - base priority, then name, then address - or the order
 	 * the table is showing, which is what the reader sorted it to. The strip
@@ -632,6 +653,9 @@ class GuiRtosPanelTimeline
 		scroll = std::clamp(scroll, 0.0f, overflow);
 		const float plotLeft = origin.x + nameWidth;
 		const float plotWidth = std::max(width - nameWidth, 40.0f * scale);
+
+		lastAxisLeft = plotLeft;
+		lastAxisWidth = plotWidth;
 
 		const double newest = samples.back().atSeconds;
 		const double oldest = samples.front().atSeconds;
