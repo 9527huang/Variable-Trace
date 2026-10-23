@@ -196,3 +196,31 @@ TEST(RtosTraceReducerTest, AGapIsItsOwnEntryWithTheReasonItHappened)
 	EXPECT_EQ(12u, projection.gap[0].lostRecords);
 	EXPECT_EQ(1u, projection.gap[0].gapReason);
 }
+
+TEST(RtosTraceReducerTest, SwitchesMakeTheirOwnTrack)
+{
+	std::vector<RtosNormalizedEvent> events;
+
+	events.push_back(at(make(RtosTraceEventType::TaskSwitchIn, 0x1000, 0, 0, 0), 1.0));
+	events.push_back(at(make(RtosTraceEventType::TaskSwitchIn, 0x1040, 0, 0, 0), 1.1));
+	events.push_back(at(make(RtosTraceEventType::TaskSwitchIn, 0x1000, 0, 0, 0), 1.2));
+
+	const RtosTrackProjection projection = RtosTraceReducer::project(events);
+
+	/* The lanes show who ran when; this track shows how busy the scheduler was,
+	   which is not readable from a boundary between two colours. */
+	ASSERT_EQ(3u, projection.task.size());
+	EXPECT_EQ(0x1000u, projection.task[0].address);
+	EXPECT_DOUBLE_EQ(1.1, projection.task[1].fromSeconds);
+}
+
+TEST(RtosTraceReducerTest, ASwitchWithoutATimeIsStillTrackedButHasNoPlace)
+{
+	std::vector<RtosNormalizedEvent> events;
+	events.push_back(make(RtosTraceEventType::TaskSwitchIn, 0x1000, 0, 0, 0));
+
+	const RtosTrackProjection projection = RtosTraceReducer::project(events);
+
+	ASSERT_EQ(1u, projection.task.size());
+	EXPECT_FALSE(projection.task[0].hasSeconds);
+}

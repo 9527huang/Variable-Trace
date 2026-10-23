@@ -189,6 +189,16 @@ RtosTrackProjection RtosTraceReducer::project(const std::vector<RtosNormalizedEv
 				break;
 			}
 
+			case RtosTraceEventType::TaskSwitchIn:
+			{
+				RtosTrackEntry entry = entryFrom(normalized, index);
+				entry.kind = RtosTrackEntry::Kind::Task;
+				entry.address = event.subject.rawHandle;
+
+				projection.task.push_back(entry);
+				break;
+			}
+
 			case RtosTraceEventType::Gap:
 			{
 				RtosTrackEntry entry = entryFrom(normalized, index);

@@ -2615,20 +2615,13 @@ class GuiRtosPanel
 
 		GuiHelper::drawSecondaryText("%s · %u events", model.trace()->sourceName(), static_cast<uint32_t>(events.size()));
 
-		if (!missing.empty())
+		/* Per row rather than one long line at the top: "not carried" belongs next
+		   to the track it applies to. A list of eight capability names above five
+		   empty bands made the reader work out which band each name was about. */
+		const auto carried = [&missing](const char* capability)
 		{
-			std::string line;
-
-			for (const std::string& name : missing)
-			{
-				if (!line.empty())
-					line += ", ";
-
-				line += name;
-			}
-
-			GuiHelper::drawSecondaryTextWrapped(I18n::tr("This source does not carry: %s"), line.c_str());
-		}
+			return std::find(missing.begin(), missing.end(), capability) == missing.end();
+		};
 
 		/* The window the bands cover: every timed entry the tracks hold. A band
 		   that stopped at the last event would look busy at its right edge for
@@ -2642,22 +2635,47 @@ class GuiRtosPanel
 
 			/* The rows still draw, empty, so that the reader sees which tracks
 			   exist and which of them the source cannot fill. */
-			drawTrackBand(I18n::tr("ISR"), tracks.isr, 0.0, 1.0, tracks.unclosedIsr, I18n::tr("intervals"), scale);
-			drawTrackBand(I18n::tr("Fault"), tracks.fault, 0.0, 1.0, 0, I18n::tr("marks"), scale);
-			drawTrackBand(I18n::tr("Sync"), tracks.sync, 0.0, 1.0, tracks.unclosedSync, I18n::tr("waits"), scale);
-			drawTrackBand(I18n::tr("Heap"), tracks.heap, 0.0, 1.0, tracks.heapUnknownSize, I18n::tr("marks"), scale);
-			drawTrackBand(I18n::tr("Gap"), tracks.gap, 0.0, 1.0, 0, I18n::tr("records lost"), scale);
+			drawTrackRows(tracks, carried, 0.0, 1.0, scale);
 
 			return;
 		}
 
 		GuiHelper::drawSecondaryText("%s %.3f s → %.3f s", I18n::tr("window"), windowFrom, windowTo);
 
-		drawTrackBand(I18n::tr("ISR"), tracks.isr, windowFrom, windowTo, tracks.unclosedIsr, I18n::tr("intervals"), scale);
-		drawTrackBand(I18n::tr("Fault"), tracks.fault, windowFrom, windowTo, 0, I18n::tr("marks"), scale);
-		drawTrackBand(I18n::tr("Sync"), tracks.sync, windowFrom, windowTo, tracks.unclosedSync, I18n::tr("waits"), scale);
-		drawTrackBand(I18n::tr("Heap"), tracks.heap, windowFrom, windowTo, tracks.heapUnknownSize, I18n::tr("marks"), scale);
-		drawTrackBand(I18n::tr("Gap"), tracks.gap, windowFrom, windowTo, 0, I18n::tr("records lost"), scale);
+		drawTrackRows(tracks, carried, windowFrom, windowTo, scale);
+	}
+
+	/*
+	 * The five bands, in one place so that the empty case and the full case
+	 * cannot drift apart.
+	 *
+	 * A track the source cannot carry says so in its own row. Drawing an empty
+	 * band instead was a lie twice over: it looked like a track with nothing in
+	 * it, and the explanation was eight capability names three lines above,
+	 * leaving the reader to work out which name belonged to which band.
+	 */
+	static void drawTrackRows(const RtosTrackProjection& tracks, const std::function<bool(const char*)>& carried, double from, double to,
+	                          float scale)
+	{
+		drawTrackBand(I18n::tr("Task"), tracks.task, from, to, 0, I18n::tr("switches"), scale, true);
+
+		const struct Row
+		{
+			const char* label;
+			const std::vector<RtosTrackEntry>* entries;
+			const char* capability;
+			const char* unit;
+			uint32_t incomplete;
+		} rows[] = {
+		    {I18n::tr("ISR"), &tracks.isr, "isrEvents", I18n::tr("intervals"), tracks.unclosedIsr},
+		    {I18n::tr("Fault"), &tracks.fault, "faultEvents", I18n::tr("marks"), 0},
+		    {I18n::tr("Sync"), &tracks.sync, "syncEvents", I18n::tr("waits"), tracks.unclosedSync},
+		    {I18n::tr("Heap"), &tracks.heap, "heapEvents", I18n::tr("marks"), tracks.heapUnknownSize},
+		    {I18n::tr("Gap"), &tracks.gap, "lossDetection", I18n::tr("records lost"), 0},
+		};
+
+		for (const Row& row : rows)
+			drawTrackBand(row.label, *row.entries, from, to, row.incomplete, row.unit, scale, carried(row.capability));
 	}
 
 	/* The earliest and latest moment any track can be placed at. False when no
@@ -2711,11 +2729,23 @@ class GuiRtosPanel
 	 * allowed to be averaged into silence (see `RtosTraceWindow`).
 	 */
 	static void drawTrackBand(const char* label, const std::vector<RtosTrackEntry>& entries, double from, double to, uint32_t incomplete,
-	                          const char* unit, float scale)
+	                          const char* unit, float scale, bool carried)
 	{
 		const float labelWidth = 56.0f * scale;
 		const float bandHeight = 12.0f * scale;
 		const float rightWidth = 120.0f * scale;
+
+		/* Not carried by this source: say it in the row instead of drawing an
+		   empty band. "Nothing happened" and "nobody asked" are different
+		   findings, and an empty band states the first one. */
+		if (!carried)
+		{
+			ImGui::TextUnformatted(label);
+			ImGui::SameLine(labelWidth);
+			GuiHelper::drawSecondaryText("%s", I18n::tr("this source does not carry it"));
+
+			return;
+		}
 
 		ImGui::TextUnformatted(label);
 		ImGui::SameLine(labelWidth);

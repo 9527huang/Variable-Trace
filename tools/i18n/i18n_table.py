@@ -933,6 +933,8 @@ EXTRA = {
     "No event source is attached: this view is built from snapshots only.": "没有接事件源：这个视图只用快照构建。",
     "no target time · %s": "没有目标时间 · %s",
     "%s · %u events": "%s · %u 个事件",
+    "switches": "次切换",
+    "this source does not carry it": "这份源不提供",
     "window": "时间窗",
     "untimed": "条无时间",
     "No event here carries a target time, so there is nothing to place on an axis.":

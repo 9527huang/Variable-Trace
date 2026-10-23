@@ -92,6 +92,12 @@ struct RtosTrackProjection
 	std::vector<RtosTrackEntry> heap;
 	std::vector<RtosTrackEntry> gap;
 
+	/* Task switches, one entry per switch. Zero length by nature - a switch is
+	   a moment, not a span - but drawn as a density: a column with forty of them
+	   is a column where the scheduler was busy, which is not visible from the
+	   lanes, where a switch is just a boundary between two colours. */
+	std::vector<RtosTrackEntry> task;
+
 	/* Entries that never got their second event. Counted per track because
 	   "the target was stopped inside an interrupt" and "the exit was lost in a
 	   gap" are different problems that look the same in an empty track. */
