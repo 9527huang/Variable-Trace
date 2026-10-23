@@ -415,12 +415,22 @@ class GuiRtosPanel
 
 		/* Under the strip, and in the same window: a task that is waiting is
 		   waiting for one of these, so the two are read together. */
-		/* The counts are the tallest each block gets, not the counts it happens
-		   to need this frame: eight rows for the objects - a heading, the
-		   table's own header and four rows of them - and five for the pinned
-		   moment, which is a heading and three rows whether or not a moment has
-		   been pinned. What they do not use is left blank. */
-		fixedRows(8.0f, "##rtosSyncObjects", [&] { drawSyncObjects(*snapshot); });
+		/*
+		 * The objects table takes what the pane has left above the pinned
+		 * moment, and the pinned moment keeps its five rows.
+		 *
+		 * It used to be eight rows, "the tallest it usually gets", and whatever
+		 * the target registered beyond that was below the bottom edge with no
+		 * scrollbar to reach it. Eight rows is three rows of facts: a kernel
+		 * with five queues would have been short one, which is the kind of limit
+		 * that only shows up on somebody else's target. A list is the one block
+		 * on this side that can turn height into more of itself, so it takes the
+		 * height rather than a number of rows.
+		 */
+		const float pinnedHeight = ImGui::GetTextLineHeightWithSpacing() * 5.0f;
+		const float objectsHeight = std::max(ImGui::GetContentRegionAvail().y - pinnedHeight, ImGui::GetTextLineHeightWithSpacing() * 8.0f);
+
+		fixedPixels(objectsHeight, "##rtosSyncObjects", [&] { drawSyncObjects(*snapshot); });
 		fixedRows(5.0f, "##rtosPinnedMoment", [&] { drawPinnedMoment(*model, *snapshot); });
 
 		/*
