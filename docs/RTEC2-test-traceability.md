@@ -165,7 +165,8 @@
 | 2026-10-22 | Phase 4 窗口查询：`RtosTraceWindow`（列聚合、跨边界计入、无时间条目不落轴、Fault/Gap 永不被聚合掩盖）；UI-04 部分 | `65b7ad8` |
 | 2026-10-22 | 带状渲染：`drawTrackBand`（每像素列一标记、三档密疏、Fault 红 / Gap 橙、右侧计数与未完成、无时间计数） | `7e9f9b1` |
 | 2026-10-23 | v3 能装轮次：`encodeRound`/`decodeRound` 从 v2 抽出共用，`packRounds`/`unpackRounds`，v2 文件转 v3 逐轮一致；REC-03 已过 | `cceb973` |
-| 2026-10-23 | v3 能当回放源读：`RtosPlaybackV3`，`RtosRecording::open` 嗅 magic 后分派；REC-06 部分 | `3e2954a`、本次提交 |
+| 2026-10-23 | v3 能当回放源读：`RtosPlaybackV3`，`RtosRecording::open` 嗅 magic 后分派；REC-06 部分 | `3e2954a`、`2874414` |
+| 2026-10-23 | v3 能写：`RtosRecording::begin(path, problem, Format::V3)`，一轮一块；**应用实测打开 v3 文件**（3 轮 / 30.0 s → 32.0 s） | 本次提交 |
 
 **带状渲染为什么还没被看见**：`Tracks` 页签的数据来自 `model.trace()`，而工程里**没有任何地方调用
 `RtosModel::attachTraceSource`**——事件源只在测试里挂过。所以界面上的 `Tracks` 只会显示"没有接事件源"。

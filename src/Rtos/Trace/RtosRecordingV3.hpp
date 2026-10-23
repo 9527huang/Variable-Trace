@@ -81,6 +81,13 @@ class RtosRecordingV3
 		return written;
 	}
 
+	/* How many bytes the file holds so far, for the counters the interface
+	   shows while a recording is running. */
+	uint64_t bytesWritten() const
+	{
+		return offset;
+	}
+
 	/* Where the data blocks went, in order, for the index checkpoint. 24 bytes
 	   each on disk; kept in memory until the file is closed, which for a ten
 	   minute recording is a few hundred kilobytes. */

@@ -250,3 +250,70 @@ TEST(RtosPlaybackV3Test, RtosRecordingOpensAV3FileAsIfItWereAnOrdinaryOne)
 	std::error_code ignored;
 	std::filesystem::remove(file, ignored);
 }
+
+TEST(RtosPlaybackV3Test, ARecordingWrittenAsV3IsTheSameRunOfRounds)
+{
+	const std::filesystem::path file = std::filesystem::temp_directory_path() / "playback-v3-written.vtrec3";
+
+	{
+		RtosRecording writer;
+		RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+		ASSERT_TRUE(writer.begin(file.string(), problem, RtosRecording::Format::V3)) << RtosRecording::describe(problem);
+		EXPECT_TRUE(writer.isWriting());
+
+		for (int index = 0; index < 3; index++)
+			writer.write(snapshotAt(30.0 + index, "w" + std::to_string(index)), oneRun(0.05, 0.1));
+
+		const RtosRecording::Info running = writer.stats();
+		EXPECT_EQ(3u, running.rounds);
+		EXPECT_GT(running.bytes, 0u);
+
+		writer.finish();
+		EXPECT_FALSE(writer.isWriting());
+	}
+
+	/* And it reads back through the same class, which is what makes this a
+	   round trip rather than two half tests. */
+	RtosRecording reader;
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	ASSERT_TRUE(reader.open(file.string(), problem)) << RtosRecording::describe(problem);
+
+	EXPECT_EQ(3u, reader.roundCount());
+	EXPECT_TRUE(reader.hasEventRecords());
+
+	for (size_t index = 0; index < 3; index++)
+	{
+		const RtosRecording::Round round = reader.roundWithEvents(index);
+		ASSERT_NE(nullptr, round.snapshot);
+		EXPECT_EQ(std::string("w" + std::to_string(index)), round.snapshot->tasks[0].name);
+		EXPECT_DOUBLE_EQ(30.0 + static_cast<double>(index), round.snapshot->captureStartedAt);
+		ASSERT_EQ(1u, round.events.size());
+	}
+
+}
+
+TEST(RtosPlaybackV3Test, WritingV3LeavesTheV2PathAlone)
+{
+	const std::filesystem::path file = std::filesystem::temp_directory_path() / "playback-v2-default.vtrec";
+
+	{
+		RtosRecording writer;
+		RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+		/* The default is still the old container: changing what a recording is by
+		   default would change every user's files to prove a point. */
+		ASSERT_TRUE(writer.begin(file.string(), problem));
+		writer.write(snapshotAt(1.0, "a"), {});
+		writer.finish();
+	}
+
+	EXPECT_FALSE(RtosRecordingV3::looksLikeV3(file.string()));
+
+	RtosRecording reader;
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	ASSERT_TRUE(reader.open(file.string(), problem)) << RtosRecording::describe(problem);
+	EXPECT_EQ(1u, reader.roundCount());
+}

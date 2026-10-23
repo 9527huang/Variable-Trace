@@ -2,6 +2,8 @@
 
 #include "RtosPlaybackV3.hpp"
 
+#include <ctime>
+
 #include <algorithm>
 #include <climits>
 #include <cmath>
@@ -302,9 +304,43 @@ RtosRecording::~RtosRecording()
 	close();
 }
 
-bool RtosRecording::begin(const std::string& path, Problem& problem)
+bool RtosRecording::begin(const std::string& path, Problem& problem, Format format)
 {
 	problem = Problem::None;
+
+	if (format == Format::V3)
+	{
+		/* Nothing is decided by looking at a file that does not exist yet: the
+		   caller says which container, and the counters below are the same for
+		   both so the interface does not have to care. */
+		auto container = std::make_unique<RtosRecordingV3>();
+		RtosRecordingV3::Problem v3Problem = RtosRecordingV3::Problem::None;
+
+		const uint64_t created = static_cast<uint64_t>(std::time(nullptr));
+
+		if (!container->create(path, created, v3Problem))
+		{
+			problem = v3Problem == RtosRecordingV3::Problem::CannotCreate ? Problem::CannotCreate : Problem::CannotOpen;
+
+			return false;
+		}
+
+		v3Writer = std::move(container);
+		filePath = path;
+		fileVersion = 3;
+
+		{
+			std::lock_guard<std::mutex> lock(mtx);
+
+			writing = true;
+			roundsWritten = 0;
+			firstWrittenSecond = 0.0;
+			lastWrittenSecond = 0.0;
+			haveFirstSecond = false;
+		}
+
+		return true;
+	}
 
 	if (reading)
 	{
@@ -432,6 +468,47 @@ void RtosRecording::write(const RtosSnapshot& snapshot, const std::vector<RtosEv
 	if (!writing)
 		return;
 
+	if (v3Writer != nullptr)
+	{
+		/* One block per round. Batching them would make the file smaller and the
+		   loss on a crash larger: with this, a crash costs the round that was
+		   being written and nothing else. */
+		std::vector<uint8_t> one;
+		encodeRound(snapshot, events, one);
+
+		RtosRecordingV3::Problem v3Problem = RtosRecordingV3::Problem::None;
+
+		if (!v3Writer->append(RtosRecordingV3::BlockType::SnapshotRound, RtosRecordingV3::packRounds({one}), 1, v3Problem))
+		{
+			/* A container that stopped taking bytes is finished, as the v2 path
+			   does: the counters stay where they were rather than claiming a
+			   round that is not in the file. */
+			v3Writer->close();
+			v3Writer.reset();
+
+			std::lock_guard<std::mutex> lock(mtx);
+			writing = false;
+
+			return;
+		}
+
+		{
+			std::lock_guard<std::mutex> lock(mtx);
+
+			roundsWritten++;
+
+			if (!haveFirstSecond)
+			{
+				firstWrittenSecond = snapshot.captureStartedAt;
+				haveFirstSecond = true;
+			}
+
+			lastWrittenSecond = snapshot.captureStartedAt;
+		}
+
+		return;
+	}
+
 	encodeRound(snapshot, events, buffer);
 
 	uint8_t recordHeader[recordHeaderBytes] = {};
@@ -469,6 +546,17 @@ void RtosRecording::write(const RtosSnapshot& snapshot, const std::vector<RtosEv
 
 void RtosRecording::finish()
 {
+	if (v3Writer != nullptr)
+	{
+		v3Writer->close();
+		v3Writer.reset();
+
+		std::lock_guard<std::mutex> lock(mtx);
+		writing = false;
+
+		return;
+	}
+
 	std::FILE* closing = nullptr;
 
 	{
@@ -495,7 +583,9 @@ RtosRecording::Info RtosRecording::stats() const
 	info.firstSecond = firstWrittenSecond;
 	info.lastSecond = lastWrittenSecond;
 
-	if (file != nullptr)
+	if (v3Writer != nullptr)
+		info.bytes = v3Writer->bytesWritten();
+	else if (file != nullptr)
 		info.bytes = static_cast<uint64_t>(std::ftell(file));
 
 	return info;

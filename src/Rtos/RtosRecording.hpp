@@ -12,6 +12,7 @@
 #include "RtosSnapshot.hpp"
 
 class RtosPlaybackV3;
+class RtosRecordingV3;
 
 /*
  * The task view, written down.
@@ -143,7 +144,19 @@ class RtosRecording
 	 * reads the counters, which is why they are updated in one step under the
 	 * same lock.
 	 */
-	bool begin(const std::string& path, Problem& problem);
+	/* Which container a recording is written in.
+	 *
+	 * Two exist because the second can hold more than rounds; a recording is
+	 * still a run of rounds either way, so this is the only choice the caller
+	 * makes and the only place the two differ when writing. Reading decides for
+	 * itself by looking at the file. */
+	enum class Format
+	{
+		V2,
+		V3,
+	};
+
+	bool begin(const std::string& path, Problem& problem, Format format = Format::V2);
 	/*
 	 * One round, and the switch records that arrived with it.
 	 *
@@ -252,6 +265,10 @@ class RtosRecording
 	/* Set when the open file is a version 3 container. Null for v1/v2 and while
 	   writing: only one of the two readers is ever live. */
 	std::unique_ptr<RtosPlaybackV3> v3;
+
+	/* Set while a version 3 recording is being written. Never at the same time as
+	   the reader above: a recording and a playback are exclusive. */
+	std::unique_ptr<RtosRecordingV3> v3Writer;
 
 	/* The v1/v2 reader's own teardown, split out so that `close` can free
 	   whichever of the two readers is live without repeating itself. */
