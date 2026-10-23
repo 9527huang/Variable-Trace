@@ -371,7 +371,7 @@ class GuiRtosPanel
 		   everything else instead of a share of the pane. The tracks are one of
 		   those blocks now: a header line and six bands, counted here rather
 		   than measured after the fact, because the strip is drawn first. */
-		const float blocksBelow = ImGui::GetTextLineHeightWithSpacing() * (8.0f + 5.0f + 8.0f) + 12.0f * GuiHelper::contentScale;
+		const float blocksBelow = ImGui::GetTextLineHeightWithSpacing() * (8.0f + 5.0f + 7.0f) + 12.0f * GuiHelper::contentScale;
 
 		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, rows, lanes, model->rosterSize(), selection(), blocksBelow);
 
@@ -2656,12 +2656,9 @@ class GuiRtosPanel
 
 		const RtosTimeline::Span window = GuiRtosPanelTimeline::getLastWindow();
 
-		/* ASCII between the two ends. The arrow was drawn as a box question mark:
-		   the interface font has the middle dot and the em dash but not that one,
-		   and a missing glyph in the one line that explains the axis is the worst
-		   place to show the reader a question mark. */
-		GuiHelper::drawSecondaryText("%s %.3f s .. %.3f s", I18n::tr("window"), window.from, window.to);
-
+		/* No second copy of the window line: the strip's own header states it two
+		   centimetres above, and the two bands share the axis, so a second range
+		   could only ever repeat the first or contradict it. */
 		drawTrackRows(tracks, carried, window.from, window.to, scale);
 	}
 
@@ -2745,13 +2742,24 @@ class GuiRtosPanel
 		   to its own inset for that one frame. */
 		ImGui::SetCursorScreenPos(aligned ? ImVec2(axisLeft, rowTop) : ImVec2(ImGui::GetCursorScreenPos().x + labelWidth, rowTop));
 
+		/* The band sits centred in the text's row, and the row then advances by one
+		   line height.
+
+		   Neither came for free: the band is drawn to the draw list, so ImGui has
+		   no item to advance past, and putting the cursor back at `rowTop` to place
+		   the label left it exactly where the row started. Every band drew on the
+		   first row - five hidden under the sixth, and the sixth over the heading
+		   of the table below. */
+		const float lineHeight = ImGui::GetTextLineHeight();
+		const float rowAdvance = ImGui::GetTextLineHeightWithSpacing();
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
+		const float bandTop = origin.y + (lineHeight - bandHeight) * 0.5f;
 		const float width = aligned ? axisWidth : std::max(ImGui::GetContentRegionAvail().x - rightWidth, 40.0f * scale);
 		const int pixels = std::max(static_cast<int>(width / scale), 1);
 
 		ImDrawList* draw = ImGui::GetWindowDrawList();
 
-		draw->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + bandHeight), ImGui::GetColorU32(ImGuiCol_FrameBg), 2.0f * scale);
+		draw->AddRectFilled(ImVec2(origin.x, bandTop), ImVec2(origin.x + width, bandTop + bandHeight), ImGui::GetColorU32(ImGuiCol_FrameBg), 2.0f * scale);
 
 		RtosTraceWindow::Options options;
 		options.fromSeconds = from;
@@ -2824,8 +2832,10 @@ class GuiRtosPanel
 			const float left = origin.x + column * index;
 			const float right = left + std::max(column, 1.0f);
 
-			draw->AddRectFilled(ImVec2(left, origin.y + 1.0f * scale), ImVec2(right, origin.y + bandHeight - 1.0f * scale), colour);
+			draw->AddRectFilled(ImVec2(left, bandTop + 1.0f * scale), ImVec2(right, bandTop + bandHeight - 1.0f * scale), colour);
 		}
+
+		ImGui::SetCursorScreenPos(ImVec2(rowLeft, rowTop + rowAdvance));
 
 	}
 
