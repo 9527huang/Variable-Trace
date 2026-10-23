@@ -39,6 +39,22 @@
 class GuiRtosPanelTimeline
 {
    public:
+	/* What the strip drew last: the bands below it use this rather than asking
+	   again, so that a click handled during the strip's own draw cannot leave
+	   the two showing different stretches for a frame. */
+	inline static RtosTimeline::Span lastWindow;
+	inline static bool haveLastWindow = false;
+
+	static RtosTimeline::Span getLastWindow()
+	{
+		return lastWindow;
+	}
+
+	static bool hasLastWindow()
+	{
+		return haveLastWindow;
+	}
+
 	/*
 	 * `lanes` is the order to draw the rows in, handed in by the panel: either
 	 * the stable one - base priority, then name, then address - or the order
@@ -90,6 +106,13 @@ class GuiRtosPanelTimeline
 
 		const double newest = history.newestSeconds();
 		const RtosTimeline::Span window = windowOf(plotCursors, newest);
+
+		/* The bands under the strip draw over the same stretch, and the only way
+		   they can be read together is if it is the same stretch. Kept here
+		   rather than recomputed there: two calls to the same function can
+		   answer differently inside one frame, once a click has moved the pin. */
+		lastWindow = window;
+		haveLastWindow = true;
 
 		std::vector<RtosTimeline::Sample> samples;
 		history.copyRange(window.from, window.to, samples);

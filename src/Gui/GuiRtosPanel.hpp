@@ -62,7 +62,6 @@ class GuiRtosPanel
 		SelectedTask,
 		Chain,
 		Events,
-		Tracks,
 	};
 
 	inline static LowerTab lowerTabShown = LowerTab::SelectedTask;
@@ -267,8 +266,7 @@ class GuiRtosPanel
 		lowerTabButton(LowerTab::Chain, I18n::tr("Waiting chain"));
 		ImGui::SameLine(0.0f, 4.0f * GuiHelper::contentScale);
 		lowerTabButton(LowerTab::Events, I18n::tr("Events"));
-		ImGui::SameLine(0.0f, 4.0f * GuiHelper::contentScale);
-		lowerTabButton(LowerTab::Tracks, I18n::tr("Tracks"));
+
 
 		const float used = ImGui::GetCursorPosY() - blockTop;
 		const float blockHeight = std::max(reserve - used, bodyFloor);
@@ -285,9 +283,6 @@ class GuiRtosPanel
 				drawWaitingChain(*snapshot);
 				break;
 
-			case LowerTab::Tracks:
-				drawTracks(*model);
-				break;
 
 			case LowerTab::SelectedTask:
 			default:
@@ -372,11 +367,25 @@ class GuiRtosPanel
 		const std::vector<uint32_t> lanes = GuiRtosPanelTimeline::getFollowTableOrder() ? RtosTableModel::addressesOf(rows)
 		                                                                               : RtosTableModel::laneOrderOf(rows);
 
-		/* What the two blocks under the strip take, so that the strip can be
-		   given everything else instead of a share of the pane. */
-		const float blocksBelow = ImGui::GetTextLineHeightWithSpacing() * (8.0f + 5.0f) + 12.0f * GuiHelper::contentScale;
+		/* What the blocks under the strip take, so that the strip can be given
+		   everything else instead of a share of the pane. The tracks are one of
+		   those blocks now: a header line and six bands, counted here rather
+		   than measured after the fact, because the strip is drawn first. */
+		const float blocksBelow = ImGui::GetTextLineHeightWithSpacing() * (8.0f + 5.0f + 8.0f) + 12.0f * GuiHelper::contentScale;
 
 		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, rows, lanes, model->rosterSize(), selection(), blocksBelow);
+
+		/*
+		 * The tracks belong under the strip, not in the left pane.
+		 *
+		 * They are a picture of the same stretch of time the lanes are: put them
+		 * on the other side of the window and the reader has to carry a moment
+		 * from one pane to the other to line them up. Here they share the axis,
+		 * and they share the window too - zoom the strip and these zoom with it.
+		 */
+		ImGui::Separator();
+
+		drawTracks(*model);
 
 		/*
 		 * In a recording the strip is also the scrubber.
@@ -2613,6 +2622,12 @@ class GuiRtosPanel
 
 		const std::vector<std::string> missing = model.trace()->missingCapabilities();
 
+		/* A heading, because this block sits under the strip and nothing else
+		   would say what it is. The source and its count go beside it rather than
+		   on a line of their own - two short lines above six rows is a fifth of
+		   the block spent on headers. */
+		ImGui::TextUnformatted(I18n::tr("Tracks"));
+		ImGui::SameLine(0.0f, 8.0f * scale);
 		GuiHelper::drawSecondaryText("%s · %u events", model.trace()->sourceName(), static_cast<uint32_t>(events.size()));
 
 		/* Per row rather than one long line at the top: "not carried" belongs next
@@ -2623,30 +2638,31 @@ class GuiRtosPanel
 			return std::find(missing.begin(), missing.end(), capability) == missing.end();
 		};
 
-		/* The window the bands cover: every timed entry the tracks hold. A band
-		   that stopped at the last event would look busy at its right edge for
-		   no reason. */
-		double windowFrom = 0.0;
-		double windowTo = 0.0;
-
-		if (!timedSpan(tracks, windowFrom, windowTo))
+		/*
+		 * The stretch the strip above is showing, not the whole history.
+		 *
+		 * A band drawn over everything the recording holds answers "how busy was
+		 * the scheduler in this session", which nobody asked; the question is
+		 * "what happened around the moment I am looking at", and only the strip's
+		 * own window answers it. Zooming the strip now zooms these too, which is
+		 * also the only way the two can be read against each other.
+		 */
+		if (!GuiRtosPanelTimeline::hasLastWindow())
 		{
-			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("No event here carries a target time, so there is nothing to place on an axis."));
-
-			/* The rows still draw, empty, so that the reader sees which tracks
-			   exist and which of them the source cannot fill. */
 			drawTrackRows(tracks, carried, 0.0, 1.0, scale);
 
 			return;
 		}
 
+		const RtosTimeline::Span window = GuiRtosPanelTimeline::getLastWindow();
+
 		/* ASCII between the two ends. The arrow was drawn as a box question mark:
 		   the interface font has the middle dot and the em dash but not that one,
 		   and a missing glyph in the one line that explains the axis is the worst
 		   place to show the reader a question mark. */
-		GuiHelper::drawSecondaryText("%s %.3f s .. %.3f s", I18n::tr("window"), windowFrom, windowTo);
+		GuiHelper::drawSecondaryText("%s %.3f s .. %.3f s", I18n::tr("window"), window.from, window.to);
 
-		drawTrackRows(tracks, carried, windowFrom, windowTo, scale);
+		drawTrackRows(tracks, carried, window.from, window.to, scale);
 	}
 
 	/*
@@ -2680,41 +2696,6 @@ class GuiRtosPanel
 
 		for (const Row& row : rows)
 			drawTrackBand(row.label, *row.entries, from, to, row.incomplete, row.unit, scale, carried(row.capability));
-	}
-
-	/* The earliest and latest moment any track can be placed at. False when no
-	   entry has a target time, which is a different answer from "empty". */
-	static bool timedSpan(const RtosTrackProjection& projection, double& from, double& to)
-	{
-		bool any = false;
-
-		for (const std::vector<RtosTrackEntry>* track : projection.tracks())
-		{
-			for (const RtosTrackEntry& entry : *track)
-			{
-				if (!entry.hasSeconds)
-					continue;
-
-				if (!any)
-				{
-					from = entry.fromSeconds;
-					to = entry.toSeconds;
-					any = true;
-
-					continue;
-				}
-
-				from = std::min(from, entry.fromSeconds);
-				to = std::max(to, entry.toSeconds);
-			}
-		}
-
-		/* A single instant would give a zero width axis; a few milliseconds
-		   either side keeps the band drawable without inventing content. */
-		if (any && to <= from)
-			to = from + 0.001;
-
-		return any;
 	}
 
 	/*
