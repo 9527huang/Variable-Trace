@@ -629,23 +629,24 @@ class GuiRtosPanelTimeline
 		 * goes, and grows by one lane the day a task is created.
 		 */
 		/*
-		 * The strip takes what the blocks under it leave, not a share of the
-		 * pane.
+		 * The strip is as tall as the lanes it holds, and no taller.
 		 *
-		 * It used to stop at its own content height, so that a target with four
-		 * tasks did not leave a band of nothing under the last lane. What that
-		 * missed is that the band has to be somewhere: with the event list gone
-		 * to the other half, the alternative was the same band under the pinned
-		 * moment, where it reads as a pane that failed to draw. A chart area
-		 * with room to spare is what a chart area looks like; its height now
-		 * depends on the window and not on how many tasks the target has, which
-		 * is one moving part fewer than before.
+		 * It used to take everything the blocks under it left, on the argument
+		 * that the leftover band has to be somewhere and a chart area with room
+		 * to spare is what a chart area looks like. That argument had a hole: the
+		 * spare room sat inside the box, under the last lane, where it reads as
+		 * "the target has thirteen tasks and four empty rows" rather than as a
+		 * pane with space to grow. The lanes are a list, and a list does not have
+		 * blank rows at the bottom.
+		 *
+		 * The room is still there - it is simply outside the box now, below the
+		 * tracks, where nothing claims it is data.
 		 */
-		const size_t lanesForHeight = std::max<size_t>(rosterSize, lanes.size());
-		(void)lanesForHeight;
+		const float wanted = contentHeight + axisHeight + 2.0f * scale;
+		const float floor = axisHeight + rowHeight * 2.0f;
+		const float limit = std::max(available - reservedBelow, floor);
 
-		const float fill = std::max(available - reservedBelow, 90.0f * scale);
-		const float height = std::clamp(fill, 90.0f * scale, std::max(available - 2.0f, 90.0f * scale));
+		const float height = std::clamp(wanted, floor, limit);
 		const float plotHeight = height - axisHeight;
 
 		/* How far the lanes are scrolled, and how far they can be. */
