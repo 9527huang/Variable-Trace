@@ -2640,7 +2640,11 @@ class GuiRtosPanel
 			return;
 		}
 
-		GuiHelper::drawSecondaryText("%s %.3f s → %.3f s", I18n::tr("window"), windowFrom, windowTo);
+		/* ASCII between the two ends. The arrow was drawn as a box question mark:
+		   the interface font has the middle dot and the em dash but not that one,
+		   and a missing glyph in the one line that explains the axis is the worst
+		   place to show the reader a question mark. */
+		GuiHelper::drawSecondaryText("%s %.3f s .. %.3f s", I18n::tr("window"), windowFrom, windowTo);
 
 		drawTrackRows(tracks, carried, windowFrom, windowTo, scale);
 	}
