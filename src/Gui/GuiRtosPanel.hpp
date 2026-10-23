@@ -2726,22 +2726,19 @@ class GuiRtosPanel
 		/* Not carried by this source: say it in the row instead of drawing an
 		   empty band. "Nothing happened" and "nobody asked" are different
 		   findings, and an empty band states the first one. */
-		if (!carried)
-		{
-			ImGui::TextUnformatted(label);
-			ImGui::SameLine(labelWidth);
-			GuiHelper::drawSecondaryText("%s", I18n::tr("this source does not carry it"));
-
-			return;
-		}
 
 		/* The row's top, taken before the label is drawn: afterwards the cursor
 		   has already moved to the next line, and a band placed there would open a
 		   second line under every label. */
 		const float rowTop = ImGui::GetCursorScreenPos().y;
+		const float rowLeft = ImGui::GetCursorScreenPos().x;
 
-		ImGui::TextUnformatted(label);
-		ImGui::SameLine(0.0f, 0.0f);
+		/* The label column, which is however wide the strip's name column happened
+		   to be this round. It is narrow - one short task name - so the count is
+		   asked to fit rather than assumed to: the full phrase lives in a tooltip
+		   and the column shows the number alone when that is all that fits. */
+		const float columnRight = (aligned ? axisLeft : rowLeft + labelWidth) - 6.0f * scale;
+		const float columnWidth = columnRight - rowLeft;
 
 		/* One band per row, starting where the lanes start. When the strip has
 		   not drawn yet there is no axis to line up with, and the band falls back
@@ -2762,6 +2759,42 @@ class GuiRtosPanel
 		options.pixels = pixels;
 
 		const RtosTraceWindow::Result window = RtosTraceWindow::query(entries, options);
+
+		std::string full;
+
+		if (carried)
+		{
+			full = std::to_string(entries.size()) + " " + unit;
+
+			if (incomplete > 0)
+				full += ", " + std::to_string(incomplete) + " " + I18n::tr("unfinished");
+
+			if (window.untimed > 0)
+				full += ", " + std::to_string(window.untimed) + " " + I18n::tr("untimed");
+		}
+		else
+		{
+			full = I18n::tr("this source does not carry it");
+		}
+
+		std::string shown = full;
+
+		if (ImGui::CalcTextSize(shown.c_str()).x > columnWidth)
+		{
+			shown = carried ? std::to_string(entries.size()) : I18n::tr("none");
+		}
+
+		ImGui::TextUnformatted(label);
+		ImGui::SameLine(0.0f, 0.0f);
+
+		ImGui::SetCursorScreenPos(ImVec2(columnRight - ImGui::CalcTextSize(shown.c_str()).x, rowTop));
+
+		GuiHelper::drawSecondaryText("%s", shown.c_str());
+
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("%s", full.c_str());
+
+		ImGui::SameLine(0.0f, 0.0f);
 
 		const float column = width / static_cast<float>(pixels);
 
@@ -2794,21 +2827,6 @@ class GuiRtosPanel
 			draw->AddRectFilled(ImVec2(left, origin.y + 1.0f * scale), ImVec2(right, origin.y + bandHeight - 1.0f * scale), colour);
 		}
 
-		ImGui::SetCursorScreenPos(ImVec2(origin.x + width + 8.0f * scale, origin.y));
-
-		GuiHelper::drawSecondaryText("%u %s", static_cast<uint32_t>(entries.size()), unit);
-
-		if (incomplete > 0)
-		{
-			ImGui::SameLine(0.0f, 6.0f * scale);
-			ImGui::TextColored(GuiHelper::orangeLight(), "%u %s", incomplete, I18n::tr("unfinished"));
-		}
-
-		if (window.untimed > 0)
-		{
-			ImGui::SameLine(0.0f, 6.0f * scale);
-			GuiHelper::drawSecondaryText("%u %s", window.untimed, I18n::tr("untimed"));
-		}
 	}
 
 	/* One summary line: "ISR  12 intervals, 1 never finished". */

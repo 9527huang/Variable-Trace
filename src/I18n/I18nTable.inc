@@ -605,6 +605,7 @@ static const Entry table[] = {
 	{"min:", "最小:"},
 	{"name:", "名称:"},
 	{"no target time · %s", "没有目标时间 · %s"},
+	{"none", "—"},
 	{"normal", "普通"},
 	{"not a valid project file", "不是有效的工程文件"},
 	{"not in the last %.0f s", "最近 %.0f 秒内没跑过"},

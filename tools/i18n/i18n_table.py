@@ -935,6 +935,7 @@ EXTRA = {
     "%s · %u events": "%s · %u 个事件",
     "switches": "次切换",
     "this source does not carry it": "这份源不提供",
+    "none": "—",
     "window": "时间窗",
     "untimed": "条无时间",
     "No event here carries a target time, so there is nothing to place on an axis.":
