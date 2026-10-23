@@ -1488,6 +1488,30 @@ void ViewerDataHandler::dataHandler()
 							said = false;
 					}
 
+					/* Asked for, running, and no round has ever been scheduled.
+					   That is not "the target is quiet": a round has to fit
+					   inside one sample period, and on a slow link - a low probe
+					   speed, a big variable list - it never does. Saying so is
+					   the difference between a view that is waiting and a view
+					   that will never fill, and the fix is in the settings the
+					   reader can change. */
+					if (rtosEnabled.load(std::memory_order_relaxed) && rtosSampler != nullptr && rtosLastRoundAt < 0.0 &&
+					    period > 5.0)
+					{
+						static bool saidNoSlot = false;
+
+						if (!saidNoSlot)
+						{
+							const double periodMs = std::chrono::duration<double, std::milli>(sampleInterval).count();
+
+							logger->warn("The task view has not had a slot yet: a round has to fit inside {:.1f} ms of sampling. "
+							             "Lower the sample rate or raise the probe speed.",
+							             periodMs);
+
+							saidNoSlot = true;
+						}
+					}
+
 					metricsElapsedNs.store(nanosecondsBetween(start, Clock::now()), std::memory_order_relaxed);
 
 					/* filter sampling frequency */
