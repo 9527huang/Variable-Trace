@@ -2881,7 +2881,15 @@ class GuiRtosPanel
 
 		if (carried)
 		{
-			full = std::to_string(entries.size()) + " " + unit;
+			/* The window's own count, not the session's.
+			   
+			   The number sits beside a band that draws one stretch of time, and a
+			   count taken over everything reads as that stretch's. It was the
+			   session's: a strip showing five seconds of a session that held
+			   thirty-four said 1694 intervals where the five seconds held five
+			   hundred, and anyone comparing the two numbers would conclude the
+			   target interrupts itself three times faster than it does. */
+			full = std::to_string(window.matched) + " " + unit;
 
 			if (incomplete > 0)
 				full += ", " + std::to_string(incomplete) + " " + I18n::tr("unfinished");
@@ -3331,7 +3339,23 @@ class GuiRtosPanel
 		ImGui::BeginChild("##rtosFaultDetail", ImVec2(0.0f, available), false);
 
 		const RtosNormalizedEvent& chosen = *faults[static_cast<size_t>(selected)];
-		const RtosFaultReport report = decodeFault(chosen.event.subject.rawHandle, chosen.event.arg0, chosen.event.arg1);
+
+		/* Legacy encodings (the reference implementation in `example/rtec2_port`)
+		   still send class, flags, CFSR and PC as payload; this firmware sends the
+		   faulting address as four bytes. Both are read here so that a recording
+		   made with either decodes; which one it is, the length says. */
+		bool hasAddress = false;
+		uint32_t address = 0;
+
+		if (chosen.event.payloadBytes == 4)
+		{
+			hasAddress = true;
+			address = static_cast<uint32_t>(chosen.event.payload[0]) | (static_cast<uint32_t>(chosen.event.payload[1]) << 8) |
+			          (static_cast<uint32_t>(chosen.event.payload[2]) << 16) | (static_cast<uint32_t>(chosen.event.payload[3]) << 24);
+		}
+
+		const RtosFaultReport report =
+		    decodeFault(chosen.event.subject.rawHandle, chosen.event.arg0, chosen.event.arg1, hasAddress, address);
 
 		GuiHelper::drawSecondaryText("CFSR 0x%08X   PC 0x%08X   LR 0x%08X", report.cfsr, report.pc, report.lr);
 

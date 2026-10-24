@@ -86,6 +86,28 @@ namespace mcp
 			}
 		}
 
+		/* The newest fault, as four numbers. A recording tool's job is not to
+		   interpret, but a fault that can only be read off a panel is a fault
+		   nobody can assert about - and "did the address arrive" is exactly the
+		   question a firmware change has to answer. */
+		Json lastFault = Json::object();
+
+		for (const RtosNormalizedEvent& event : model->trace()->events())
+		{
+			if (event.event.type != RtosTraceEventType::Fault)
+				continue;
+
+			lastFault = Json::object({{"cfsr", event.event.subject.rawHandle},
+			                          {"pc", event.event.arg0},
+			                          {"lr", event.event.arg1},
+			                          {"payload_bytes", event.event.payloadBytes},
+			                          {"address", event.event.payloadBytes >= 4 ? (static_cast<uint32_t>(event.event.payload[0]) |
+			                                                                       (static_cast<uint32_t>(event.event.payload[1]) << 8) |
+			                                                                       (static_cast<uint32_t>(event.event.payload[2]) << 16) |
+			                                                                       (static_cast<uint32_t>(event.event.payload[3]) << 24))
+			                                                                    : 0}});
+		}
+
 		std::map<std::string, uint32_t> byType;
 
 		for (const RtosNormalizedEvent& event : model->trace()->events())
@@ -117,6 +139,7 @@ namespace mcp
 		                     {"source", model->trace()->sourceName()},
 		                     {"events", static_cast<uint32_t>(model->trace()->eventCount())},
 		                     {"by_type", types},
+		                     {"last_fault", lastFault},
 		                     {"first_seconds", firstSeconds},
 		                     {"last_seconds", lastSeconds},
 		                     {"untimed", untimed},

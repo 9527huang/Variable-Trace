@@ -42,13 +42,15 @@ std::string RtosFaultReport::summary() const
 	return lines.front().meaning;
 }
 
-RtosFaultReport decodeFault(uint32_t cfsr, uint32_t pc, uint32_t lr)
+RtosFaultReport decodeFault(uint32_t cfsr, uint32_t pc, uint32_t lr, bool hasAddress, uint32_t address)
 {
 	RtosFaultReport report;
 
 	report.cfsr = cfsr;
 	report.pc = pc;
 	report.lr = lr;
+	report.hasAddress = hasAddress;
+	report.address = address;
 
 	const uint32_t mmfsr = cfsr & mmfsrBits;
 	const uint32_t bfsr = (cfsr & bfsrBits) >> 8;
@@ -124,9 +126,15 @@ RtosFaultReport decodeFault(uint32_t cfsr, uint32_t pc, uint32_t lr)
 	   before, which looks like an address and is not one. */
 	if (bit(bfsr, 7) || bit(mmfsr, 7))
 	{
-		/* The firmware sends only the three values it read, so the address is
-		   not among them yet; say so rather than inventing one. */
-		report.lines.push_back(line("BFARVALID", "the faulting address was captured by the target, but this build does not carry it in the event"));
+		/* The valid bit says the register holds a real address. Whether the
+		   event carried it is a second question - an older firmware sends three
+		   values and not the fourth - and the two answers read differently on
+		   purpose: one gives an address to look up, the other says to look
+		   somewhere else. */
+		if (report.hasAddress)
+			report.lines.push_back(line("BFARVALID", "the access was to " + addressText(report.address)));
+		else
+			report.lines.push_back(line("BFARVALID", "the target captured the faulting address, but this event does not carry it"));
 	}
 
 	if (report.lines.empty() && cfsr != 0)

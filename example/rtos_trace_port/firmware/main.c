@@ -292,8 +292,19 @@ static void rep_task(void *arg)
     (void)arg;
     for (;;) {
         if (g_fault_demo == 0xC0DEu) {
+            /* A branch to nothing: INVSTATE, no faulting address. */
             g_fault_demo = 0u;
             ((void (*)(void))0)();
+        } else if (g_fault_demo == 0xBAD0u) {
+            /* A read past the end of RAM. A read, not a write: the write goes
+               into the store buffer and comes back as IMPRECISERR, which by the
+               architecture's own rules carries no faulting address. Only a
+               precise fault sets BFARVALID, and only then is there a fourth
+               number to see. 0x2000FFF0 is outside this part's 20 KB. */
+            volatile uint32_t sink = *(volatile uint32_t *)0x2000FFF0u;
+            (void)sink;
+
+            g_fault_demo = 0u;
         }
 
         for (i = 0; i < HWM_N; i++) {
@@ -407,11 +418,25 @@ void HardFault_Handler(void)
     __asm volatile ("MRS %0, msp" : "=r" (msp));
 
     const uint32_t cfsr = *(volatile uint32_t *)0xE000ED28u;
+    const uint32_t mmfar = *(volatile uint32_t *)0xE000ED34u;
+    const uint32_t bfar = *(volatile uint32_t *)0xE000ED38u;
+
+    /* The address is only an address when its valid bit is set. The registers
+       keep whatever they held before otherwise, and a stale value looks exactly
+       like a faulting one - so a wrong address is worse than none. bit 7 of
+       CFSR is MMARVALID, bit 15 is BFARVALID. */
+    uint32_t faultAddress = 0;
+
+    if ((cfsr & (1u << 15)) != 0u) {
+        faultAddress = bfar;
+    } else if ((cfsr & (1u << 7)) != 0u) {
+        faultAddress = mmfar;
+    }
 
     /* The frame the hardware pushed: r0, r1, r2, r3, r12, lr, pc, xpsr. */
     const volatile uint32_t *frame = ((excReturn & 0x4u) != 0u) ? (const volatile uint32_t *)psp : (const volatile uint32_t *)msp;
 
-    vtrace_rtec2_fault(cfsr, frame[6], frame[5]);
+    vtrace_rtec2_fault(cfsr, frame[6], frame[5], faultAddress);
 
     for (;;) {
     }

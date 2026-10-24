@@ -57,9 +57,14 @@ void vtrace_rtec2_start_isr_source(void);
 /* The body of that timer's handler. Called from TIM2_IRQHandler. */
 void vtrace_rtec2_isr_tick(void);
 
-/* CFSR, the stacked PC and the stacked LR, so that a crash arrives with the
-   three numbers somebody will ask for first. */
-void vtrace_rtec2_fault(uint32_t cfsr, uint32_t pc, uint32_t lr);
+/* CFSR, the stacked PC, the stacked LR and the faulting address.
+ *
+ * The address is the fourth question and the one that usually answers the
+ * others: "an access hit an address that does not answer" without saying which
+ * address stops at the diagnosis. Pass 0 in `faultAddress` when CFSR's valid bit
+ * is clear - the register then holds whatever was there before, which looks like
+ * an address and is not one. */
+void vtrace_rtec2_fault(uint32_t cfsr, uint32_t pc, uint32_t lr, uint32_t faultAddress);
 
 /* `type` is a wire type: 0x22 wait begin, 0x23 wait end, 0x24 signal. */
 void vtrace_rtec2_sync(uint8_t type, uint32_t object, uint32_t task);

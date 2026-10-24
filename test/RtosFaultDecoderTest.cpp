@@ -73,3 +73,30 @@ TEST(RtosFaultDecoderTest, AnUnnamedBitIsReportedWithTheRegisterValue)
 	EXPECT_EQ("CFSR", report.lines.front().code);
 	EXPECT_NE(std::string::npos, report.lines.front().meaning.find("0x00200000"));
 }
+
+TEST(RtosFaultDecoderTest, AnAddressIsPrintedWhenTheEventCarriedOne)
+{
+	/* BFARVALID set and four bytes of address in the payload: this is the whole
+	   point of the fourth value. "An access hit an address that does not answer"
+	   is a diagnosis; "the access was to 0x2000FFF0" is an answer. */
+	const RtosFaultReport report = decodeFault(0x00008200u, 0x08001A2Cu, 0, true, 0x2000FFF0u);
+
+	ASSERT_EQ(2u, report.lines.size());
+	EXPECT_EQ("BFARVALID", report.lines[1].code);
+	EXPECT_NE(std::string::npos, report.lines[1].meaning.find("0x2000FFF0"));
+	EXPECT_TRUE(report.hasAddress);
+	EXPECT_EQ(0x2000FFF0u, report.address);
+}
+
+TEST(RtosFaultDecoderTest, AValidBitWithoutAnAddressSaysWhichIsWhich)
+{
+	/* The target captured it but the event does not carry it - an older
+	   firmware sends three values. That is not the same as "no fault address";
+	   the reader is told to look elsewhere rather than given a made up one. */
+	const RtosFaultReport report = decodeFault(0x00008200u, 0x08001A2Cu, 0, false, 0);
+
+	ASSERT_EQ(2u, report.lines.size());
+	EXPECT_EQ("BFARVALID", report.lines[1].code);
+	EXPECT_NE(std::string::npos, report.lines[1].meaning.find("does not carry it"));
+	EXPECT_FALSE(report.hasAddress);
+}

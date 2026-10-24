@@ -196,17 +196,26 @@ void vtrace_rtec2_isr_tick(void)
 	(void)rtec2_writer_emit(&vtraceWriter, &enter);
 }
 
-void vtrace_rtec2_fault(uint32_t cfsr, uint32_t pc, uint32_t lr)
+void vtrace_rtec2_fault(uint32_t cfsr, uint32_t pc, uint32_t lr, uint32_t faultAddress)
 {
 	/* No time: the clock is read through the kernel's tick, and a fault may be
 	   one of the reasons the kernel is not going to give one. The event says
 	   what happened and the reader places it at the last thing it knew. */
+	uint8_t payload[4];
+
+	payload[0] = (uint8_t)(faultAddress & 0xFFu);
+	payload[1] = (uint8_t)((faultAddress >> 8) & 0xFFu);
+	payload[2] = (uint8_t)((faultAddress >> 16) & 0xFFu);
+	payload[3] = (uint8_t)((faultAddress >> 24) & 0xFFu);
+
 	rtec2_event event = {0};
 
 	event.type = VTRACE_TYPE_FAULT;
 	event.subject = cfsr;
 	event.arg0 = pc;
 	event.arg1 = lr;
+	event.payload = payload;
+	event.payloadBytes = 4;
 
 	(void)rtec2_writer_emit(&vtraceWriter, &event);
 }

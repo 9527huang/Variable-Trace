@@ -50,6 +50,13 @@ struct RtosFaultReport
 	uint32_t pc = 0;
 	uint32_t lr = 0;
 
+	/* The address the fault was about, when the target captured one and the
+	   event carried it. `0` with `hasAddress` false means "not known", which is
+	   different from "known to be zero" - the second is a null pointer
+	   dereference and the first is a target that did not say. */
+	bool hasAddress = false;
+	uint32_t address = 0;
+
 	/* Zero when CFSR says nothing at all, which is itself worth saying: the
 	   fault happened but the status register was cleared, so only the PC is
 	   evidence. */
@@ -64,7 +71,10 @@ struct RtosFaultReport
 	std::string summary() const;
 };
 
-/* `cfsr` is the register, `pc` and `lr` the stacked values the handler read. */
-RtosFaultReport decodeFault(uint32_t cfsr, uint32_t pc, uint32_t lr);
+/* `cfsr` is the register, `pc` and `lr` the stacked values the handler read, and
+   `address` the faulting address when the event carried one - the firmware only
+   fills it when CFSR says the register holds a real address, so a target that
+   did not capture one passes nothing and the report says so. */
+RtosFaultReport decodeFault(uint32_t cfsr, uint32_t pc, uint32_t lr, bool hasAddress = false, uint32_t address = 0);
 
 #endif
