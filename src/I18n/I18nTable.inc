@@ -720,4 +720,9 @@ static const Entry table[] = {
 	{"window", "时间窗"},
 	{"write", "写入"},
 	{"write limits:", "写入限制:"},
+	{"· %u batches were abandoned mid-write and were read again on the next round", "· %u 个批次读到一半被丢弃，下一轮重读，但那一轮的时间没有账"},
+	{"· %u of the %u tasks the window knows about were estimated rather than measured", "· 有 %u 个任务是估出来的，窗口一共见过 %u 个任务"},
+	{"· %u records were written and never read, so interrupt intervals are missing their other end", "· 写了 %u 条记录但没有读到，中断区间因此缺了另一端"},
+	{"· %u rounds did not hold together, and their stretch has no task state", "· %u 个回合没能自洽，那几段时间里没有任何任务状态"},
+	{"· nothing in this session's counters explains it: the rounds are probably further apart than the states last", "· 本次会话的计数解释不了它：大概是回合之间的间隔比状态持续的时间还长"},
 };

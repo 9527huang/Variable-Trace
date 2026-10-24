@@ -975,6 +975,18 @@ EXTRA = {
     # 旧版记录里没有切换记录，事件列表要说清楚这是"没记"而不是"没切"。
     "This recording was written before switch records were kept in it, so there is nothing to list. Recording a new one writes them.":
         "这份记录写在开始保留切换记录之前，所以没有可列的内容。录一份新的就会带上。",
+
+    # 无账解释：数字在句子中间，所以按原因分句，由界面取词。
+    "· %u records were written and never read, so interrupt intervals are missing their other end":
+        "· 写了 %u 条记录但没有读到，中断区间因此缺了另一端",
+    "· %u rounds did not hold together, and their stretch has no task state":
+        "· %u 个回合没能自洽，那几段时间里没有任何任务状态",
+    "· %u batches were abandoned mid-write and were read again on the next round":
+        "· %u 个批次读到一半被丢弃，下一轮重读，但那一轮的时间没有账",
+    "· %u of the %u tasks the window knows about were estimated rather than measured":
+        "· 有 %u 个任务是估出来的，窗口一共见过 %u 个任务",
+    "· nothing in this session's counters explains it: the rounds are probably further apart than the states last":
+        "· 本次会话的计数解释不了它：大概是回合之间的间隔比状态持续的时间还长",
 }
 
 

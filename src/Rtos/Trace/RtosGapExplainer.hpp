@@ -44,14 +44,41 @@ struct RtosGapEvidence
 	uint32_t tasksKnown = 0;
 };
 
+/*
+ * Which counter a hint is about.
+ *
+ * The panel has to say these sentences in the reader's language, and a finished
+ * English sentence cannot be translated by looking it up - each one carries a
+ * number in the middle. So the cause travels as a value and the panel owns the
+ * words: one switch there, one entry per cause in the translation table, and a
+ * language the table does not cover still falls back to the English below.
+ */
+enum class RtosGapCause
+{
+	RecordsMissed,
+	RoundsRejected,
+	TornBatches,
+	TasksEstimated,
+	Unexplained,
+};
+
 struct RtosGapHint
 {
-	/* One sentence, already finished: the panel prints it and nothing else. */
+	/* What the hint is about. Decides which sentence the panel prints. */
+	RtosGapCause cause = RtosGapCause::Unexplained;
+
+	/* The sentence in English, finished. The panel uses it when the reader has
+	   not asked for another language, and the log uses it always. */
 	std::string sentence;
 
 	/* The number the sentence is about, so a caller can sort or filter without
 	   parsing the text. */
 	uint32_t count = 0;
+
+	/* The whole a count is part of. Only the estimation hint has one: "5 of 10
+	   tasks were estimated" needs both numbers to mean anything. Zero
+	   elsewhere. */
+	uint32_t total = 0;
 };
 
 /* Threshold under which the gap is not worth explaining, in percent. */

@@ -4,12 +4,14 @@
 
 namespace
 {
-	RtosGapHint hint(std::string sentence, uint32_t count)
+	RtosGapHint hint(RtosGapCause cause, std::string sentence, uint32_t count, uint32_t total = 0)
 	{
 		RtosGapHint result;
 
+		result.cause = cause;
 		result.sentence = std::move(sentence);
 		result.count = count;
+		result.total = total;
 
 		return result;
 	}
@@ -32,21 +34,24 @@ std::vector<RtosGapHint> explainGap(const RtosGapEvidence& evidence)
 	   which is why they are named rather than guessed. */
 	if (evidence.eventsMissed > 0)
 	{
-		hints.push_back(hint("this many records were written and never read, so interrupt intervals are missing their other end: " +
+		hints.push_back(hint(RtosGapCause::RecordsMissed,
+		                     "this many records were written and never read, so interrupt intervals are missing their other end: " +
 		                         std::to_string(evidence.eventsMissed),
 		                     evidence.eventsMissed));
 	}
 
 	if (evidence.roundsRejected > 0)
 	{
-		hints.push_back(hint("this many rounds did not hold together, and their stretch has no task state: " +
+		hints.push_back(hint(RtosGapCause::RoundsRejected,
+		                     "this many rounds did not hold together, and their stretch has no task state: " +
 		                         std::to_string(evidence.roundsRejected),
 		                     evidence.roundsRejected));
 	}
 
 	if (evidence.tornBatches > 0)
 	{
-		hints.push_back(hint("this many batches were abandoned mid-write and read again on the next round: " + std::to_string(evidence.tornBatches),
+		hints.push_back(hint(RtosGapCause::TornBatches,
+		                     "this many batches were abandoned mid-write and read again on the next round: " + std::to_string(evidence.tornBatches),
 		                     evidence.tornBatches));
 	}
 
@@ -55,9 +60,10 @@ std::vector<RtosGapHint> explainGap(const RtosGapEvidence& evidence)
 	   when it is a large share of what the window knows about. */
 	if (evidence.tasksEstimated > 0 && evidence.tasksKnown > 0 && evidence.tasksEstimated * 3u >= evidence.tasksKnown)
 	{
-		hints.push_back(hint("this many of the " + std::to_string(evidence.tasksKnown) + " known tasks were estimated rather than measured: " +
+		hints.push_back(hint(RtosGapCause::TasksEstimated,
+		                     "this many of the " + std::to_string(evidence.tasksKnown) + " known tasks were estimated rather than measured: " +
 		                         std::to_string(evidence.tasksEstimated),
-		                     evidence.tasksEstimated));
+		                     evidence.tasksEstimated, evidence.tasksKnown));
 	}
 
 	/* Nothing in the evidence explains it. Saying that is more useful than
@@ -66,7 +72,8 @@ std::vector<RtosGapHint> explainGap(const RtosGapEvidence& evidence)
 	   the states to be observed. */
 	if (hints.empty())
 	{
-		hints.push_back(hint("nothing in this session's counters explains it - the rounds are probably further apart than the states last", 0));
+		hints.push_back(hint(RtosGapCause::Unexplained,
+		                     "nothing in this session's counters explains it - the rounds are probably further apart than the states last", 0));
 	}
 
 	std::stable_sort(hints.begin(), hints.end(), [](const RtosGapHint& left, const RtosGapHint& right)

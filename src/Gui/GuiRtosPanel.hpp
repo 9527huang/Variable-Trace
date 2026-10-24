@@ -2670,6 +2670,50 @@ class GuiRtosPanel
 	 * a target that had none, and the difference is the whole reason the
 	 * capability bits exist.
 	 */
+	/*
+	 * One sentence of the gap explanation, in the reader's language.
+	 *
+	 * The number sits in the middle of the sentence, so the finished English
+	 * one cannot be looked up in the table - the cause picks which sentence, and
+	 * the panel supplies the words. The explainer's own sentence stays as the
+	 * record of what it concluded, and as what a language the table does not
+	 * cover falls back to.
+	 */
+	static void drawGapHint(const RtosGapHint& hint)
+	{
+		switch (hint.cause)
+		{
+			case RtosGapCause::RecordsMissed:
+				GuiHelper::drawSecondaryTextWrapped(I18n::tr("· %u records were written and never read, so interrupt intervals are missing their other end"),
+				                                    hint.count);
+
+				return;
+
+			case RtosGapCause::RoundsRejected:
+				GuiHelper::drawSecondaryTextWrapped(I18n::tr("· %u rounds did not hold together, and their stretch has no task state"), hint.count);
+
+				return;
+
+			case RtosGapCause::TornBatches:
+				GuiHelper::drawSecondaryTextWrapped(I18n::tr("· %u batches were abandoned mid-write and were read again on the next round"), hint.count);
+
+				return;
+
+			case RtosGapCause::TasksEstimated:
+				GuiHelper::drawSecondaryTextWrapped(I18n::tr("· %u of the %u tasks the window knows about were estimated rather than measured"), hint.count,
+				                                    hint.total);
+
+				return;
+
+			case RtosGapCause::Unexplained:
+			default:
+				GuiHelper::drawSecondaryTextWrapped(
+				    I18n::tr("· nothing in this session's counters explains it: the rounds are probably further apart than the states last"));
+
+				return;
+		}
+	}
+
 	static void drawTracks(const RtosModel& model)
 	{
 		const float scale = GuiHelper::contentScale;
@@ -2819,7 +2863,7 @@ class GuiRtosPanel
 				}
 
 				for (const RtosGapHint& hint : explainGap(evidence))
-					GuiHelper::drawSecondaryTextWrapped("· %s", hint.sentence.c_str());
+					drawGapHint(hint);
 			}
 		}
 	}
