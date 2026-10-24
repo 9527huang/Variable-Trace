@@ -119,6 +119,43 @@ class Rtec2Adapter final : public IRtosTraceSource
 		return decodedCount;
 	}
 
+	/* What the windows asked for, and how many were asked for at all. Compared
+	   with `decodedRecords` this says whether the reader is being given little
+	   to read or is failing to read what it is given - the two look identical
+	   from the event count alone and want opposite fixes. */
+	uint32_t requestedSlots() const
+	{
+		return requestedCount;
+	}
+
+	uint32_t windowCalls() const
+	{
+		return windowCount;
+	}
+
+	/* How many times the reader entered at all, and how many of those never got
+	   as far as a window. Without these three numbers a reader that is not
+	   being called looks exactly like one that is called and finds nothing. */
+	void noteRound()
+	{
+		roundCount++;
+	}
+
+	void noteControlFailure()
+	{
+		controlFailures++;
+	}
+
+	uint32_t rounds() const
+	{
+		return roundCount;
+	}
+
+	uint32_t controlFailuresSeen() const
+	{
+		return controlFailures;
+	}
+
 	uint32_t tornBatches() const
 	{
 		return tornCount;
@@ -140,6 +177,10 @@ class Rtec2Adapter final : public IRtosTraceSource
 
 	uint32_t tornCount = 0;
 	uint32_t decodedCount = 0;
+	mutable uint32_t requestedCount = 0;
+	mutable uint32_t windowCount = 0;
+	uint32_t roundCount = 0;
+	uint32_t controlFailures = 0;
 	uint32_t unknownTypeCount = 0;
 	uint32_t restartCount = 0;
 

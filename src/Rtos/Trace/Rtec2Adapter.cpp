@@ -68,6 +68,8 @@ Rtec2Adapter::Window Rtec2Adapter::nextWindow(uint32_t budget) const
 {
 	Window window;
 
+	windowCount++;
+
 	if (!haveBlock || budget == 0)
 		return window;
 
@@ -85,6 +87,8 @@ Rtec2Adapter::Window Rtec2Adapter::nextWindow(uint32_t budget) const
 	   together would be a caller that can get the stitch wrong. */
 	if (window.from + window.slots > block.capacity)
 		window.slots = block.capacity - window.from;
+
+	requestedCount += window.slots;
 
 	return window;
 }

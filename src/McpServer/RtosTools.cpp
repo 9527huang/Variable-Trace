@@ -78,6 +78,10 @@ namespace mcp
 			                     {"cursor", adapter->cursorNow()},
 			                     {"torn_batches", adapter->tornBatches()},
 			                     {"decoded", adapter->decodedRecords()},
+			                     {"requested", adapter->requestedSlots()},
+			                     {"window_calls", adapter->windowCalls()},
+			                     {"rounds", adapter->rounds()},
+			                     {"control_failures", adapter->controlFailuresSeen()},
 			                     {"overwritten", adapter->overwritten()}});
 		}
 

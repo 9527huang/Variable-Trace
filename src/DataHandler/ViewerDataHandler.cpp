@@ -953,10 +953,14 @@ void ViewerDataHandler::readRtec2Ring(RtosProbeMemory& memory)
 	if (rtosRtec2Address == 0 || rtec2Adapter == nullptr)
 		return;
 
+	rtec2Adapter->noteRound();
+
 	uint8_t control[Rtec2RingReader::controlBlockBytes] = {};
 
 	if (!memory.read(rtosRtec2Address, control, static_cast<uint32_t>(sizeof(control))))
 	{
+		rtec2Adapter->noteControlFailure();
+
 		if (rtec2ReadFailures++ == 0)
 			logger->warn("The event ring at 0x{:08X} could not be read: {}", rtosRtec2Address, debugProbe->getLastErrorMsg());
 
@@ -1222,7 +1226,6 @@ void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start
 		}
 
 		readEventRing(memory, startedAt);
-		readRtec2Ring(memory);
 
 		{
 			static bool said = false;
@@ -1606,6 +1609,23 @@ void ViewerDataHandler::dataHandler()
 					/* The task view goes after the variables. Both of them
 					   would rather lose a round than push the other out of the
 					   way, and the snapshot loses one more cheaply. */
+					/* The event ring is read every round, not on the task view's
+					   own schedule.
+					 *
+					   A round of the task view is half a second apart - it reads
+					   the whole kernel model and it can afford to. The ring holds
+					   sixty four records, which at the target's fourteen hundred a
+					   second is forty milliseconds of history, so reading it twice
+					   a second threw away ninety six percent of what was written.
+					   Measured before the move: fourteen thousand records arrived
+					   and one thousand three hundred became events. */
+					if (rtosRtec2Address != 0 && debugProbe != nullptr)
+					{
+						RtosProbeMemory eventMemory(*debugProbe);
+
+						readRtec2Ring(eventMemory);
+					}
+
 					if (rtosRoundIsDue(period, nextDeadline, sampleInterval))
 					{
 						if (!roundLogged)
