@@ -2,6 +2,7 @@
 #define _RTOSISRATTRIBUTION_HPP
 
 #include <cstdint>
+#include <map>
 #include <vector>
 
 #include "RtosTimeline.hpp"
@@ -49,5 +50,9 @@ struct RtosIsrAttribution
  * filters and sorts once. `isr` is the projection's ISR track.
  */
 RtosIsrAttribution attributeIsr(const std::vector<RtosTimeline::StateInterval>& running, const std::vector<RtosTrackEntry>& isr);
+
+/* The hits, counted per task. The table's column asks exactly this, and a count
+   is what an ordering can be built on - a list of moments cannot. */
+std::map<uint32_t, uint32_t> countIsrByTask(const RtosIsrAttribution& attribution);
 
 #endif

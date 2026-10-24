@@ -95,3 +95,29 @@ TEST(RtosIsrAttributionTest, DepthSurvivesTheAttribution)
 	EXPECT_EQ(1, attribution.hits[0].depth);
 	EXPECT_EQ(2, attribution.hits[1].depth);
 }
+
+TEST(RtosIsrAttributionTest, CountingPerTaskIsWhatTheTableColumnNeeds)
+{
+	const std::vector<RtosTimeline::StateInterval> running = {run(0x1000, 1.0, 2.0), run(0x1040, 2.0, 5.0)};
+	const std::vector<RtosTrackEntry> isr = {interrupt(1.1, 1.101), interrupt(1.2, 1.201), interrupt(3.0, 3.001)};
+
+	const std::map<uint32_t, uint32_t> counts = countIsrByTask(attributeIsr(running, isr));
+
+	ASSERT_EQ(2u, counts.size());
+	EXPECT_EQ(2u, counts.at(0x1000));
+	EXPECT_EQ(1u, counts.at(0x1040));
+}
+
+TEST(RtosIsrAttributionTest, ATaskThatWasNeverInterruptedIsAbsentNotZero)
+{
+	/* The column distinguishes the two: absent means the task was there and no
+	   interrupt landed on it, which is the good answer; the row shows a number
+	   only when somebody counted. */
+	const std::vector<RtosTimeline::StateInterval> running = {run(0x1000, 1.0, 2.0)};
+	const std::vector<RtosTrackEntry> isr = {interrupt(1.1, 1.101)};
+
+	const std::map<uint32_t, uint32_t> counts = countIsrByTask(attributeIsr(running, isr));
+
+	EXPECT_EQ(1u, counts.size());
+	EXPECT_EQ(counts.end(), counts.find(0x9999));
+}

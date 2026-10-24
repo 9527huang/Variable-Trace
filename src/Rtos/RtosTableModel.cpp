@@ -185,6 +185,9 @@ namespace
 			case RtosTaskColumn::CpuLoad:
 				return row.hasCpuShare;
 
+			case RtosTaskColumn::Interrupted:
+				return row.hasIsrCount;
+
 			case RtosTaskColumn::Address:
 			case RtosTaskColumn::State:
 			case RtosTaskColumn::WaitingOn:
@@ -208,6 +211,12 @@ namespace
 				   question it gets asked. A row with no share never reaches this:
 				   it is put in the group that trails either way. */
 				return compareFractions(left.cpuSharePercent, right.cpuSharePercent);
+
+			case RtosTaskColumn::Interrupted:
+				/* Most interrupted first when sorted downwards, which is the
+				   question the column gets asked. A row nobody counted trails
+				   either way - it never reaches this. */
+				return signOf(left.isrCount, right.isrCount);
 
 			case RtosTaskColumn::Priority:
 				/* The rank, not the raw number: two kernels number their
@@ -296,6 +305,17 @@ std::vector<RtosTaskRow> RtosTableModel::taskRows(const std::vector<RtosTaskRost
 			row.stackBytes = (task->hasStack && task->stackTop > task->stackBase) ? task->stackTop - task->stackBase : 0;
 			row.hasCpuShare = task->hasCpuShare;
 			row.cpuSharePercent = task->cpuSharePercent;
+
+			/* Only when somebody counted. A source without interrupts leaves the
+			   flag clear and the column shows a dash, which is the difference
+			   between "nobody counted" and "it was interrupted no times". */
+			if (query.isrByTask != nullptr)
+			{
+				const auto counted = query.isrByTask->find(task->tcbAddress);
+
+				row.hasIsrCount = true;
+				row.isrCount = counted == query.isrByTask->end() ? 0 : counted->second;
+			}
 			row.hasStackWatermark = task->hasStackWatermark;
 			row.stackFreeBytes = task->stackFreeBytes;
 			row.stackWatermarkStackBytes = task->stackWatermarkStackBytes;

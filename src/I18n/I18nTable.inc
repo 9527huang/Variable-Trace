@@ -214,6 +214,7 @@ static const Entry table[] = {
 	{"Info", "提示"},
 	{"Interpret integer numbers as fixed point variables.", "把整数按定点数解释。"},
 	{"Interpretation", "解释"},
+	{"Interrupted", "被打断"},
 	{"It is highly recommended to switch to the C2000 parser", "强烈建议切换到 C2000 解析器"},
 	{"It is waiting on nothing, so nothing is blocking it.", "它没有在等任何东西，也就没有谁在挡它。"},
 	{"It waits on %s, which the kernel's registry does not list, so the chain stops at that name.", "它在等 %s，这个名字不在内核的登记表里，所以链到这里就断了。"},

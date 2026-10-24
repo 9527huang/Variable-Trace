@@ -2,6 +2,7 @@
 #define _RTOSTABLEMODEL_HPP
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,11 @@ enum class RtosTaskColumn
 
 	/* Share of the time counted across all tasks. */
 	CpuLoad,
+
+	/* How many interrupts landed on this task. A count rather than a rate: the
+	   column answers "who keeps being cut off", and the window it was counted
+	   over is the one on screen. */
+	Interrupted,
 
 
 	/* Last, because the panel draws its headers by casting the column index
@@ -104,6 +110,15 @@ struct RtosTaskTableQuery
 	/* Only the rows the stack alert is on. Set from the summary line, where the
 	   count is a thing to click rather than a number to read and then type. */
 	bool onlyStackAlerts = false;
+
+	/*
+	 * Interrupts per task, keyed by TCB address.
+	 *
+	 * Passed in rather than worked out here: the answer needs the strip's
+	 * running intervals, which the table does not have and should not. Null
+	 * means nobody counted, and every row then shows a dash instead of a zero.
+	 */
+	const std::map<uint32_t, uint32_t>* isrByTask = nullptr;
 
 	RtosTaskColumn sortColumn = RtosTaskColumn::Name;
 	bool descending = false;
@@ -211,6 +226,14 @@ struct RtosTaskRow
 	   has one - which is a gap rather than a task that used no time. */
 	bool hasCpuShare = false;
 	double cpuSharePercent = 0.0;
+
+	/* Interrupts that landed on this task while it was running. `hasIsrCount`
+	   is false when the source carries no interrupts at all - an eight byte
+	   ring, or a target whose firmware has none - and that is a dash, not a
+	   zero: "nobody counted" and "it was interrupted no times" are different
+	   findings and the second is worth acting on. */
+	bool hasIsrCount = false;
+	uint32_t isrCount = 0;
 
 	/* The name of the object it is waiting on, and empty when it is waiting on
 	   none. Unlike the fields above, an empty one here is not missing data -

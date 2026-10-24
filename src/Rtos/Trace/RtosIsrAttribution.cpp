@@ -56,3 +56,13 @@ RtosIsrAttribution attributeIsr(const std::vector<RtosTimeline::StateInterval>& 
 
 	return result;
 }
+
+std::map<uint32_t, uint32_t> countIsrByTask(const RtosIsrAttribution& attribution)
+{
+	std::map<uint32_t, uint32_t> counts;
+
+	for (const RtosIsrHit& hit : attribution.hits)
+		counts[hit.tcbAddress]++;
+
+	return counts;
+}

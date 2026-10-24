@@ -242,6 +242,18 @@ class GuiRtosPanelTimeline
 		isrTrack = entries;
 	}
 
+	/*
+	 * Interrupts per task, from the same pass that draws the marks.
+	 *
+	 * The table's column reads this rather than working the answer out again:
+	 * the strip has the running intervals, and asking for them twice a frame to
+	 * fill one column would be paying for the same answer twice.
+	 */
+	static const std::map<uint32_t, uint32_t>& isrCountsByTask()
+	{
+		return isrCounts;
+	}
+
 	static ImU32 getStateColour(RtosTaskState state)
 	{
 		return markOf(state).colour;
@@ -957,6 +969,9 @@ class GuiRtosPanelTimeline
 		 * colour is still the answer to "what was it doing", and the line is the
 		 * second answer on top of the first.
 		 */
+		if (isrTrack == nullptr || isrTrack->empty())
+			isrCounts.clear();
+
 		if (isrTrack != nullptr && !isrTrack->empty())
 		{
 			std::vector<RtosTimeline::StateInterval> running;
@@ -977,6 +992,9 @@ class GuiRtosPanelTimeline
 			});
 
 			const RtosIsrAttribution attribution = attributeIsr(running, *isrTrack);
+
+			isrCounts = countIsrByTask(attribution);
+
 			const ImU32 hitColour = ImGui::GetColorU32(ImGuiCol_Text, 0.55f);
 
 			for (const RtosIsrHit& hit : attribution.hits)
@@ -1424,6 +1442,8 @@ class GuiRtosPanelTimeline
 	 */
 	/* Borrowed from the panel; null until it hands one over. */
 	inline static const std::vector<RtosTrackEntry>* isrTrack = nullptr;
+
+	inline static std::map<uint32_t, uint32_t> isrCounts;
 
 	inline static const ImU32 runningColour = IM_COL32(160, 224, 152, 255);
 	inline static const ImU32 readyColour = IM_COL32(250, 196, 70, 255);

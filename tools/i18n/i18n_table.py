@@ -937,6 +937,7 @@ EXTRA = {
     "this source does not carry it": "这份源不提供",
     "none": "—",
     "Faults": "故障",
+    "Interrupted": "被打断",
     "the events this session holds": "这次会话里的事件覆盖",
     "no event carries a time": "没有事件带时间",
     "The target has not faulted in this session.": "这次会话里目标没有发生故障。",

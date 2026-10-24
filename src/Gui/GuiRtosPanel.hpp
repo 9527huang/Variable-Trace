@@ -1735,6 +1735,14 @@ class GuiRtosPanel
 	 */
 	static std::vector<RtosTaskRow> currentRows(const RtosModel& model, const RtosSnapshot& snapshot, const std::vector<uint32_t>& named)
 	{
+		/* The counts come from the pass that draws the strip, which has the
+		   running intervals and already worked out where each interrupt landed.
+		   Null when there is nothing to count, so the column shows a dash rather
+		   than a zero nobody measured. */
+		const std::map<uint32_t, uint32_t>& counts = GuiRtosPanelTimeline::isrCountsByTask();
+
+		query.isrByTask = counts.empty() ? nullptr : &counts;
+
 		return RtosTableModel::taskRows(model.rosterEntries(), snapshot, query, named);
 	}
 
@@ -2130,6 +2138,11 @@ class GuiRtosPanel
 		   reader who takes the column for the machine's utilisation has read
 		   the table wrong. */
 		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::CpuLoad), ImGuiTableColumnFlags_WidthFixed, 74.0f * columnScale);
+
+		/* Beside the share of time, because the two are read together: a task
+		   using little CPU and taking many interrupts is waiting on something;
+		   one using a lot and taking many is simply late. */
+		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::Interrupted), ImGuiTableColumnFlags_WidthFixed, 62.0f * columnScale);
 		/* Wide enough for the header, and for the longest object name the
 		   fixture has; the tooltip carries the rest. */
 		ImGui::TableSetupColumn(columnLabel(RtosTaskColumn::WaitingOn), ImGuiTableColumnFlags_WidthFixed, 90.0f * columnScale);
@@ -2270,6 +2283,16 @@ class GuiRtosPanel
 			else
 				ImGui::Text("%.1f%%", row.cpuSharePercent);
 
+			/* Interrupts that landed on this task while it was running. A dash
+			   when nobody counted, which an eight byte ring and a firmware
+			   without interrupts both are. */
+			ImGui::TableNextColumn();
+
+			if (!row.hasIsrCount)
+				ImGui::TextUnformatted(unknown());
+			else
+				ImGui::Text("%u", static_cast<unsigned>(row.isrCount));
+
 			/* Empty means it is not waiting on an object, which is a real
 			   answer rather than a missing one, so it is left blank. */
 			ImGui::TableNextColumn();
@@ -2305,6 +2328,9 @@ class GuiRtosPanel
 			case RtosTaskColumn::StackWatermark:
 				return I18n::tr("Stack used");
 
+
+			case RtosTaskColumn::Interrupted:
+				return I18n::tr("Interrupted");
 
 			case RtosTaskColumn::CpuLoad:
 				/* Not "CPU": this is the share of the measured time this task used,
