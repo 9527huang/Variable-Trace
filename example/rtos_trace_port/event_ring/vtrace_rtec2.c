@@ -57,6 +57,32 @@ static uint32_t vtrace_now_us(void)
 	return milliseconds;
 }
 
+/* The same clock, asked the way an interrupt is allowed to ask.
+ *
+ * `vtrace_now_us` calls `xTaskGetTickCount`, and this timer runs at the highest
+ * priority unless something lowers it. Calling the scheduler from above
+ * `configMAX_SYSCALL_INTERRUPT_PRIORITY` is exactly the situation FreeRTOS
+ * documents as undefined, and on this target it showed up as a tracer that ran
+ * for a few minutes and then stopped writing with the CPU still spinning in an
+ * interrupt. The kernel has a call for this context; use it. */
+static uint32_t vtrace_now_us_from_isr(void)
+{
+	const uint32_t milliseconds = (uint32_t)xTaskGetTickCountFromISR() * 1000u;
+
+	const uint32_t perMicrosecond = (uint32_t)(configCPU_CLOCK_HZ / 1000000u);
+
+	if (perMicrosecond > 0u)
+	{
+		const uint32_t demcr = *(volatile uint32_t*)0xE000EDFCu;
+		const uint32_t cyccnt = *(volatile uint32_t*)0xE0001004u;
+
+		if ((demcr & (1u << 24)) != 0u)
+			return milliseconds + ((cyccnt / perMicrosecond) % 1000u);
+	}
+
+	return milliseconds;
+}
+
 static void emit(uint8_t type, uint32_t subject, uint32_t object, uint32_t arg0, uint32_t arg1)
 {
 	rtec2_event event = {0};
@@ -139,7 +165,13 @@ void vtrace_rtec2_start_isr_source(void)
 	VTRACE_TIM2_SR = 0u;
 	VTRACE_TIM2_CR1 = 1u;
 
-	/* TIM2 is interrupt 28 on this part. */
+	/* TIM2 is interrupt 28 on this part, and its priority goes to the lowest
+	   the part has: below `configMAX_SYSCALL_INTERRUPT_PRIORITY` is the only
+	   place from which the kernel's own calls may be made, and the handler
+	   reads the tick. Leaving it at the reset value (highest) is what made the
+	   tracer stop after a few minutes. */
+	*(volatile uint8_t*)(0xE000E400u + 28u) = 0xF0u;
+
 	VTRACE_NVIC_ISER0 = (1u << 28);
 }
 
@@ -150,8 +182,18 @@ void vtrace_rtec2_isr_tick(void)
 	/* Both ends of the same interrupt, one after the other: the gap between
 	   them is the interrupt's own duration, which is what the ISR band is
 	   drawn from. */
-	vtrace_rtec2_isr_enter();
-	vtrace_rtec2_isr_exit();
+	rtec2_event enter = {0};
+
+	enter.type = VTRACE_TYPE_ISR_ENTER;
+	enter.hasTicks = 1;
+	enter.ticks = vtrace_now_us_from_isr();
+
+	(void)rtec2_writer_emit(&vtraceWriter, &enter);
+
+	enter.type = VTRACE_TYPE_ISR_EXIT;
+	enter.ticks = vtrace_now_us_from_isr();
+
+	(void)rtec2_writer_emit(&vtraceWriter, &enter);
 }
 
 void vtrace_rtec2_fault(uint32_t cfsr, uint32_t pc, uint32_t lr)

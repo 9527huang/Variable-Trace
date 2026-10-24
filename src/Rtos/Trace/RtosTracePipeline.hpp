@@ -134,6 +134,14 @@ class RtosTracePipeline
 		return traceSource == nullptr ? "none" : traceSource->name();
 	}
 
+	/* The source itself, for the diagnostics that only one carrier can answer:
+	 * the RTEC2 ring's head and its torn batches are not part of the interface
+	 * because a source that does not read a ring has neither. */
+	IRtosTraceSource* source() const
+	{
+		return traceSource.get();
+	}
+
 	uint64_t currentEpoch() const
 	{
 		return epoch;

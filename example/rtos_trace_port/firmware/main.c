@@ -303,7 +303,9 @@ int main(void)
 
     /* ISR 事件得有个中断才会发生。TIM2 每 20 毫秒一次，五十对进出每秒——
        够看出中断把谁打断了，又不至于把环塞满。 */
+#if !defined(VTRACE_RTEC2_NO_ISR) || (VTRACE_RTEC2_NO_ISR == 0)
     vtrace_rtec2_start_isr_source();
+#endif
 #endif
 
     g_q_sensor  = xQueueCreate(4, sizeof(uint32_t));

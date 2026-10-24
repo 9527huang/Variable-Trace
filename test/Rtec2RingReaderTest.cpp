@@ -239,3 +239,75 @@ TEST(Rtec2RingReaderTest, ARingShorterThanItsDescriptionIsNotRead)
 	EXPECT_FALSE(read.advanced);
 	EXPECT_EQ(0u, read.committed);
 }
+
+/*
+ * The windowed read, which is what the acquisition thread actually uses: a
+ * contiguous run starting at the cursor, instead of the whole ring.
+ *
+ * The saving is the point - 3.5 KB a round to collect five records is more time
+ * than a round has - but the behaviour has to be identical, so these check the
+ * three answers that matter: a clean run, a run that would wrap, and a buffer
+ * shorter than the records inside it.
+ */
+TEST(Rtec2RingReaderTest, AWindowDecodesOnlyTheRunItWasGiven)
+{
+	const uint32_t capacity = 8;
+	std::vector<uint8_t> window(capacity * Rtec2RingReader::slotBytes, 0);
+
+	/* Sequence 10 and 11, in the first two slots of the window. */
+	writeSlot(window.data() + 0 * Rtec2RingReader::slotBytes, 10, 0x13, 0x1000, 1000);
+	writeSlot(window.data() + 1 * Rtec2RingReader::slotBytes, 11, 0x13, 0x1040, 2000);
+
+	const Rtec2ControlBlock block = makeBlock(16, 12, 0);
+
+	const Rtec2RingReader::Read read = Rtec2RingReader::readWindow(window.data(), 2 * Rtec2RingReader::slotBytes, block, 10, 32);
+
+	EXPECT_FALSE(read.restarted);
+	EXPECT_EQ(0u, read.torn);
+	ASSERT_EQ(2u, read.records.size());
+	EXPECT_EQ(0x1000u, read.records[0].event.subject.rawHandle);
+	EXPECT_EQ(12u, read.committed);
+	EXPECT_TRUE(read.advanced);
+}
+
+TEST(Rtec2RingReaderTest, AWindowThatWouldWrapIsRefusedRatherThanReordered)
+{
+	const uint32_t capacity = 8;
+	std::vector<uint8_t> window(4 * Rtec2RingReader::slotBytes, 0);
+
+	writeSlot(window.data() + 0 * Rtec2RingReader::slotBytes, 6, 0x13, 0x1000, 1000);
+	writeSlot(window.data() + 1 * Rtec2RingReader::slotBytes, 7, 0x13, 0x1000, 1100);
+
+	/* Two slots from 6 end at 8, the ring's end, and that is fine: */
+	const Rtec2RingReader::Read fits = Rtec2RingReader::readWindow(window.data(), 2 * Rtec2RingReader::slotBytes, makeBlock(capacity, 8, 0), 6, 2);
+
+	EXPECT_EQ(0u, fits.torn);
+	EXPECT_EQ(2u, fits.records.size());
+
+	/* Three would wrap, which the caller promised not to ask for. Refused
+	   rather than reordered - the sentinels would not catch it, because a
+	   wrapped window still gets every sequence right. */
+	const Rtec2RingReader::Read wrapped = Rtec2RingReader::readWindow(window.data(), 3 * Rtec2RingReader::slotBytes, makeBlock(capacity, 9, 0), 6, 3);
+
+	EXPECT_NE(0u, wrapped.torn);
+	EXPECT_TRUE(wrapped.records.empty());
+	EXPECT_EQ(6u, wrapped.committed);
+}
+
+TEST(Rtec2RingReaderTest, AWindowShorterThanTheRecordsIsJustShort)
+{
+	std::vector<uint8_t> window(2 * Rtec2RingReader::slotBytes, 0);
+
+	writeSlot(window.data() + 0 * Rtec2RingReader::slotBytes, 3, 0x13, 0x1000, 1000);
+	writeSlot(window.data() + 1 * Rtec2RingReader::slotBytes, 4, 0x13, 0x1000, 1100);
+
+	/* Five records are waiting but only two slots were read: take the two, and
+	   leave the rest for the next round. A short read is not a torn one. */
+	const Rtec2ControlBlock block = makeBlock(16, 8, 0);
+
+	const Rtec2RingReader::Read read = Rtec2RingReader::readWindow(window.data(), window.size(), block, 3, 32);
+
+	EXPECT_EQ(0u, read.torn);
+	ASSERT_EQ(2u, read.records.size());
+	EXPECT_EQ(5u, read.committed);
+}

@@ -88,6 +88,21 @@ class Rtec2RingReader
 	   each. `from` is the reader's cursor; `budget` caps how many slots this
 	   round may take. */
 	static Read read(const uint8_t* slots, size_t bytes, const Rtec2ControlBlock& block, uint32_t from, uint32_t budget);
+
+	/*
+	 * The same round, over a window instead of the whole ring.
+	 *
+	 * `read` wants all `capacity` slots because it indexes by
+	 * `sequence & (capacity - 1)`; reading 3.5 KB a round to collect five
+	 * records is most of what a slow probe spends its time on. This takes a
+	 * contiguous run starting at `from` and indexes it by position instead, so
+	 * the caller can read exactly what is new.
+	 *
+	 * The run may not wrap: `from % capacity + count <= capacity` is the
+	 * caller's promise, and `Rtec2Adapter::nextWindow` is what keeps it. A
+	 * buffer that ends mid-run is a short count, not a torn record.
+	 */
+	static Read readWindow(const uint8_t* slots, size_t bytes, const Rtec2ControlBlock& block, uint32_t from, uint32_t budget);
 };
 
 #endif

@@ -69,7 +69,20 @@ namespace mcp
 		for (const auto& entry : byType)
 			types[entry.first] = entry.second;
 
+		Json ring = Json::object();
+
+		if (auto* adapter = dynamic_cast<Rtec2Adapter*>(model->trace()->source()))
+		{
+			ring = Json::object({{"capacity", adapter->capacity()},
+			                     {"head", adapter->writerHead()},
+			                     {"cursor", adapter->cursorNow()},
+			                     {"torn_batches", adapter->tornBatches()},
+			                     {"decoded", adapter->decodedRecords()},
+			                     {"overwritten", adapter->overwritten()}});
+		}
+
 		return Json::object({{"attached", true},
+		                     {"ring", ring},
 		                     {"source", model->trace()->sourceName()},
 		                     {"events", static_cast<uint32_t>(model->trace()->eventCount())},
 		                     {"by_type", types},

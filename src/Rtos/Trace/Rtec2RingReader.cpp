@@ -197,3 +197,85 @@ Rtec2RingReader::Read Rtec2RingReader::read(const uint8_t* slots, size_t bytes, 
 
 	return result;
 }
+
+Rtec2RingReader::Read Rtec2RingReader::readWindow(const uint8_t* slots, size_t bytes, const Rtec2ControlBlock& block, uint32_t from, uint32_t budget)
+{
+	Read result;
+
+	result.committed = from;
+
+	if (slots == nullptr || block.capacity == 0)
+		return result;
+
+	/* The writer went backwards: it started again, and its ring begins at
+	   zero. Waiting for a head already passed would wait for ever. */
+	if (static_cast<int32_t>(block.head - from) < 0)
+	{
+		result.restarted = true;
+
+		return result;
+	}
+
+	uint32_t count = block.head - from;
+
+	/* Older than the ring still holds: the beginning is gone, and the count
+	   reports how much so that the interval across the hole is not drawn as
+	   one run. */
+	if (count > block.capacity)
+	{
+		result.lost = count - block.capacity;
+		from = block.head - block.capacity;
+		count = block.capacity;
+	}
+
+	if (budget != 0 && count > budget)
+		count = budget;
+
+	const uint32_t carried = static_cast<uint32_t>(bytes / slotBytes);
+
+	if (count > carried)
+		count = carried;
+
+	if (count == 0)
+	{
+		result.advanced = true;
+
+		return result;
+	}
+
+	/* The run must be inside the ring: a window that wrapped would read the
+	   same slots in the wrong order, and the sentinels would not catch it -
+	   they check the sequence, which a wrapped window still gets right. */
+	if ((from % block.capacity) + count > block.capacity)
+	{
+		result.torn = count;
+
+		return result;
+	}
+
+	std::vector<Rtec2DecodedRecord> decoded;
+	decoded.reserve(count);
+
+	for (uint32_t index = 0; index < count; index++)
+	{
+		const uint8_t* slot = slots + static_cast<size_t>(index) * slotBytes;
+
+		Rtec2DecodedRecord record;
+
+		if (!slotHoldsRecord(slot, from + index, record))
+		{
+			result.torn = count - index;
+			decoded.clear();
+
+			return result;
+		}
+
+		decoded.push_back(record);
+	}
+
+	result.records = std::move(decoded);
+	result.committed = from + count;
+	result.advanced = true;
+
+	return result;
+}

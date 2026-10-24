@@ -975,17 +975,18 @@ void ViewerDataHandler::readRtec2Ring(RtosProbeMemory& memory)
 
 	rtec2ReadFailures = 0;
 
-	/* Nothing new is the common case: a round and a ring that is level. */
-	if (rtec2Adapter->nextWindow(rtec2SlotsPerRound).slots == 0)
+	/* Only what is new, and only inside the ring. Reading the whole ring every
+	   round cost 3.5 KB and, at a hundred rounds a second, more time than the
+	   round had: the ring wrapped between reads and the events that went under
+	   were the ones nobody saw. Five or six slots a round is two hundred bytes
+	   and the ring never gets ahead of the reader. */
+	const Rtec2Adapter::Window window = rtec2Adapter->nextWindow(rtec2SlotsPerRound);
+
+	if (window.slots == 0)
 		return;
 
-	/* The whole ring in one read, not the new slots only. The reader indexes by
-	   `sequence & (capacity - 1)` and refuses a buffer shorter than the ring -
-	   that refusal is what stops it reading a slot as if it were a different
-	   one. On this target that is 3.5 KB a round, which the J-Link carries at
-	   four megahertz and which the measurement shows in `probe_read_ns`. */
-	const uint32_t firstByte = rtosRtec2Address + Rtec2RingReader::controlBlockBytes;
-	const uint32_t bytes = rtec2Adapter->capacity() * Rtec2RingReader::slotBytes;
+	const uint32_t firstByte = rtosRtec2Address + Rtec2RingReader::controlBlockBytes + window.from * Rtec2RingReader::slotBytes;
+	const uint32_t bytes = window.slots * Rtec2RingReader::slotBytes;
 
 	std::vector<uint8_t> slots(bytes, 0);
 

@@ -36,12 +36,20 @@ bool Rtec2Adapter::beginControlBlock(const uint8_t* bytes, size_t size, RtosTrac
 		restartCount++;
 	}
 
-	if (cursor < block.head - block.capacity)
+	if (cursor < block.head - block.capacity + 1)
 	{
-		/* Fell more than a ring behind. The oldest records are gone; the reader
-		   starts at the oldest that is still there rather than reporting every
-		   one of them as lost. */
-		cursor = block.head - block.capacity;
+		/* Fell more than a ring behind: start at the oldest record that is
+		   whole, not at the slot boundary the ring lays out from.
+		 *
+		 * The writer publishes `head = sequence + 1`, so `head - capacity` is
+		 * still a live record - but it is the one the next write lands on, and
+		 * the write starts before it updates head. A reader resumed onto it
+		 * therefore reads a slot being overwritten at that instant, the
+		 * sentinels call the batch torn, the cursor does not move, and the next
+		 * round starts on the same doomed slot. The result is a reader that
+		 * falls behind once and then shows a fiftieth of what the target
+		 * writes, which is exactly what this looked like. */
+		cursor = block.head - block.capacity + 1;
 	}
 
 	return true;
@@ -77,7 +85,11 @@ void Rtec2Adapter::pushSlots(const uint8_t* bytes, size_t size)
 	if (!haveBlock || bytes == nullptr || size == 0)
 		return;
 
-	const Rtec2RingReader::Read read = Rtec2RingReader::read(bytes, size, block, cursor, static_cast<uint32_t>(size / Rtec2RingReader::slotBytes));
+	/* The buffer is the run `nextWindow` asked for, starting at the cursor -
+	   not the whole ring. Reading 3.5 KB a round to collect five records was
+	   most of what a slow probe spent on this, and it was why events went
+	   missing: the ring wrapped before the next read got there. */
+	const Rtec2RingReader::Read read = Rtec2RingReader::readWindow(bytes, size, block, cursor, static_cast<uint32_t>(size / Rtec2RingReader::slotBytes));
 
 	/* A batch that caught a slot mid-write is abandoned whole: keeping its good
 	   prefix would leave the cursor after records nobody counted, and every
@@ -91,6 +103,8 @@ void Rtec2Adapter::pushSlots(const uint8_t* bytes, size_t size)
 
 	if (!read.advanced)
 		return;
+
+	decodedCount += static_cast<uint32_t>(read.records.size());
 
 	for (const Rtec2DecodedRecord& record : read.records)
 	{

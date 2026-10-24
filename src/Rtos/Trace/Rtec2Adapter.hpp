@@ -99,6 +99,14 @@ class Rtec2Adapter final : public IRtosTraceSource
 		return haveBlock ? block.head : 0;
 	}
 
+	/* How many records the reader has decoded, over the run. Compared with the
+	   cursor and with the events the pipeline holds, this says which of the two
+	   is losing them: the decoding, or the handover. */
+	uint32_t decodedRecords() const
+	{
+		return decodedCount;
+	}
+
 	uint32_t tornBatches() const
 	{
 		return tornCount;
@@ -119,6 +127,7 @@ class Rtec2Adapter final : public IRtosTraceSource
 	std::deque<RtosTraceEvent> pending;
 
 	uint32_t tornCount = 0;
+	uint32_t decodedCount = 0;
 	uint32_t unknownTypeCount = 0;
 	uint32_t restartCount = 0;
 
