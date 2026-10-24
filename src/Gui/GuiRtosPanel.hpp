@@ -18,6 +18,7 @@
 #include "RtosDiagnostics.hpp"
 #include "I18n.hpp"
 #include "RtosCsvExport.hpp"
+#include "RtosFaultDecoder.hpp"
 #include "RtosTraceReducer.hpp"
 #include "RtosTraceWindow.hpp"
 #include "RtosWaitGraph.hpp"
@@ -62,6 +63,7 @@ class GuiRtosPanel
 		SelectedTask,
 		Chain,
 		Events,
+		Faults,
 	};
 
 	inline static LowerTab lowerTabShown = LowerTab::SelectedTask;
@@ -267,6 +269,21 @@ class GuiRtosPanel
 		ImGui::SameLine(0.0f, 4.0f * GuiHelper::contentScale);
 		lowerTabButton(LowerTab::Events, I18n::tr("Events"));
 
+		/* Faults gets a tab only when there are faults. A permanent tab that is
+		   empty on a healthy target is a tab the reader learns to ignore, and
+		   the one time it matters they will not look. */
+		if (const uint32_t faults = faultCount(*model); faults > 0)
+		{
+			ImGui::SameLine(0.0f, 4.0f * GuiHelper::contentScale);
+
+			char label[32];
+			std::snprintf(label, sizeof(label), "%s %u", I18n::tr("Faults"), faults);
+
+			ImGui::PushStyleColor(ImGuiCol_Text, GuiHelper::redLight());
+			lowerTabButton(LowerTab::Faults, label);
+			ImGui::PopStyleColor();
+		}
+
 
 		const float used = ImGui::GetCursorPosY() - blockTop;
 		const float blockHeight = std::max(reserve - used, bodyFloor);
@@ -277,6 +294,10 @@ class GuiRtosPanel
 		{
 			case LowerTab::Events:
 				drawEvents(*model, rows);
+				break;
+
+			case LowerTab::Faults:
+				drawFaults(*model);
 				break;
 
 			case LowerTab::Chain:
@@ -3115,6 +3136,120 @@ class GuiRtosPanel
 		const ImVec2 size = ImGui::CalcTextSize(detail);
 
 		draw->AddText(ImVec2(bottomRight.x - padding - size.x, textY), ImGui::GetColorU32(ImGuiCol_TextDisabled), detail);
+	}
+
+	/*
+	 * How many faults the event side is holding. Counted rather than kept as a
+	 * counter: a fault that scrolled out of the window is not a fault the reader
+	 * can act on, and the tab should agree with the list it opens.
+	 */
+	static uint32_t faultCount(const RtosModel& model)
+	{
+		if (model.trace() == nullptr)
+			return 0;
+
+		uint32_t count = 0;
+
+		for (const RtosNormalizedEvent& event : model.trace()->events())
+		{
+			if (event.event.type == RtosTraceEventType::Fault)
+				count++;
+		}
+
+		return count;
+	}
+
+	/*
+	 * The faults, newest first, with the one the reader picks decoded in full.
+	 *
+	 * `0x00008200` is not an answer to anything. What a crash is worth is the
+	 * sentence: which check tripped, whether the address was even known, and
+	 * whether the PC can be trusted - an imprecise fault reports one instruction
+	 * late, and a report that omits that sends the reader to the wrong line.
+	 */
+	static void drawFaults(const RtosModel& model)
+	{
+		if (model.trace() == nullptr)
+		{
+			GuiHelper::drawSecondaryText("%s", I18n::tr("No event source is attached."));
+
+			return;
+		}
+
+		std::vector<const RtosNormalizedEvent*> faults;
+
+		for (const RtosNormalizedEvent& event : model.trace()->events())
+		{
+			if (event.event.type == RtosTraceEventType::Fault)
+				faults.push_back(&event);
+		}
+
+		if (faults.empty())
+		{
+			GuiHelper::drawSecondaryText("%s", I18n::tr("The target has not faulted in this session."));
+
+			return;
+		}
+
+		static int selected = 0;
+
+		if (selected < 0 || selected >= static_cast<int>(faults.size()))
+			selected = 0;
+
+		const float scale = GuiHelper::contentScale;
+		const float listWidth = 150.0f * scale;
+		const float available = ImGui::GetContentRegionAvail().y;
+
+		/* Newest first: the fault somebody is looking at is the one that just
+		   happened, and scrolling to the bottom to find it is a tax on the one
+		   moment when nobody has time. */
+		ImGui::BeginChild("##rtosFaultList", ImVec2(listWidth, available), false);
+
+		for (int index = static_cast<int>(faults.size()) - 1; index >= 0; index--)
+		{
+			const RtosFaultReport report = decodeFault(faults[static_cast<size_t>(index)]->event.subject.rawHandle,
+			                                           faults[static_cast<size_t>(index)]->event.arg0, faults[static_cast<size_t>(index)]->event.arg1);
+
+			char label[96];
+
+			if (faults[static_cast<size_t>(index)]->hasDisplaySeconds)
+				std::snprintf(label, sizeof(label), "%.3f s  %s", faults[static_cast<size_t>(index)]->displaySeconds, report.lines.empty() ? "fault" : report.lines.front().code.c_str());
+			else
+				std::snprintf(label, sizeof(label), "%s", report.lines.empty() ? "fault" : report.lines.front().code.c_str());
+
+			if (ImGui::Selectable(label, index == selected))
+				selected = index;
+		}
+
+		ImGui::EndChild();
+
+		ImGui::SameLine();
+
+		ImGui::BeginChild("##rtosFaultDetail", ImVec2(0.0f, available), false);
+
+		const RtosNormalizedEvent& chosen = *faults[static_cast<size_t>(selected)];
+		const RtosFaultReport report = decodeFault(chosen.event.subject.rawHandle, chosen.event.arg0, chosen.event.arg1);
+
+		GuiHelper::drawSecondaryText("CFSR 0x%08X   PC 0x%08X   LR 0x%08X", report.cfsr, report.pc, report.lr);
+
+		ImGui::Separator();
+
+		for (const RtosFaultLine& entry : report.lines)
+		{
+			ImGui::TextUnformatted(entry.code.c_str());
+			ImGui::SameLine(90.0f * scale);
+			ImGui::TextWrapped("%s", entry.meaning.c_str());
+		}
+
+		if (report.lines.empty())
+		{
+			char fallback[192];
+
+			std::snprintf(fallback, sizeof(fallback), I18n::tr("The status register was empty, so only the PC is evidence: 0x%08X"), report.pc);
+			ImGui::TextWrapped("%s", fallback);
+		}
+
+		ImGui::EndChild();
 	}
 
 	static void drawEvents(const RtosModel& model, const std::vector<RtosTaskRow>& rows)

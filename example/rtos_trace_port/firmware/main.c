@@ -272,11 +272,30 @@ static void seq_c_task(void *arg)
     }
 }
 
+/*
+ * A crash the host can ask for.
+ *
+ * Writing 0xC0DE here makes the next pass of `rep` call through a null function
+ * pointer, which is the crash people meet most often and the one hardest to
+ * recognise from a status register. It exists so that the fault path - the
+ * handler, the event, the decoder, the panel - can be exercised on a board that
+ * is working, rather than only on a board that is not.
+ *
+ * It is one word in RAM and one comparison per second; the firmware is not
+ * otherwise changed, and the demonstration firmware is the same binary.
+ */
+volatile uint32_t g_fault_demo;
+
 static void rep_task(void *arg)
 {
     int i;
     (void)arg;
     for (;;) {
+        if (g_fault_demo == 0xC0DEu) {
+            g_fault_demo = 0u;
+            ((void (*)(void))0)();
+        }
+
         for (i = 0; i < HWM_N; i++) {
             if (g_probe_handles[i] != NULL) {
                 g_kernel_hwm[i] = (uint16_t)uxTaskGetStackHighWaterMark(g_probe_handles[i]);
