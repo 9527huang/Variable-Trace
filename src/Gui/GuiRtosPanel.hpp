@@ -2820,13 +2820,20 @@ class GuiRtosPanel
 		    {I18n::tr("Gap"), &tracks.gap, "lossDetection", I18n::tr("records lost"), 0},
 		};
 
+		/* How much of the window the interrupts occupied, from the spans
+		   themselves. Merged rather than summed: a nested interrupt is time the
+		   CPU spent once. */
+		const double isrBusyPercent = (to > from) ? coveredSeconds(tracks.isr, from, to) / (to - from) * 100.0 : -1.0;
+
 		for (const Row& row : rows)
 		{
 			/* Only the ISR track has spans. The rest are instants: a fault is a
 			   moment, a lost record is a hole, a wait is a pair of edges. */
-			const BandPaint paint = row.entries == &tracks.isr ? BandPaint::Spans : BandPaint::Columns;
+			const bool spans = row.entries == &tracks.isr;
+			const BandPaint paint = spans ? BandPaint::Spans : BandPaint::Columns;
 
-			drawTrackBand(row.label, *row.entries, from, to, row.incomplete, row.unit, scale, carried(row.capability), paint);
+			drawTrackBand(row.label, *row.entries, from, to, row.incomplete, row.unit, scale, carried(row.capability), paint,
+			              spans ? isrBusyPercent : -1.0);
 		}
 	}
 
@@ -2851,7 +2858,7 @@ class GuiRtosPanel
 	};
 
 	static void drawTrackBand(const char* label, const std::vector<RtosTrackEntry>& entries, double from, double to, uint32_t incomplete,
-	                          const char* unit, float scale, bool carried, BandPaint paint = BandPaint::Columns)
+	                          const char* unit, float scale, bool carried, BandPaint paint = BandPaint::Columns, double busyPercent = -1.0)
 	{
 		const float bandHeight = 12.0f * scale;
 		const float rightWidth = 120.0f * scale;
@@ -2932,6 +2939,16 @@ class GuiRtosPanel
 
 			if (window.untimed > 0)
 				full += ", " + std::to_string(window.untimed) + " " + I18n::tr("untimed");
+
+			/* How much of the window this track covers. Only the ISR track has a
+			   length, so only it has this. */
+			if (busyPercent >= 0.0)
+			{
+				char share[32];
+
+				std::snprintf(share, sizeof(share), ", %.1f%% %s", busyPercent, I18n::tr("busy"));
+				full += share;
+			}
 		}
 		else
 		{

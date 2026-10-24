@@ -98,3 +98,36 @@ TEST(RtosTrackGeometryTest, NoWindowMeansNoMarks)
 	EXPECT_TRUE(layoutIntervals(entries, 1.0, 1.0, 100.0f, 1.0f).marks.empty());
 	EXPECT_TRUE(layoutIntervals(entries, 0.0, 2.0, 0.0f, 1.0f).marks.empty());
 }
+
+TEST(RtosTrackGeometryTest, CoveredTimeMergesNestedInterruptsInsteadOfDoubleCounting)
+{
+	/* One interrupt from 1.0 to 5.0 with another inside it from 2.0 to 3.0: the
+	   CPU was busy for four seconds, not five. A sum of durations says five, and
+	   five is a number that would make an interrupt load look worse than it is. */
+	const std::vector<RtosTrackEntry> entries = {span(1.0, 5.0, 1), span(2.0, 3.0, 2)};
+
+	EXPECT_DOUBLE_EQ(4.0, coveredSeconds(entries, 0.0, 10.0));
+}
+
+TEST(RtosTrackGeometryTest, CoveredTimeAddsDisjointInterrupts)
+{
+	const std::vector<RtosTrackEntry> entries = {span(1.0, 1.5), span(3.0, 3.25)};
+
+	EXPECT_DOUBLE_EQ(0.75, coveredSeconds(entries, 0.0, 10.0));
+}
+
+TEST(RtosTrackGeometryTest, CoveredTimeIsClippedToTheWindow)
+{
+	/* Half of this one is outside: only the part inside the window is time spent
+	   in an interrupt while the reader was looking. */
+	const std::vector<RtosTrackEntry> entries = {span(-1.0, 0.5)};
+
+	EXPECT_DOUBLE_EQ(0.5, coveredSeconds(entries, 0.0, 10.0));
+}
+
+TEST(RtosTrackGeometryTest, CoveredTimeOfNothingIsZero)
+{
+	EXPECT_DOUBLE_EQ(0.0, coveredSeconds({}, 0.0, 10.0));
+	EXPECT_DOUBLE_EQ(0.0, coveredSeconds({span(1.0, 2.0)}, 5.0, 5.0));
+	EXPECT_DOUBLE_EQ(0.0, coveredSeconds({span(20.0, 21.0)}, 0.0, 10.0));
+}

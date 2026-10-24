@@ -51,4 +51,15 @@ struct RtosTrackLayout
    and a fraction rounds to nothing. */
 RtosTrackLayout layoutIntervals(const std::vector<RtosTrackEntry>& entries, double from, double to, float width, float minPixels);
 
+/*
+ * How much of the window these intervals cover, in seconds.
+ *
+ * Not the sum of the durations: an interrupt that nested inside another has its
+ * time counted once by the CPU and would be counted twice by a sum. The spans
+ * are merged first, which is the whole of the arithmetic here - and it is here
+ * rather than in the panel because a sum that looks right and is double is the
+ * kind of mistake a picture cannot show.
+ */
+double coveredSeconds(const std::vector<RtosTrackEntry>& entries, double from, double to);
+
 #endif

@@ -74,3 +74,46 @@ RtosTrackLayout layoutIntervals(const std::vector<RtosTrackEntry>& entries, doub
 
 	return layout;
 }
+
+double coveredSeconds(const std::vector<RtosTrackEntry>& entries, double from, double to)
+{
+	if (!(to > from))
+		return 0.0;
+
+	/* Clipped to the window and sorted by start. An interval that began before
+	   the left edge is still covering the CPU at that edge, so it contributes
+	   from there; one that ends after the right edge contributes up to it. */
+	std::vector<std::pair<double, double>> spans;
+
+	spans.reserve(entries.size());
+
+	for (const RtosTrackEntry& entry : entries)
+	{
+		if (!entry.hasSeconds || entry.toSeconds < entry.fromSeconds)
+			continue;
+
+		const double start = std::max(entry.fromSeconds, from);
+		const double end = std::min(entry.toSeconds, to);
+
+		if (end > start)
+			spans.emplace_back(start, end);
+	}
+
+	std::sort(spans.begin(), spans.end());
+
+	double covered = 0.0;
+	double reach = from;
+
+	for (const std::pair<double, double>& span : spans)
+	{
+		const double start = std::max(span.first, reach);
+
+		if (span.second > start)
+		{
+			covered += span.second - start;
+			reach = span.second;
+		}
+	}
+
+	return covered;
+}

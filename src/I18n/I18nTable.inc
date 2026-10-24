@@ -557,6 +557,7 @@ static const Entry table[] = {
 	{"blocked", "阻塞"},
 	{"blocked only", "只看阻塞"},
 	{"busiest %s %.1f%%", "最忙 %s %.1f%%"},
+	{"busy", "占用"},
 	{"by Piotr Wasilewski (klonyyy)", "by Piotr Wasilewski (klonyyy)"},
 	{"cannot open file", "无法打开文件"},
 	{"clear filters", "清除筛选"},
