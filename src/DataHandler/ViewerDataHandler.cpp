@@ -975,30 +975,61 @@ void ViewerDataHandler::readRtec2Ring(RtosProbeMemory& memory)
 
 	rtec2ReadFailures = 0;
 
-	/* Only what is new, and only inside the ring. Reading the whole ring every
-	   round cost 3.5 KB and, at a hundred rounds a second, more time than the
-	   round had: the ring wrapped between reads and the events that went under
-	   were the ones nobody saw. Five or six slots a round is two hundred bytes
-	   and the ring never gets ahead of the reader. */
-	const Rtec2Adapter::Window window = rtec2Adapter->nextWindow(rtec2SlotsPerRound);
-
-	if (window.slots == 0)
-		return;
-
-	const uint32_t firstByte = rtosRtec2Address + Rtec2RingReader::controlBlockBytes + window.from * Rtec2RingReader::slotBytes;
-	const uint32_t bytes = window.slots * Rtec2RingReader::slotBytes;
-
-	std::vector<uint8_t> slots(bytes, 0);
-
-	if (!memory.read(firstByte, slots.data(), bytes))
+	/*
+	 * Read until level with the writer, not once and hope.
+	 *
+	 * One window a round was the whole problem. The target writes about
+	 * fourteen hundred records a second and a round has ten milliseconds, so
+	 * fourteen records arrive between rounds; a single window of thirty two
+	 * should have been enough - and it was not, because a round that ran late
+	 * pushed the reader two or three windows behind, the adapter reset its
+	 * cursor to the oldest live slot, and every reset threw away a whole ring's
+	 * worth without decoding any of it. Measured: the cursor advanced 14394
+	 * places and turned into 433 events.
+	 *
+	 * Looping fixes the reset by never needing it: four windows of a ring is
+	 * the worst case a round can find, and a round that finds nothing breaks
+	 * out immediately. The cost of a window with nothing in it is one probe
+	 * call, which is why the loop is bounded rather than `while (true)`.
+	 */
+	/* Catch up first, then read in the same round. */
+	if (const uint32_t skipped = rtec2Adapter->skipToOldestLive(); skipped > 0)
 	{
-		if (rtec2ReadFailures++ == 0)
-			logger->warn("The event slots at 0x{:08X} could not be read: {}", firstByte, debugProbe->getLastErrorMsg());
+		if (rtec2SkippedTotal == 0)
+			logger->warn("The event ring fell behind the target by {} records at 0x{:08X}; reading from the oldest that is still whole.",
+			              skipped, rtosRtec2Address);
 
-		return;
+		rtec2SkippedTotal += skipped;
 	}
 
-	rtec2Adapter->pushSlots(slots.data(), slots.size());
+	for (uint32_t attempt = 0; attempt < rtec2WindowsPerRound; attempt++)
+	{
+		const Rtec2Adapter::Window window = rtec2Adapter->nextWindow(rtec2RingCapacity);
+
+		if (window.slots == 0)
+			break;
+
+		const uint32_t firstByte = rtosRtec2Address + Rtec2RingReader::controlBlockBytes + window.from * Rtec2RingReader::slotBytes;
+		const uint32_t bytes = window.slots * Rtec2RingReader::slotBytes;
+
+		std::vector<uint8_t> slots(bytes, 0);
+
+		if (!memory.read(firstByte, slots.data(), bytes))
+		{
+			if (rtec2ReadFailures++ == 0)
+				logger->warn("The event slots at 0x{:08X} could not be read: {}", firstByte, debugProbe->getLastErrorMsg());
+
+			return;
+		}
+
+		if (!rtec2Adapter->pushSlots(slots.data(), slots.size()))
+		{
+			/* A batch that caught a slot mid-write is left for the next round
+			   rather than retried here: the writer needs the moment to finish,
+			   and a tight retry is a tight retry on a running target. */
+			break;
+		}
+	}
 
 	/* Drain the source here. The eight byte path gets this for free, because
 	   its records go through `appendEventIntervals` and that call pumps the

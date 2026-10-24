@@ -55,9 +55,21 @@ class Rtec2Adapter final : public IRtosTraceSource
 	   capacity - reading more than it holds would read past it. */
 	Window nextWindow(uint32_t budget) const;
 
+	/*
+	 * Moves the cursor to the oldest record still whole, and says how many were
+	 * skipped doing it.
+	 *
+	 * Called by the reader after the control block and before the windows, so
+	 * that catching up and reading happen in the same round. It used to happen
+	 * inside `beginControlBlock`, which meant the round that caught up read
+	 * nothing: the cursor was thrown forward and the round ended.
+	 */
+	uint32_t skipToOldestLive();
+
 	/* Hands over exactly the slots `nextWindow` asked for. A batch that does
-	   not decode cleanly is dropped whole and the cursor stays put. */
-	void pushSlots(const uint8_t* bytes, size_t size);
+	   not decode cleanly is dropped whole and the cursor stays put, which is
+	   what the false return says. */
+	bool pushSlots(const uint8_t* bytes, size_t size);
 
 	bool start(RtosTraceProblem& problem) override;
 	void stop() override;

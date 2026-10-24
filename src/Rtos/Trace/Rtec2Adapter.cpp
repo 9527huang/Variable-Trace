@@ -36,23 +36,32 @@ bool Rtec2Adapter::beginControlBlock(const uint8_t* bytes, size_t size, RtosTrac
 		restartCount++;
 	}
 
-	if (cursor < block.head - block.capacity + 1)
-	{
-		/* Fell more than a ring behind: start at the oldest record that is
-		   whole, not at the slot boundary the ring lays out from.
-		 *
-		 * The writer publishes `head = sequence + 1`, so `head - capacity` is
-		 * still a live record - but it is the one the next write lands on, and
-		 * the write starts before it updates head. A reader resumed onto it
-		 * therefore reads a slot being overwritten at that instant, the
-		 * sentinels call the batch torn, the cursor does not move, and the next
-		 * round starts on the same doomed slot. The result is a reader that
-		 * falls behind once and then shows a fiftieth of what the target
-		 * writes, which is exactly what this looked like. */
-		cursor = block.head - block.capacity + 1;
-	}
+	/* Falling behind is handled by `skipToOldestLive`, which the caller runs
+	   once it has decided to read this round. Doing it here as well was how a
+	   round spent its whole budget catching up and then read nothing. */
 
 	return true;
+}
+
+uint32_t Rtec2Adapter::skipToOldestLive()
+{
+	if (!haveBlock)
+		return 0;
+
+	/* `head` is one past the newest record, so the ring holds
+	   `head - capacity .. head - 1`, and `head - capacity` is the one the next
+	   write lands on. Start one slot later or every resume reads a slot that is
+	   being overwritten at that instant. */
+	const uint32_t oldest = block.head - block.capacity + 1;
+
+	if (cursor >= oldest)
+		return 0;
+
+	const uint32_t skipped = oldest - cursor;
+
+	cursor = oldest;
+
+	return skipped;
 }
 
 Rtec2Adapter::Window Rtec2Adapter::nextWindow(uint32_t budget) const
@@ -80,10 +89,10 @@ Rtec2Adapter::Window Rtec2Adapter::nextWindow(uint32_t budget) const
 	return window;
 }
 
-void Rtec2Adapter::pushSlots(const uint8_t* bytes, size_t size)
+bool Rtec2Adapter::pushSlots(const uint8_t* bytes, size_t size)
 {
 	if (!haveBlock || bytes == nullptr || size == 0)
-		return;
+		return false;
 
 	/* The buffer is the run `nextWindow` asked for, starting at the cursor -
 	   not the whole ring. Reading 3.5 KB a round to collect five records was
@@ -98,11 +107,11 @@ void Rtec2Adapter::pushSlots(const uint8_t* bytes, size_t size)
 	{
 		tornCount++;
 
-		return;
+		return false;
 	}
 
 	if (!read.advanced)
-		return;
+		return false;
 
 	decodedCount += static_cast<uint32_t>(read.records.size());
 
@@ -125,6 +134,8 @@ void Rtec2Adapter::pushSlots(const uint8_t* bytes, size_t size)
 
 	if (read.restarted)
 		restartCount++;
+
+	return true;
 }
 
 bool Rtec2Adapter::start(RtosTraceProblem& problem)

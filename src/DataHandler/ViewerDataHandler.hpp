@@ -460,11 +460,22 @@ class ViewerDataHandler : public DataHandlerBase
 	/* How many slots one round may take. Thirty two of sixty four: a round at
 	   a hundred hertz finds five or six waiting, and the rest is room for a
 	   round that ran late. */
-	static constexpr uint32_t rtec2SlotsPerRound = 32;
+	/* How many windows one round may read. A ring holds sixty four slots and an
+	   ordinary round finds fourteen records, so one window is normally enough;
+	   four is the worst case a late round can present. */
+	static constexpr uint32_t rtec2WindowsPerRound = 4;
+
+	/* Ask for the whole ring each time: `nextWindow` already caps by what is
+	   waiting, and a smaller cap would turn a late round into two rounds. */
+	static constexpr uint32_t rtec2RingCapacity = 64;
 
 	/* Counts read failures so that the log says it once, not a hundred times a
 	   second. Reset by every successful read. */
 	uint32_t rtec2ReadFailures = 0;
+
+	/* Records the reader skipped because it could not keep up, summed over the
+	   run. Non zero means the probe - not the target - is the limit. */
+	uint32_t rtec2SkippedTotal = 0;
 
 	/* One diagnostic line, once a run, when the ring is readable but nothing is
 	   coming out of it. */
