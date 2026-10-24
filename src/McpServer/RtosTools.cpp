@@ -1,12 +1,16 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
+#include <map>
 #include <memory>
 #include <string>
 
 #include "McpTools.hpp"
 #include "RtosDiagnostics.hpp"
+#include "RtosIsrAttribution.hpp"
 #include "RtosModel.hpp"
+#include "RtosTraceReducer.hpp"
 #include "ViewerDataHandler.hpp"
 
 namespace mcp
@@ -379,6 +383,53 @@ namespace mcp
 			return present ? Json(value) : Json();
 		}
 
+		/*
+		 * Interrupts per task, as the table's column counts them.
+		 *
+		 * The same two steps the panel takes - running intervals from the
+		 * timeline, the attribution from the track - so that a number read off
+		 * `list_tasks` and a number read off the table cannot disagree. Working
+		 * it out separately here would be a second definition of the same fact,
+		 * and the two would drift the first time one of them changed.
+		 */
+		std::map<uint32_t, uint32_t> isrCountsFromModel(const RtosModel& model)
+		{
+			std::map<uint32_t, uint32_t> counts;
+
+			if (model.trace() == nullptr)
+				return counts;
+
+			const RtosTrackProjection tracks = RtosTraceReducer::project(model.trace()->events());
+
+			if (tracks.isr.empty())
+				return counts;
+
+			std::vector<RtosTimeline::Sample> samples;
+
+			model.history().copyRange(0.0, std::numeric_limits<double>::max(), samples);
+
+			if (samples.empty())
+				return counts;
+
+			const std::vector<RtosTimeline::StateInterval> bands = RtosTimeline::stateIntervals(samples, samples.back().atSeconds);
+
+			std::vector<RtosTimeline::StateInterval> running;
+			running.reserve(bands.size());
+
+			for (const RtosTimeline::StateInterval& band : bands)
+			{
+				if (band.state == RtosTaskState::Running)
+					running.push_back(band);
+			}
+
+			std::sort(running.begin(), running.end(), [](const RtosTimeline::StateInterval& left, const RtosTimeline::StateInterval& right)
+			          {
+				return left.from < right.from;
+			});
+
+			return countIsrByTask(attributeIsr(running, tracks.isr));
+		}
+
 		Json taskToJson(const RtosTask& task)
 		{
 			return Json::object({{"address", hexOf(task.tcbAddress)},
@@ -574,12 +625,30 @@ namespace mcp
 
 			Json tasks = Json::array();
 
+			/* Counted once for the whole list rather than per task: the
+			   attribution walks every interrupt, and doing that inside the loop
+			   would make the cost the product of two counts. */
+			const std::shared_ptr<RtosModel> model = requireModel(context, "list_tasks");
+			const std::map<uint32_t, uint32_t> interrupts = model == nullptr ? std::map<uint32_t, uint32_t>{} : isrCountsFromModel(*model);
+
 			for (const RtosTask& task : snapshot->tasks)
 			{
 				if (tasks.size() >= limit)
 					break;
 
-				tasks.push_back(taskToJson(task));
+				Json entry = taskToJson(task);
+
+				/* Absent, not zero, when the source carries no interrupts: the
+				   table shows a dash for exactly this case and the two have to
+				   agree about what "not known" looks like. */
+				if (!interrupts.empty())
+				{
+					const auto counted = interrupts.find(task.tcbAddress);
+
+					entry["interrupted"] = counted == interrupts.end() ? 0 : counted->second;
+				}
+
+				tasks.push_back(entry);
 			}
 
 			Json problems = Json::array();
