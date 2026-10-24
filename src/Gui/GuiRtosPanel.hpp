@@ -2763,6 +2763,36 @@ class GuiRtosPanel
 		drawTrackHeading(model, tracks, events.size(), window, scale);
 
 		drawTrackRows(tracks, carried, window.from, window.to, scale);
+
+		/*
+		 * Where the window went.
+		 *
+		 * The rows above say what each track holds; this line says whether the
+		 * two accounts cover the window at all. Time covered by neither is a
+		 * finding - rounds that missed the target, events that were lost - and it
+		 * is the one number that says the observation itself is incomplete. A
+		 * panel that rescaled the parts to add up to a hundred would hide it.
+		 */
+		const RtosTimeBudget& budget = GuiRtosPanelTimeline::timeBudget();
+
+		if (budget.windowSeconds > 0.0)
+		{
+			GuiHelper::drawSecondaryText("%s", I18n::tr("Time"));
+
+			ImGui::SameLine(0.0f, 8.0f * scale);
+
+			if (budget.overlaps())
+			{
+				/* The two accounts overlap, which cannot happen in an honest
+				   trace. Saying so is better than a clamped zero. */
+				GuiHelper::drawSecondaryText("%s %.1f%%", I18n::tr("accounts overlap by"), -budget.unaccountedPercent());
+			}
+			else
+			{
+				GuiHelper::drawSecondaryText("%s %.1f%%   %s %.1f%%   %s %.1f%%", I18n::tr("tasks"), budget.taskPercent(), I18n::tr("ISR"),
+				                             budget.isrPercent(), I18n::tr("unaccounted"), budget.unaccountedPercent());
+			}
+		}
 	}
 
 	/*

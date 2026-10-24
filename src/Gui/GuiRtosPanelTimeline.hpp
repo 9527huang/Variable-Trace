@@ -14,6 +14,7 @@
 #include "RtosEventRing.hpp"
 #include "RtosTableModel.hpp"
 #include "RtosIsrAttribution.hpp"
+#include "RtosTimeBudget.hpp"
 #include "RtosTimeline.hpp"
 #include "imgui.h"
 
@@ -252,6 +253,14 @@ class GuiRtosPanelTimeline
 	static const std::map<uint32_t, uint32_t>& isrCountsByTask()
 	{
 		return isrCounts;
+	}
+
+	/* Where the strip's window went: how much of it the tasks covered, how much
+	   the interrupts did, and what is left over. Worked out in the same pass that
+	   draws the marks, which is the only place that has both accounts in hand. */
+	static const RtosTimeBudget& timeBudget()
+	{
+		return budget;
 	}
 
 	static ImU32 getStateColour(RtosTaskState state)
@@ -970,7 +979,10 @@ class GuiRtosPanelTimeline
 		 * second answer on top of the first.
 		 */
 		if (isrTrack == nullptr || isrTrack->empty())
+		{
 			isrCounts.clear();
+			budget = RtosTimeBudget{};
+		}
 
 		if (isrTrack != nullptr && !isrTrack->empty())
 		{
@@ -994,6 +1006,7 @@ class GuiRtosPanelTimeline
 			const RtosIsrAttribution attribution = attributeIsr(running, *isrTrack);
 
 			isrCounts = countIsrByTask(attribution);
+			budget = computeTimeBudget(bands, *isrTrack, oldest, newest);
 
 			const ImU32 hitColour = ImGui::GetColorU32(ImGuiCol_Text, 0.55f);
 
@@ -1444,6 +1457,7 @@ class GuiRtosPanelTimeline
 	inline static const std::vector<RtosTrackEntry>* isrTrack = nullptr;
 
 	inline static std::map<uint32_t, uint32_t> isrCounts;
+	inline static RtosTimeBudget budget;
 
 	inline static const ImU32 runningColour = IM_COL32(160, 224, 152, 255);
 	inline static const ImU32 readyColour = IM_COL32(250, 196, 70, 255);

@@ -233,6 +233,7 @@ set(PROJECT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosFaultDecoder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTrackGeometry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosIsrAttribution.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTimeBudget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosTraceReconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosRecordingV3.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Rtos/Trace/RtosPlaybackV3.cpp
