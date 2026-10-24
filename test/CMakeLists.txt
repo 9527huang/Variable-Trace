@@ -126,6 +126,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/Rtec2Decoder.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/TraceAdapters.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/Rtec2RingReader.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/Rtec2Adapter.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTraceReconciler.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosRecordingV3.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosPlaybackV3.cpp

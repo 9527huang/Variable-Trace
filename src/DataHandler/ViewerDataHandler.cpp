@@ -367,16 +367,58 @@ bool ViewerDataHandler::prepareRtos()
 		return report("the symbol file could not be read, or holds none of the kernel's symbols");
 	}
 
+	/*
+	 * Which carrier the target has.
+	 *
+	 * Two exist and they are exclusive in practice: the eight byte ring only
+	 * holds a switch, the RTEC2 ring holds a type and a payload, and an F103
+	 * has room for one of them. The symbol decides - a firmware built with
+	 * RTEC2 exports `vtrace_rtec2_blob`, the old one exports `vtrace_events` -
+	 * so a project pointed at the wrong symbol file says "no events" instead of
+	 * reading one format as the other.
+	 */
+	rtosEventRingAddress = 0;
+	rtosRtec2Address = 0;
+	rtec2Adapter = nullptr;
+
+	resetEventSources();
+
+	rtosEventsRead = 0;
+
+	if (const auto ring = symbols.find("vtrace_rtec2_blob"); ring != symbols.end())
+	{
+		rtosRtec2Address = ring->second.address;
+
+		logger->info("RTEC2 events are kept by the target, at 0x{:08X}.", rtosRtec2Address);
+	}
+	else if (const auto ring = symbols.find("vtrace_events"); ring != symbols.end())
+	{
+		rtosEventRingAddress = ring->second.address;
+
+		logger->info("Switch records are kept by the target, at 0x{:08X}.", rtosEventRingAddress);
+	}
+
 	if (rtosModel == nullptr)
 	{
 		rtosModel = std::make_shared<RtosModel>();
 
 		/* The event side, attached here because this is where the model is
-		   made: the acquisition thread feeds it the runs it reads, and the
-		   tracks page has something to show without a second reader on the
-		   probe. Starting it is `start` on a source that does not read the
-		   target, so it cannot fail for probe reasons. */
-		rtosModel->attachTraceSource(std::make_unique<SwdTraceAdapter>());
+		   made: the acquisition thread feeds it, and the tracks page has
+		   something to show without a second reader on the probe. Neither
+		   source reads the target itself, so starting them cannot fail for
+		   probe reasons. */
+		if (rtosRtec2Address != 0)
+		{
+			auto adapter = std::make_unique<Rtec2Adapter>();
+
+			rtec2Adapter = adapter.get();
+
+			rtosModel->attachTraceSource(std::move(adapter));
+		}
+		else
+		{
+			rtosModel->attachTraceSource(std::make_unique<SwdTraceAdapter>());
+		}
 
 		if (rtosModel->trace() != nullptr)
 		{
@@ -425,18 +467,6 @@ bool ViewerDataHandler::prepareRtos()
 	 * symbol is all that is looked for - the ring is one object, so that the
 	 * linker keeps the capacity that only the host reads.
 	 */
-	rtosEventRingAddress = 0;
-	resetEventSources();
-
-	rtosEventsRead = 0;
-
-	if (const auto ring = symbols.find("vtrace_events"); ring != symbols.end())
-	{
-		rtosEventRingAddress = ring->second.address;
-
-		logger->info("Switch records are kept by the target, at 0x{:08X}.", rtosEventRingAddress);
-	}
-
 	/* And the RTT control block, when the target keeps one. The address is
 	   handed to the probe rather than left for it to search: the search found
 	   the block and read nothing out of it. */
@@ -909,6 +939,90 @@ void ViewerDataHandler::appendStreamRecords(const std::vector<RtosEventRing::Rec
 }
 
 
+/*
+ * The RTEC2 carrier, read the same way the eight byte one was: control block
+ * first, then as many slots as the adapter asks for.
+ *
+ * The budget is deliberately small. The ring holds sixty four slots and the
+ * target writes about five hundred records a second, so a round at a hundred
+ * hertz finds five or six waiting; asking for thirty two leaves room for a
+ * round that ran late without ever taking more than one read per round.
+ */
+void ViewerDataHandler::readRtec2Ring(RtosProbeMemory& memory)
+{
+	if (rtosRtec2Address == 0 || rtec2Adapter == nullptr)
+		return;
+
+	uint8_t control[Rtec2RingReader::controlBlockBytes] = {};
+
+	if (!memory.read(rtosRtec2Address, control, static_cast<uint32_t>(sizeof(control))))
+	{
+		if (rtec2ReadFailures++ == 0)
+			logger->warn("The event ring at 0x{:08X} could not be read: {}", rtosRtec2Address, debugProbe->getLastErrorMsg());
+
+		return;
+	}
+
+	RtosTraceProblem problem = RtosTraceProblem::None;
+
+	if (!rtec2Adapter->beginControlBlock(control, sizeof(control), problem))
+	{
+		if (rtec2ReadFailures++ == 0)
+			logger->warn("The event ring at 0x{:08X} does not describe a ring: {}", rtosRtec2Address, describe(problem));
+
+		return;
+	}
+
+	rtec2ReadFailures = 0;
+
+	/* Nothing new is the common case: a round and a ring that is level. */
+	if (rtec2Adapter->nextWindow(rtec2SlotsPerRound).slots == 0)
+		return;
+
+	/* The whole ring in one read, not the new slots only. The reader indexes by
+	   `sequence & (capacity - 1)` and refuses a buffer shorter than the ring -
+	   that refusal is what stops it reading a slot as if it were a different
+	   one. On this target that is 3.5 KB a round, which the J-Link carries at
+	   four megahertz and which the measurement shows in `probe_read_ns`. */
+	const uint32_t firstByte = rtosRtec2Address + Rtec2RingReader::controlBlockBytes;
+	const uint32_t bytes = rtec2Adapter->capacity() * Rtec2RingReader::slotBytes;
+
+	std::vector<uint8_t> slots(bytes, 0);
+
+	if (!memory.read(firstByte, slots.data(), bytes))
+	{
+		if (rtec2ReadFailures++ == 0)
+			logger->warn("The event slots at 0x{:08X} could not be read: {}", firstByte, debugProbe->getLastErrorMsg());
+
+		return;
+	}
+
+	rtec2Adapter->pushSlots(slots.data(), slots.size());
+
+	/* Drain the source here. The eight byte path gets this for free, because
+	   its records go through `appendEventIntervals` and that call pumps the
+	   pipeline; this path hands its records straight to the adapter, so the
+	   pump is the caller's job. Without it the adapter fills up and the view
+	   stays empty - which is exactly what it did for one round of testing. */
+	if (rtosModel->trace() != nullptr)
+		rtosModel->trace()->pump(0.0);
+
+	/* Once, if the writer is moving and the reader is not: that is the only
+	   combination whose reason is not obvious from the outside, and the three
+	   numbers below say which of them it is - a torn batch, a cursor pinned by
+	   a head that keeps changing under it, or slots that do not decode. */
+	if (!rtec2Diagnosed && rtec2Adapter->writerHead() > rtec2LastHead && rtec2Adapter->cursorNow() == rtec2LastCursor)
+	{
+		rtec2Diagnosed = true;
+
+		logger->info("RTEC2 ring: head {}, cursor {}, torn batches {}, unknown types {}, capacity {}.", rtec2Adapter->writerHead(),
+		             rtec2Adapter->cursorNow(), rtec2Adapter->tornBatches(), rtec2Adapter->unknownTypes(), rtec2Adapter->capacity());
+	}
+
+	rtec2LastHead = rtec2Adapter->writerHead();
+	rtec2LastCursor = rtec2Adapter->cursorNow();
+}
+
 void ViewerDataHandler::readEventRing(RtosProbeMemory& memory, double nowSeconds)
 {
 	if (rtosEventRingAddress == 0 || rtosModel == nullptr)
@@ -1076,6 +1190,7 @@ void ViewerDataHandler::runRtosRound(std::chrono::steady_clock::time_point start
 		}
 
 		readEventRing(memory, startedAt);
+		readRtec2Ring(memory);
 
 		{
 			static bool said = false;

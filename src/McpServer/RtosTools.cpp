@@ -55,9 +55,24 @@ namespace mcp
 				untimed++;
 		}
 
+		/* How many of each kind, which is the question "did the four tracks get
+		   anything" answered without a screenshot. Counted over the window the
+		   pipeline still holds, so it describes the recent past rather than the
+		   whole session. */
+		std::map<std::string, uint32_t> byType;
+
+		for (const RtosNormalizedEvent& event : model->trace()->events())
+			byType[toString(event.event.type)]++;
+
+		Json types = Json::object();
+
+		for (const auto& entry : byType)
+			types[entry.first] = entry.second;
+
 		return Json::object({{"attached", true},
 		                     {"source", model->trace()->sourceName()},
 		                     {"events", static_cast<uint32_t>(model->trace()->eventCount())},
+		                     {"by_type", types},
 		                     {"untimed", untimed},
 		                     {"epoch", static_cast<uint32_t>(model->trace()->currentEpoch())},
 		                     {"missing", missing}});

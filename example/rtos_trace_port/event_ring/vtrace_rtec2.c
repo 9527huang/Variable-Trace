@@ -83,7 +83,11 @@ void vtrace_rtec2_init(void)
 
 	vtraceWriter.overwrite = 1;
 
-	rtec2_writer_init(&vtraceWriter, vtrace_rtec2_blob, VTRACE_RTEC2_CAPACITY, 1u, 0u, (uint32_t)configCPU_CLOCK_HZ, capabilities);
+	/* A million, not the CPU frequency: `targetHz` describes the unit the ticks
+	   are in, and the ticks are microseconds. Declaring eight million here made
+	   every event arrive with a time eight times too small - or, once the reader
+	   worked out the scale did not fit, arrive with no time at all. */
+	rtec2_writer_init(&vtraceWriter, vtrace_rtec2_blob, VTRACE_RTEC2_CAPACITY, 1u, 0u, 1000000u, capabilities);
 }
 
 void vtrace_rtec2_switch(uint32_t tcb)

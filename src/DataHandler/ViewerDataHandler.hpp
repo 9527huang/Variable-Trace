@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "DataHandlerBase.hpp"
+#include "Rtec2Adapter.hpp"
 #include "IDebugProbe.hpp"
 
 #include <chrono>
@@ -374,6 +375,13 @@ class ViewerDataHandler : public DataHandlerBase
 	/* One batch of switch records, when the target keeps them. */
 	void readEventRing(RtosProbeMemory& memory, double nowSeconds);
 
+	/* The same job for the RTEC2 carrier: control block, then as many slots as
+	   the adapter asks for. Kept apart from the eight byte path rather than
+	   folded into it - they read different memory and answer different
+	   questions, and one `if` in the middle of a function that does both is how
+	   the two get confused later. */
+	void readRtec2Ring(RtosProbeMemory& memory);
+
 	/* The streams, read on the sampling tick rather than on the task view's own:
 	   a stream has to be drained at the rate it is written, and the task view's
 	   round is far too slow for that. Both are tried; whichever hands over
@@ -440,6 +448,29 @@ class ViewerDataHandler : public DataHandlerBase
 	   Optional, because a firmware without the ring is a firmware the task view
 	   still works against. */
 	uint32_t rtosEventRingAddress = 0;
+
+	/* The RTEC2 ring, when the target carries that one instead. The two are
+	   exclusive in practice: an F103 holds one of them, not both. */
+	uint32_t rtosRtec2Address = 0;
+
+	/* Borrowed from the model, which owns it. Null when the target carries the
+	   eight byte ring or nothing at all. */
+	Rtec2Adapter* rtec2Adapter = nullptr;
+
+	/* How many slots one round may take. Thirty two of sixty four: a round at
+	   a hundred hertz finds five or six waiting, and the rest is room for a
+	   round that ran late. */
+	static constexpr uint32_t rtec2SlotsPerRound = 32;
+
+	/* Counts read failures so that the log says it once, not a hundred times a
+	   second. Reset by every successful read. */
+	uint32_t rtec2ReadFailures = 0;
+
+	/* One diagnostic line, once a run, when the ring is readable but nothing is
+	   coming out of it. */
+	bool rtec2Diagnosed = false;
+	uint32_t rtec2LastHead = 0;
+	uint32_t rtec2LastCursor = 0;
 
 	/* How far the reader has got, in the ring's own monotonic count. */
 	uint32_t rtosEventsRead = 0;
