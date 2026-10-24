@@ -99,6 +99,20 @@ struct RtosTrackProjection
 	std::vector<RtosTrackEntry> task;
 
 	/*
+	 * The span the events cover, on their own clock.
+	 *
+	 * The bands are drawn against the strip's window, and the strip's clock
+	 * starts when acquisition did while the events' starts at the first event
+	 * the target sent. Those two agree only if the target happened to be idle
+	 * between the two moments. When they do not, the bands are drawn over a
+	 * stretch no event covers - which reads as "nothing happened" and is the one
+	 * reading that must never be produced by accident.
+	 */
+	bool hasSpan = false;
+	double firstSeconds = 0.0;
+	double lastSeconds = 0.0;
+
+	/*
 	 * Every track, once.
 	 *
 	 * Exists because a caller that has to remember all of them will forget one -

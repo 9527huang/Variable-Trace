@@ -244,3 +244,51 @@ TEST(RtosTraceReducerTest, EveryTrackIsListedOnceForTheCallersThatNeedAllOfThem)
 
 	EXPECT_EQ(6u, unique.size());
 }
+
+/*
+ * The span the events cover.
+ *
+ * The bands are drawn against the strip's window, and the strip's clock starts
+ * when acquisition did while the events' starts at the first event. A band over
+ * a stretch no event covers reads as "nothing happened", so the panel needs to
+ * know where the events actually are - and that has to come out of the reducer,
+ * which is the only place that has seen them all.
+ */
+TEST(RtosTraceReducerTest, TheSpanCoversTheEventsThatCarryATime)
+{
+	const std::vector<RtosNormalizedEvent> events = {
+	    at(make(RtosTraceEventType::TaskSwitchIn, 0x1000, 0, 0, 0), 4.0),
+	    at(make(RtosTraceEventType::IsrEnter, 0, 0, 1, 1), 9.5),
+	    at(make(RtosTraceEventType::IsrExit, 0, 0, 1, 1), 9.6),
+	    at(make(RtosTraceEventType::TaskSwitchIn, 0x1040, 0, 0, 0), 6.0),
+	};
+
+	const RtosTrackProjection projection = RtosTraceReducer::project(events);
+
+	ASSERT_TRUE(projection.hasSpan);
+	EXPECT_DOUBLE_EQ(4.0, projection.firstSeconds);
+	EXPECT_DOUBLE_EQ(9.6, projection.lastSeconds);
+}
+
+TEST(RtosTraceReducerTest, AnEventWithoutATimeDoesNotStretchTheSpan)
+{
+	std::vector<RtosNormalizedEvent> events = {
+	    at(make(RtosTraceEventType::TaskSwitchIn, 0x1000, 0, 0, 0), 4.0),
+	    make(RtosTraceEventType::Fault, 0x20000, 0, 0x1000, 0),
+	};
+
+	const RtosTrackProjection projection = RtosTraceReducer::project(events);
+
+	ASSERT_TRUE(projection.hasSpan);
+	EXPECT_DOUBLE_EQ(4.0, projection.firstSeconds);
+	EXPECT_DOUBLE_EQ(4.0, projection.lastSeconds);
+}
+
+TEST(RtosTraceReducerTest, NoTimedEventsMeansNoSpan)
+{
+	const std::vector<RtosNormalizedEvent> events = {make(RtosTraceEventType::TaskSwitchIn, 0x1000, 0, 0, 0)};
+
+	const RtosTrackProjection projection = RtosTraceReducer::project(events);
+
+	EXPECT_FALSE(projection.hasSpan);
+}

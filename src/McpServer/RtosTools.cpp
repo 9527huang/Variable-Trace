@@ -59,6 +59,33 @@ namespace mcp
 		   anything" answered without a screenshot. Counted over the window the
 		   pipeline still holds, so it describes the recent past rather than the
 		   whole session. */
+		/* The span the events cover, on their own clock. Two clocks are in play -
+		   the strip's, which starts when acquisition did, and the events', which
+		   starts at the first event the target sent - and a band window taken
+		   from one of them lands on the other only if they happen to agree.
+		   Reporting both is how that gets noticed instead of looked at. */
+		bool haveSpan = false;
+		double firstSeconds = 0.0;
+		double lastSeconds = 0.0;
+
+		for (const RtosNormalizedEvent& event : model->trace()->events())
+		{
+			if (!event.hasDisplaySeconds)
+				continue;
+
+			if (!haveSpan)
+			{
+				firstSeconds = event.displaySeconds;
+				lastSeconds = event.displaySeconds;
+				haveSpan = true;
+			}
+			else
+			{
+				firstSeconds = std::min(firstSeconds, event.displaySeconds);
+				lastSeconds = std::max(lastSeconds, event.displaySeconds);
+			}
+		}
+
 		std::map<std::string, uint32_t> byType;
 
 		for (const RtosNormalizedEvent& event : model->trace()->events())
@@ -90,6 +117,8 @@ namespace mcp
 		                     {"source", model->trace()->sourceName()},
 		                     {"events", static_cast<uint32_t>(model->trace()->eventCount())},
 		                     {"by_type", types},
+		                     {"first_seconds", firstSeconds},
+		                     {"last_seconds", lastSeconds},
 		                     {"untimed", untimed},
 		                     {"epoch", static_cast<uint32_t>(model->trace()->currentEpoch())},
 		                     {"missing", missing}});

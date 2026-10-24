@@ -1,5 +1,7 @@
 #include "RtosTraceReducer.hpp"
 
+#include <algorithm>
+
 #include <map>
 
 namespace
@@ -53,6 +55,26 @@ RtosTrackProjection RtosTraceReducer::project(const std::vector<RtosNormalizedEv
 {
 	RtosTrackProjection projection;
 
+	/* The span is taken from the events, not from the entries: an entry without
+	   a time would otherwise be counted into a range it is not part of. */
+	auto noteSpan = [&projection](const RtosNormalizedEvent& normalized)
+	{
+		if (!normalized.hasDisplaySeconds)
+			return;
+
+		if (!projection.hasSpan)
+		{
+			projection.firstSeconds = normalized.displaySeconds;
+			projection.lastSeconds = normalized.displaySeconds;
+			projection.hasSpan = true;
+
+			return;
+		}
+
+		projection.firstSeconds = std::min(projection.firstSeconds, normalized.displaySeconds);
+		projection.lastSeconds = std::max(projection.lastSeconds, normalized.displaySeconds);
+	};
+
 	/* One nesting stack for interrupts: an ISR can be entered while another is
 	   running, and the inner one's interval sits inside the outer one's. A
 	   single "current ISR" variable would lose the outer one. */
@@ -75,6 +97,8 @@ RtosTrackProjection RtosTraceReducer::project(const std::vector<RtosNormalizedEv
 	{
 		const RtosNormalizedEvent& normalized = events[index];
 		const RtosTraceEvent& event = normalized.event;
+
+		noteSpan(normalized);
 
 		switch (event.type)
 		{

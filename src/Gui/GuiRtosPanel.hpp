@@ -2660,7 +2660,11 @@ class GuiRtosPanel
 		   the block spent on headers. */
 		ImGui::TextUnformatted(I18n::tr("Tracks"));
 		ImGui::SameLine(0.0f, 8.0f * scale);
-		GuiHelper::drawSecondaryText("%s · %u events", model.trace()->sourceName(), static_cast<uint32_t>(events.size()));
+		if (tracks.hasSpan)
+			GuiHelper::drawSecondaryText("%s · %u events · %.1f–%.1f s", model.trace()->sourceName(), static_cast<uint32_t>(events.size()),
+			                             tracks.firstSeconds, tracks.lastSeconds);
+		else
+			GuiHelper::drawSecondaryText("%s · %u events", model.trace()->sourceName(), static_cast<uint32_t>(events.size()));
 
 		/* Per row rather than one long line at the top: "not carried" belongs next
 		   to the track it applies to. A list of eight capability names above five
@@ -2686,7 +2690,37 @@ class GuiRtosPanel
 			return;
 		}
 
-		const RtosTimeline::Span window = GuiRtosPanelTimeline::getLastWindow();
+		RtosTimeline::Span window = GuiRtosPanelTimeline::getLastWindow();
+
+		/* Slide the window onto the events when it has drifted off them.
+		 *
+		 * The strip's clock starts when acquisition did; the events' starts at
+		 * the first event the target sent. If the target was busy for a few
+		 * seconds before the first sample, the two differ by that much - and the
+		 * newest part of the strip then covers a stretch no event has reached
+		 * yet. The bands come out empty, which reads as "nothing happened", which
+		 * is the one reading this must never produce by accident.
+		 *
+		 * Sliding rather than clamping keeps the zoom: the window is as wide as
+		 * the reader set it, it just sits where the events are. The header says
+		 * both ranges, so a window that had to move is visible rather than
+		 * silently corrected. */
+		if (tracks.hasSpan)
+		{
+			const double width = window.to - window.from;
+
+			if (window.to > tracks.lastSeconds)
+			{
+				window.to = tracks.lastSeconds;
+				window.from = std::max(tracks.firstSeconds, window.to - width);
+			}
+
+			if (window.from < tracks.firstSeconds)
+			{
+				window.from = tracks.firstSeconds;
+				window.to = std::min(tracks.lastSeconds, window.from + width);
+			}
+		}
 
 		/* No second copy of the window line: the strip's own header states it two
 		   centimetres above, and the two bands share the axis, so a second range
