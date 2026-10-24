@@ -101,6 +101,18 @@ class Rtec2Adapter final : public IRtosTraceSource
 		return block.overwritten;
 	}
 
+	/* The newest target time seen so far. The caller uses it once, to line the
+	   event clock up with the strip's. */
+	uint32_t newestTicks() const
+	{
+		return newest;
+	}
+
+	bool hasNewestTicks() const
+	{
+		return sawTicks;
+	}
+
 	uint32_t cursorNow() const
 	{
 		return cursor;
@@ -179,6 +191,8 @@ class Rtec2Adapter final : public IRtosTraceSource
 	uint32_t decodedCount = 0;
 	mutable uint32_t requestedCount = 0;
 	mutable uint32_t windowCount = 0;
+	uint32_t newest = 0;
+	bool sawTicks = false;
 	uint32_t roundCount = 0;
 	uint32_t controlFailures = 0;
 	uint32_t unknownTypeCount = 0;

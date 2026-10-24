@@ -99,6 +99,31 @@ class RtosTracePipeline
 	   sampling loop and it has exactly one moment to spend here. */
 	size_t pushSwitchRuns(const std::vector<RtosEventRing::Interval>& runs);
 
+	/*
+	 * Sets the moment the event clock counts from.
+	 *
+	 * The event clock starts at the first event that arrives, which is a fine
+	 * answer for a recording and a wrong one beside a strip that counts from the
+	 * moment acquisition began: the target was running before that, so the two
+	 * axes differ by however long it had been up. A source that can say what the
+	 * target's counter reads right now - the ring can - calls this before the
+	 * first batch is pumped, and the two axes then agree to within one ring.
+	 *
+	 * Ignored once there is history: re-timing events that a reader has already
+	 * seen move under them is worse than an axis that starts late.
+	 */
+	void noteTimeOrigin(uint32_t rawTicks)
+	{
+		if (!history.empty())
+			return;
+
+		/* Extended, because everything else in here is: the clock folds a 32 bit
+		   counter into a 64 bit one so that a session longer than the counter's
+		   period does not jump backwards. */
+		firstTicks = traceClock.extend(rawTicks);
+		haveFirstTicks = true;
+	}
+
 	const std::vector<RtosNormalizedEvent>& events() const
 	{
 		return history;

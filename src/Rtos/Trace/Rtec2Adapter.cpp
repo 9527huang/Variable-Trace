@@ -131,6 +131,12 @@ bool Rtec2Adapter::pushSlots(const uint8_t* bytes, size_t size)
 		if (event.targetHz == 0)
 			event.targetHz = block.targetHz;
 
+		if (event.hasTargetTicks && (!sawTicks || event.targetTicks > newest))
+		{
+			newest = event.targetTicks;
+			sawTicks = true;
+		}
+
 		pending.push_back(event);
 	}
 

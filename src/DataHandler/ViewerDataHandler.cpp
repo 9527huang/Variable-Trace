@@ -384,6 +384,7 @@ bool ViewerDataHandler::prepareRtos()
 	resetEventSources();
 
 	rtosEventsRead = 0;
+	rtec2OriginSet = false;
 
 	if (const auto ring = symbols.find("vtrace_rtec2_blob"); ring != symbols.end())
 	{
@@ -1033,7 +1034,30 @@ void ViewerDataHandler::readRtec2Ring(RtosProbeMemory& memory)
 			   and a tight retry is a tight retry on a running target. */
 			break;
 		}
+
+		/* Line the event clock up with the strip's, once.
+		 *
+		 * The strip counts from the moment acquisition began; the event clock
+		 * used to count from the first event to arrive, which is the same thing
+		 * only if the target had been up for no time at all before that. It had
+		 * - minutes, on a board somebody was already using - and the bands were
+		 * then drawn over a stretch no event covered.
+		 *
+		 * The newest record in the ring is the target's counter as of now, and
+		 * that is what the strip's zero means. Taken before the first pump, so
+		 * there is no history to re-time. */
+		if (!rtec2OriginSet && rtec2Adapter->hasNewestTicks() && rtosModel->trace() != nullptr)
+		{
+			rtosModel->trace()->noteTimeOrigin(rtec2Adapter->newestTicks());
+
+			rtec2OriginSet = true;
+		}
 	}
+
+	/* Drained once, after the windows: pumping between them would let the first
+	   batch set the clock before the origin above had a chance to. */
+	if (rtosModel->trace() != nullptr)
+		rtosModel->trace()->pump(0.0);
 
 	/* Drain the source here. The eight byte path gets this for free, because
 	   its records go through `appendEventIntervals` and that call pumps the

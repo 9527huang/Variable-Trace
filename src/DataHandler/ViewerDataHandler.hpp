@@ -480,6 +480,9 @@ class ViewerDataHandler : public DataHandlerBase
 	/* One diagnostic line, once a run, when the ring is readable but nothing is
 	   coming out of it. */
 	bool rtec2Diagnosed = false;
+
+	/* Whether the event clock has been lined up with the strip's clock yet. */
+	bool rtec2OriginSet = false;
 	uint32_t rtec2LastHead = 0;
 	uint32_t rtec2LastCursor = 0;
 
