@@ -2659,12 +2659,6 @@ class GuiRtosPanel
 		   on a line of their own - two short lines above six rows is a fifth of
 		   the block spent on headers. */
 		ImGui::TextUnformatted(I18n::tr("Tracks"));
-		ImGui::SameLine(0.0f, 8.0f * scale);
-		if (tracks.hasSpan)
-			GuiHelper::drawSecondaryText("%s · %u events · %.1f–%.1f s", model.trace()->sourceName(), static_cast<uint32_t>(events.size()),
-			                             tracks.firstSeconds, tracks.lastSeconds);
-		else
-			GuiHelper::drawSecondaryText("%s · %u events", model.trace()->sourceName(), static_cast<uint32_t>(events.size()));
 
 		/* Per row rather than one long line at the top: "not carried" belongs next
 		   to the track it applies to. A list of eight capability names above five
@@ -2722,10 +2716,43 @@ class GuiRtosPanel
 			}
 		}
 
-		/* No second copy of the window line: the strip's own header states it two
-		   centimetres above, and the two bands share the axis, so a second range
-		   could only ever repeat the first or contradict it. */
+		/* The range on this heading is the one the bands are drawn over - the
+		   same stretch the strip shows - because that is what the reader is
+		   looking at when they compare the two.
+		   
+		   It used to say the whole span the events covered, which is a different
+		   question (what does this session hold, not what am I looking at) and
+		   made a correct picture look wrong: 0.0-34.0 s above a strip reading
+		   28.7-33.6 s is not a contradiction, but it reads like one. */
+		drawTrackHeading(model, tracks, events.size(), window, scale);
+
 		drawTrackRows(tracks, carried, window.from, window.to, scale);
+	}
+
+	/*
+	 * The heading: what this block is, where the events came from, and which
+	 * stretch of time the bands below are showing.
+	 *
+	 * The stretch is the strip's own window, so the two can be read against each
+	 * other by eye: the left end of a band sits under the left end of the lanes.
+	 * The span the session holds goes in the tooltip - it answers a question
+	 * nobody has while looking at a band.
+	 */
+	static void drawTrackHeading(const RtosModel& model, const RtosTrackProjection& tracks, size_t eventCount, const RtosTimeline::Span& window,
+	                             float scale)
+	{
+		ImGui::TextUnformatted(I18n::tr("Tracks"));
+		ImGui::SameLine(0.0f, 8.0f * scale);
+		GuiHelper::drawSecondaryText("%s · %u events · %.1f–%.1f s", model.trace()->sourceName(), static_cast<uint32_t>(eventCount), window.from,
+		                             window.to);
+
+		if (ImGui::IsItemHovered())
+		{
+			if (tracks.hasSpan)
+				ImGui::SetTooltip("%s\n%.1f–%.1f s", I18n::tr("the events this session holds"), tracks.firstSeconds, tracks.lastSeconds);
+			else
+				ImGui::SetTooltip("%s", I18n::tr("no event carries a time"));
+		}
 	}
 
 	/*

@@ -684,6 +684,8 @@
   "this source does not carry it": "这份源不提供",
   "none": "—",
   "Faults": "故障",
+  "the events this session holds": "这次会话里的事件覆盖",
+  "no event carries a time": "没有事件带时间",
   "The target has not faulted in this session.": "这次会话里目标没有发生故障。",
   "The status register was empty, so only the PC is evidence: 0x%08X": "状态寄存器是空的，只有 PC 算证据：0x%08X",
   "window": "时间窗",
