@@ -1,5 +1,7 @@
 #include "RtosIdentityStore.hpp"
 
+#include <algorithm>
+
 namespace
 {
 	RtosEntityKey handleKey(const RtosEntityRef& ref, uint64_t epoch)
@@ -170,6 +172,33 @@ void RtosIdentityStore::nameFromDictionary(const RtosEntityKey& key, const std::
 
 	found->second.name = name;
 	found->second.nameFromDictionary = true;
+}
+
+void RtosIdentityStore::restore(const Entity& entity)
+{
+	entities[entity.key] = entity;
+
+	/* The per handle bookkeeping is rebuilt from the generation itself rather
+	   than written into the file: it is derivable, and a file that carried it
+	   could disagree with the keys beside it. */
+	RtosEntityKey handleKey = entity.key;
+
+	handleKey.generation = 0;
+
+	HandleState& state = handles[handleKey];
+
+	state.highestGeneration = std::max(state.highestGeneration, entity.key.generation);
+
+	if (!entity.closed)
+	{
+		state.open = true;
+		state.openGeneration = entity.key.generation;
+	}
+	else if (state.openGeneration == entity.key.generation)
+	{
+		state.open = false;
+		state.openGeneration = 0;
+	}
 }
 
 void RtosIdentityStore::clear()

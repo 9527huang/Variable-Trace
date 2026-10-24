@@ -987,6 +987,10 @@ EXTRA = {
         "· 有 %u 个任务是估出来的，窗口一共见过 %u 个任务",
     "· nothing in this session's counters explains it: the rounds are probably further apart than the states last":
         "· 本次会话的计数解释不了它：大概是回合之间的间隔比状态持续的时间还长",
+
+    # 录制：v3 才存事件。没有事件的记录要说清是「没记」，不是「没事发生」。
+    "This recording does not carry the events: the bands, the budget and the fault list need them.":
+        "这份记录里没有事件，带子、时间账本和故障表都要靠它们。",
 }
 
 

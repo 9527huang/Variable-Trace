@@ -10,6 +10,9 @@
 
 #include "RtosEventRing.hpp"
 #include "RtosSnapshot.hpp"
+#include "Trace/RtosIdentityStore.hpp"
+#include "Trace/RtosTracePipeline.hpp"
+#include "Trace/RtosTraceTypes.hpp"
 
 class RtosPlaybackV3;
 class RtosRecordingV3;
@@ -167,6 +170,26 @@ class RtosRecording
 	 * through the same merge gives the same lanes.
 	 */
 	void write(const RtosSnapshot& snapshot, const std::vector<RtosEventRing::Interval>& events = {});
+
+	/*
+	 * The events themselves, for the blocks a version 3 container has.
+	 *
+	 * A round carries the switch runs because the lanes are drawn from them; the
+	 * tracks, the time budget and the fault list are answers about events, and a
+	 * file without them reopens as a table with empty bands. The runs and the
+	 * events are not duplicates: a run is a stretch of time, an event is a
+	 * transition, and only the second one can say who was interrupted.
+	 *
+	 * Ignored for a version 2 file, which has nowhere to put them. `source` is
+	 * written once per recording, beside the first batch.
+	 */
+	void writeTraceEvents(const std::vector<RtosNormalizedEvent>& events, const RtosTraceSourceRecord& source);
+
+	/* Who the keys in those events belong to. Written every so often and once
+	   more when the recording stops, so that a file cut short still has a
+	   dictionary to read its events against. */
+	void writeIdentities(const RtosIdentityStore& identities);
+
 	void finish();
 
 	bool isWriting() const
@@ -242,6 +265,28 @@ class RtosRecording
 	   an empty event list means "not recorded" rather than "nothing switched". */
 	bool hasEventRecords() const;
 
+	/*
+	 * What a version 3 file holds besides the rounds.
+	 *
+	 * `present` is false for v1 and v2, which kept the runs and not the events.
+	 * The interface uses it to say "this recording was made before events were
+	 * written down" rather than showing empty tracks as if the target had
+	 * nothing to report.
+	 */
+	struct TraceContent
+	{
+		bool present = false;
+		std::vector<RtosNormalizedEvent> events;
+		RtosIdentityStore identities;
+		RtosTraceSourceRecord source;
+	};
+
+	TraceContent traceContent() const;
+
+	/* Whether the open file carries events. Cheap - it asks the container, not
+	   the events - because the interface asks it every frame. */
+	bool hasTraceEvents() const;
+
 	Info info() const;
 
    private:
@@ -288,6 +333,10 @@ class RtosRecording
 	/* One record's bytes, reused: a record is assembled and then written in
 	   one call, so a reader never sees half of one. */
 	std::vector<uint8_t> buffer;
+
+	/* Whether the source descriptor has been written into this recording. One
+	   per file: it describes the session, not each batch. */
+	bool sourceWritten = false;
 };
 
 #endif

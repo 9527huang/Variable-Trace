@@ -60,12 +60,30 @@ void RtosModel::publish(std::shared_ptr<RtosSnapshot> snapshot)
 		}
 
 		recording.write(*snapshot, events);
+
+		/* The events behind the bands, the budget and the fault list. The runs
+		   above say when a task held the CPU; these say what happened, which is
+		   what every answer about interrupts is made from.
+
+		   Written after the round, and only for the events that arrived since the
+		   last one: a batch belongs to the round it was published with, so a file
+		   read back has the same order the view had. */
+		if (tracePipeline != nullptr)
+		{
+			recording.writeTraceEvents(tracePipeline->eventsSince(recordedEvents), sourceRecord());
+
+			/* The dictionary goes in every so often as well as at the end, so
+			   that a recording cut off by a crash still has names for its
+			   events. Sixty four rounds is about half a minute. */
+			if (snapshot->sequence % 64u == 0u)
+				recording.writeIdentities(tracePipeline->identity());
+		}
 	}
 
 	published.store(std::move(snapshot));
 }
 
-bool RtosModel::startRecording(const std::string& path, RtosRecording::Problem& problem)
+bool RtosModel::startRecording(const std::string& path, RtosRecording::Problem& problem, RtosRecording::Format format)
 {
 	problem = RtosRecording::Problem::None;
 
@@ -81,12 +99,38 @@ bool RtosModel::startRecording(const std::string& path, RtosRecording::Problem& 
 		pendingEvents.clear();
 	}
 
-	return recording.begin(path, problem);
+	if (!recording.begin(path, problem, format))
+		return false;
+
+	/* Everything already applied belongs to the session before the file, so the
+	   file starts here rather than at the beginning of the history. */
+	recordedEvents = tracePipeline == nullptr ? 0 : tracePipeline->appended();
+
+	return true;
 }
 
 void RtosModel::stopRecording()
 {
+	/* One last dictionary: the entities that appeared since the last periodic
+	   one are the ones the final rounds refer to. */
+	if (tracePipeline != nullptr && tracePipeline->attached())
+		recording.writeIdentities(tracePipeline->identity());
+
 	recording.finish();
+	recordedEvents = 0;
+}
+
+RtosTraceSourceRecord RtosModel::sourceRecord() const
+{
+	RtosTraceSourceRecord record;
+
+	if (tracePipeline == nullptr)
+		return record;
+
+	record.name = tracePipeline->sourceName();
+	record.capabilities = tracePipeline->capabilities();
+
+	return record;
 }
 
 bool RtosModel::openRecording(const std::string& path, RtosRecording::Problem& problem)
@@ -120,6 +164,29 @@ bool RtosModel::openRecording(const std::string& path, RtosRecording::Problem& p
 		   round of it gets a row for the whole of it, so scrubbing does not add
 		   and remove rows either. */
 		roster.clear();
+	}
+
+	/*
+	 * The events, before the rounds are walked: the history the bands and the
+	 * budget are made from is the file's own, and putting it back here means the
+	 * reader sees the same tracks offline as the session had on the bench.
+	 *
+	 * A file without them is not a session without events. The pipeline is left
+	 * empty and not replaying, so the bands say "this recording does not carry
+	 * them" rather than showing whatever the last live session left behind.
+	 */
+	const RtosRecording::TraceContent trace = recording.traceContent();
+
+	if (trace.present)
+	{
+		if (tracePipeline == nullptr)
+			tracePipeline = std::make_unique<RtosTracePipeline>(nullptr);
+
+		tracePipeline->restore(trace.events, trace.identities, trace.source);
+	}
+	else if (tracePipeline != nullptr)
+	{
+		tracePipeline->clearHistory();
 	}
 
 	const size_t rounds = recording.roundCount();
@@ -190,6 +257,9 @@ void RtosModel::closePlayback()
 
 	timeline.clear();
 	eventHistory.clear();
+
+	if (tracePipeline != nullptr)
+		tracePipeline->clearHistory();
 
 	{
 		std::lock_guard<std::mutex> lock(modelMutex);

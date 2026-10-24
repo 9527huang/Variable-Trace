@@ -146,6 +146,7 @@ RtosTracePipeline::Pump RtosTracePipeline::pump(double budgetSeconds)
 
 		history.push_back(normalized);
 		result.applied++;
+		appendedTotal++;
 	}
 
 	/* The cap is on the history, not on the stream: what came in is kept until
@@ -190,6 +191,51 @@ void RtosTracePipeline::clearHistory()
 	firstTicks = 0;
 	haveFirstTicks = false;
 	droppedTotal = 0;
+	appendedTotal = 0;
+
+	replaying = false;
+	replayName.clear();
+	replayCapabilities = RtosTraceCapabilities{};
+}
+
+void RtosTracePipeline::restore(std::vector<RtosNormalizedEvent> events, const RtosIdentityStore& store, const RtosTraceSourceRecord& source)
+{
+	clearHistory();
+
+	identities = store;
+	history = std::move(events);
+
+	/* The count is set from the size, not bumped: what a recording holds is
+	   exactly what a reader can be shown, and a cursor carried over from a live
+	   session would skip the beginning of the file. */
+	appendedTotal = history.size();
+
+	replayName = source.name;
+	replayCapabilities = source.capabilities;
+	replaying = true;
+}
+
+std::vector<RtosNormalizedEvent> RtosTracePipeline::eventsSince(uint64_t& cursor) const
+{
+	std::vector<RtosNormalizedEvent> out;
+
+	if (cursor > appendedTotal)
+		cursor = appendedTotal;
+
+	/* The index of the oldest event still held. A cursor older than that is
+	   moved to it, because the events in between were dropped by the cap and
+	   cannot be written down after the fact. */
+	const uint64_t oldest = appendedTotal - history.size();
+
+	if (cursor < oldest)
+		cursor = oldest;
+
+	const size_t from = static_cast<size_t>(cursor - oldest);
+
+	out.assign(history.begin() + static_cast<std::ptrdiff_t>(from), history.end());
+	cursor = appendedTotal;
+
+	return out;
 }
 
 std::vector<std::string> RtosTracePipeline::missingCapabilities() const

@@ -116,6 +116,17 @@ class RtosIdentityStore
 	   lifetime it belongs to. */
 	void nameFromDictionary(const RtosEntityKey& key, const std::string& name);
 
+	/*
+	 * Puts one lifetime back exactly as it was written down.
+	 *
+	 * Only a recording being read back does this. In a live session the store
+	 * decides generations as it watches the stream; a file already holds those
+	 * decisions, and making them again from the events in it would number the
+	 * lifetimes differently - a handle whose creation was lost would come out
+	 * as generation zero instead of the generation the live view showed.
+	 */
+	void restore(const Entity& entity);
+
 	void clear();
 
 	size_t entityCount() const

@@ -73,9 +73,19 @@ class RtosTracePipeline
 	bool start(RtosTraceProblem& problem);
 	void stop();
 
+	/* A history is there to read either because a source is filling it or
+	   because a recording put it back. Both answer the same questions, and the
+	   interface should not have to know which - only `isReplay` says so, for the
+	   places that must not offer to keep recording. */
 	bool attached() const
 	{
-		return traceSource != nullptr;
+		return traceSource != nullptr || replaying;
+	}
+
+	/* True when the history came out of a file rather than off a probe. */
+	bool isReplay() const
+	{
+		return replaying;
 	}
 
 	/* What one pump did. `applied` counts events that went into the history,
@@ -146,6 +156,9 @@ class RtosTracePipeline
 
 	RtosTraceCapabilities capabilities() const
 	{
+		if (replaying)
+			return replayCapabilities;
+
 		return traceSource == nullptr ? RtosTraceCapabilities{} : traceSource->capabilities();
 	}
 
@@ -156,6 +169,9 @@ class RtosTracePipeline
 
 	const char* sourceName() const
 	{
+		if (replaying)
+			return replayName.c_str();
+
 		return traceSource == nullptr ? "none" : traceSource->name();
 	}
 
@@ -190,6 +206,38 @@ class RtosTracePipeline
 
 	void clearHistory();
 
+	/*
+	 * Puts a recorded history back.
+	 *
+	 * Everything that was decided while the session ran is handed over as it was
+	 * written - the events, the identities their keys point at, and what the
+	 * source said it could do - because re-deciding any of it here would produce
+	 * a second answer to a question the file already answers.
+	 *
+	 * Replaces whatever the pipeline held: a replay and a live session are never
+	 * one history.
+	 */
+	void restore(std::vector<RtosNormalizedEvent> events, const RtosIdentityStore& identities, const RtosTraceSourceRecord& source);
+
+	/*
+	 * The events that arrived since the last call, for writing them down.
+	 *
+	 * The cursor is the caller's, in events rather than in indexes: the history
+	 * drops its oldest entries when it is full, so an index taken now means a
+	 * different event later. A cursor that fell behind the retained window is
+	 * moved forward and the events in between are not returned - they are gone,
+	 * and pretending otherwise would write them down twice.
+	 */
+	std::vector<RtosNormalizedEvent> eventsSince(uint64_t& cursor) const;
+
+	/* How many events have been applied in this history. A caller that starts
+	   writing a recording now takes this as its first cursor, so the file begins
+	   at the moment recording began rather than at the start of the session. */
+	uint64_t appended() const
+	{
+		return appendedTotal;
+	}
+
    private:
 	std::unique_ptr<IRtosTraceSource> traceSource;
 
@@ -202,6 +250,17 @@ class RtosTracePipeline
 	uint64_t firstTicks = 0;
 	bool haveFirstTicks = false;
 	uint32_t droppedTotal = 0;
+
+	/* Every event this pipeline has ever applied, including the ones the limit
+	   has since dropped. A count rather than a size, so that a cursor survives
+	   the trimming. */
+	uint64_t appendedTotal = 0;
+
+	/* Set while a recording is being read: there is no source, and the two
+	   answers a source would give are held here instead. */
+	bool replaying = false;
+	std::string replayName;
+	RtosTraceCapabilities replayCapabilities;
 };
 
 #endif

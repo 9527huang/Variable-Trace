@@ -1,5 +1,7 @@
 #include "RtosPlaybackV3.hpp"
 
+#include "RtosTraceArchive.hpp"
+
 #include <cstring>
 
 namespace
@@ -47,6 +49,45 @@ bool RtosPlaybackV3::open(const std::string& path, RtosRecording::Problem& probl
 	for (const RtosRecordingV3::Block& block : contents.blocks)
 	{
 		types.push_back(block.type);
+
+		/* The three blocks a session's events live in. A block that does not
+		   decode is skipped rather than failing the file, for the reason a bad
+		   round is: everything before it is still a session somebody recorded. */
+		if (block.type == RtosRecordingV3::BlockType::NormalizedEvents)
+		{
+			std::vector<RtosNormalizedEvent> batch;
+
+			if (RtosTraceArchive::decodeEvents(block.payload, batch))
+			{
+				traceEvents.insert(traceEvents.end(), batch.begin(), batch.end());
+				haveEvents = haveEvents || !batch.empty();
+			}
+
+			blockIndex++;
+			continue;
+		}
+
+		if (block.type == RtosRecordingV3::BlockType::IdentityDictionary)
+		{
+			RtosIdentityStore decoded;
+
+			if (RtosTraceArchive::decodeIdentities(block.payload, decoded))
+				traceIdentities = std::move(decoded);
+
+			blockIndex++;
+			continue;
+		}
+
+		if (block.type == RtosRecordingV3::BlockType::SourceDiagnostics)
+		{
+			RtosTraceSourceRecord decoded;
+
+			if (RtosTraceArchive::decodeSource(block.payload, decoded))
+				sourceRecord = decoded;
+
+			blockIndex++;
+			continue;
+		}
 
 		if (block.type != RtosRecordingV3::BlockType::SnapshotRound)
 		{
@@ -99,6 +140,11 @@ void RtosPlaybackV3::close()
 	blockRounds.clear();
 	rounds.clear();
 	types.clear();
+	traceEvents.clear();
+	traceEvents.shrink_to_fit();
+	traceIdentities.clear();
+	sourceRecord = RtosTraceSourceRecord{};
+	haveEvents = false;
 	filePath.clear();
 	fileBytes = 0;
 	opened = false;

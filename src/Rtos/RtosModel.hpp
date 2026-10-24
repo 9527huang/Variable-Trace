@@ -180,7 +180,14 @@ class RtosModel
 	 * sampling thread: a recording that went through the interface would drop
 	 * whichever rounds the interface happened not to draw.
 	 */
-	bool startRecording(const std::string& path, RtosRecording::Problem& problem);
+	/*
+	 * A recording is written in the version 3 container by default: it has a
+	 * block type for the events, a commit word per block so a crash costs the
+	 * block being written, and a checksum that says whether a block is finished.
+	 * Version 2 is still reachable for a file that has to be readable by an
+	 * older build.
+	 */
+	bool startRecording(const std::string& path, RtosRecording::Problem& problem, RtosRecording::Format format = RtosRecording::Format::V3);
 	void stopRecording();
 
 	bool isRecording() const
@@ -222,6 +229,14 @@ class RtosModel
 	bool playbackHasEventRecords() const
 	{
 		return playback && recording.hasEventRecords();
+	}
+
+	/* Whether the file on screen carries the events themselves, and not only the
+	   runs the lanes are drawn from. False for a recording written before the
+	   event blocks existed, and for every version 2 file. */
+	bool playbackHasTraceEvents() const
+	{
+		return playback && recording.hasTraceEvents();
 	}
 
 	struct PlaybackInfo
@@ -289,6 +304,16 @@ class RtosModel
 	   every publish and on every stop, so a recording never opens with runs
 	   that belong to the round before it. */
 	std::vector<RtosEventRing::Interval> pendingEvents;
+
+	/* How many events had been applied when the recording began. The events
+	   after it are the ones the file holds; the ones before belong to a session
+	   that was already running when somebody pressed record. */
+	uint64_t recordedEvents = 0;
+
+	/* What the events came from, for the file to say so. Taken at the moment a
+	   batch of events is written, because the answer is "the source that is
+	   filling this pipeline", not a value worth keeping beside it. */
+	RtosTraceSourceRecord sourceRecord() const;
 
 	/* The recording, in whichever of its two roles is active. Read and written
 	   under `modelMutex` for its flags, and internally for the file itself. */

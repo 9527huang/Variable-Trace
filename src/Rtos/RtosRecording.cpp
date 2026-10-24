@@ -1,6 +1,7 @@
 #include "RtosRecording.hpp"
 
 #include "RtosPlaybackV3.hpp"
+#include "Trace/RtosTraceArchive.hpp"
 
 #include <ctime>
 
@@ -333,6 +334,7 @@ bool RtosRecording::begin(const std::string& path, Problem& problem, Format form
 			std::lock_guard<std::mutex> lock(mtx);
 
 			writing = true;
+			sourceWritten = false;
 			roundsWritten = 0;
 			firstWrittenSecond = 0.0;
 			lastWrittenSecond = 0.0;
@@ -382,6 +384,7 @@ bool RtosRecording::begin(const std::string& path, Problem& problem, Format form
 		std::lock_guard<std::mutex> lock(mtx);
 
 		filePath = path;
+		sourceWritten = false;
 		roundsWritten = 0;
 		firstWrittenSecond = 0.0;
 		lastWrittenSecond = 0.0;
@@ -572,6 +575,65 @@ void RtosRecording::finish()
 		std::fflush(closing);
 		std::fclose(closing);
 	}
+}
+
+void RtosRecording::writeTraceEvents(const std::vector<RtosNormalizedEvent>& events, const RtosTraceSourceRecord& source)
+{
+	if (!writing || v3Writer == nullptr)
+		return;
+
+	RtosRecordingV3::Problem problem = RtosRecordingV3::Problem::None;
+
+	/* The source goes in first, so that a file whose recording stopped after the
+	   first batch still says what those events came from. One per session, not
+	   one per batch: a reader that applied the last one would be right either
+	   way, and a hundred copies of one sentence is a file that lies about its
+	   own size. */
+	if (!sourceWritten)
+	{
+		if (v3Writer->append(RtosRecordingV3::BlockType::SourceDiagnostics, RtosTraceArchive::encodeSource(source), RtosTraceArchive::formatVersion, problem))
+			sourceWritten = true;
+	}
+
+	if (events.empty())
+		return;
+
+	v3Writer->append(RtosRecordingV3::BlockType::NormalizedEvents, RtosTraceArchive::encodeEvents(events), RtosTraceArchive::formatVersion, problem);
+}
+
+void RtosRecording::writeIdentities(const RtosIdentityStore& identities)
+{
+	if (!writing || v3Writer == nullptr)
+		return;
+
+	RtosRecordingV3::Problem problem = RtosRecordingV3::Problem::None;
+
+	v3Writer->append(RtosRecordingV3::BlockType::IdentityDictionary, RtosTraceArchive::encodeIdentities(identities), RtosTraceArchive::formatVersion,
+	                 problem);
+}
+
+RtosRecording::TraceContent RtosRecording::traceContent() const
+{
+	TraceContent content;
+
+	if (v3 == nullptr)
+		return content;
+
+	content.present = v3->hasTraceEvents();
+
+	if (!content.present)
+		return content;
+
+	content.events = v3->events();
+	content.identities = v3->identities();
+	content.source = v3->source();
+
+	return content;
+}
+
+bool RtosRecording::hasTraceEvents() const
+{
+	return v3 != nullptr && v3->hasTraceEvents();
 }
 
 RtosRecording::Info RtosRecording::stats() const

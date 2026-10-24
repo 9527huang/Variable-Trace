@@ -341,6 +341,21 @@ struct RtosTraceCapabilities
 /* Named bits, so that a manifest or a log line does not carry bare numbers. */
 const char* capabilityName(uint32_t bit);
 
+/*
+ * What the events came from, written into a recording beside them.
+ *
+ * A file read back on another machine has no probe and no source object, and
+ * the interface still has to say where the events came from and which tracks
+ * it is allowed to draw. Both answers are here rather than derived from the
+ * file: the capabilities describe what the target could do when the session
+ * was recorded, and a reader that recomputed them would be guessing.
+ */
+struct RtosTraceSourceRecord
+{
+	std::string name;
+	RtosTraceCapabilities capabilities;
+};
+
 /* What a source found when it was asked what it can do.
  *
  * The three "cannot" values are kept apart because they are answered

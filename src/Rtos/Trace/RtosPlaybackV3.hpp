@@ -74,6 +74,34 @@ class RtosPlaybackV3
 		return opened;
 	}
 
+	/*
+	 * The events, the identities their keys point at, and the source.
+	 *
+	 * Empty for a file written before the event blocks existed - the rounds and
+	 * their runs are all it has. `hasTraceEvents` is what a reader checks before
+	 * drawing bands: an empty history that means "not written down" must not be
+	 * drawn as a session with nothing in it.
+	 */
+	bool hasTraceEvents() const
+	{
+		return haveEvents;
+	}
+
+	const std::vector<RtosNormalizedEvent>& events() const
+	{
+		return traceEvents;
+	}
+
+	const RtosIdentityStore& identities() const
+	{
+		return traceIdentities;
+	}
+
+	const RtosTraceSourceRecord& source() const
+	{
+		return sourceRecord;
+	}
+
 	const std::string& path() const
 	{
 		return filePath;
@@ -108,6 +136,15 @@ class RtosPlaybackV3
 	std::vector<std::vector<std::vector<uint8_t>>> blockRounds;  /* per block, its encoded rounds */
 	std::vector<RoundRef> rounds;
 	std::vector<RtosRecordingV3::BlockType> types;
+
+	/* Decoded as the blocks are walked, in file order. The dictionary is
+	   replaced rather than merged when a second one appears: the writer appends
+	   a fresher copy, and the last one is the one the events were written
+	   against. */
+	std::vector<RtosNormalizedEvent> traceEvents;
+	RtosIdentityStore traceIdentities;
+	RtosTraceSourceRecord sourceRecord;
+	bool haveEvents = false;
 
 	std::string filePath;
 	uint64_t fileBytes = 0;

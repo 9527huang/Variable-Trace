@@ -2720,7 +2720,14 @@ class GuiRtosPanel
 
 		if (model.trace() == nullptr || !model.trace()->attached())
 		{
-			GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("No event source is attached: this view is built from snapshots only."));
+			/* In a playback this is a statement about the file, not about the
+			   target: a recording written before the events were kept has
+			   nothing for the bands, and "no source is attached" would send the
+			   reader looking for a probe they already unplugged. */
+			if (model.isPlayback())
+				GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("This recording does not carry the events: the bands, the budget and the fault list need them."));
+			else
+				GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("No event source is attached: this view is built from snapshots only."));
 
 			return;
 		}
@@ -3436,9 +3443,15 @@ class GuiRtosPanel
 	 */
 	static void drawFaults(const RtosModel& model)
 	{
-		if (model.trace() == nullptr)
+		if (model.trace() == nullptr || !model.trace()->attached())
 		{
-			GuiHelper::drawSecondaryText("%s", I18n::tr("No event source is attached."));
+			/* A file without events is not a target that never faulted. Saying
+			   so is the difference between "nothing crashed" and "nobody wrote
+			   the crashes down". */
+			if (model.isPlayback())
+				GuiHelper::drawSecondaryTextWrapped("%s", I18n::tr("This recording does not carry the events: the bands, the budget and the fault list need them."));
+			else
+				GuiHelper::drawSecondaryText("%s", I18n::tr("No event source is attached."));
 
 			return;
 		}

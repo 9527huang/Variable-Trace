@@ -3,8 +3,10 @@
 #include <gtest/gtest.h>
 
 #include <deque>
+#include <filesystem>
 
 #include "RtosModel.hpp"
+#include "RtosRecording.hpp"
 
 namespace
 {
@@ -122,6 +124,25 @@ namespace
 		batch.cursorAfter = to;
 
 		return batch;
+	}
+
+	RtosSnapshot makeSnapshot(double atSeconds)
+	{
+		RtosSnapshot snapshot;
+
+		snapshot.captureStartedAt = atSeconds;
+		snapshot.captureFinishedAt = atSeconds + 0.02;
+		snapshot.captureSpanSeconds = 0.02;
+		snapshot.consistency = RtosConsistency::BestEffort;
+		snapshot.sessionId = "session-recording";
+
+		RtosTask task;
+		task.tcbAddress = 0x1000;
+		task.name = "worker";
+
+		snapshot.tasks.push_back(task);
+
+		return snapshot;
 	}
 }  // namespace
 
@@ -375,4 +396,73 @@ TEST(RtosTracePipelineTest, ReplacingASourceStopsTheOneItReplaces)
 	   safe to call twice, and this is the test that keeps that true. */
 	EXPECT_EQ(2, firstRaw->stopCount);
 	EXPECT_EQ(RtosTraceSourceState::Stopped, firstRaw->state());
+}
+
+TEST(RtosTracePipelineTest, ARecordingKeepsTheEventsAndOpeningItPutsThemBack)
+{
+	/* The whole point of writing the events down: press record, drive the
+	   target, close the program, open the file on another machine, and the bands
+	   and the fault list are still there. Before this the file held the rounds
+	   and the runs, so everything made from events came back empty. */
+	const std::filesystem::path directory = std::filesystem::temp_directory_path() / "variable-trace-model-recording";
+
+	std::filesystem::remove_all(directory);
+	std::filesystem::create_directories(directory);
+
+	const std::string path = (directory / "session.vtrec").string();
+
+	RtosModel live;
+
+	auto owned = std::make_unique<FakeTraceSource>();
+	FakeTraceSource* source = owned.get();
+
+	live.attachTraceSource(std::move(owned));
+
+	RtosTraceProblem traceProblem = RtosTraceProblem::None;
+
+	ASSERT_TRUE(live.trace()->start(traceProblem));
+
+	/* An event that arrives before record is pressed: it belongs to the session
+	   and not to the file, because a reader of the file would otherwise think
+	   the target began there. */
+	source->batches.push_back(batchOf({makeEvent(RtosTraceEventType::TaskCreate, 0x1000, 1, true, 0)}, 0, 1));
+	live.trace()->pump(0.01);
+
+	RtosRecording::Problem problem = RtosRecording::Problem::None;
+
+	ASSERT_TRUE(live.startRecording(path, problem)) << RtosRecording::describe(problem);
+
+	live.publish(std::make_shared<RtosSnapshot>(makeSnapshot(1.0)));
+
+	source->batches.push_back(batchOf({makeEvent(RtosTraceEventType::TaskSwitchIn, 0x1000, 1, true, 100),
+	                                   makeEvent(RtosTraceEventType::IsrEnter, 0x1000, 1, true, 140)},
+	                                  1, 3));
+	live.trace()->pump(0.01);
+
+	live.publish(std::make_shared<RtosSnapshot>(makeSnapshot(1.5)));
+
+	live.stopRecording();
+
+	RtosModel playback;
+
+	ASSERT_TRUE(playback.openRecording(path, problem)) << RtosRecording::describe(problem);
+
+	ASSERT_NE(nullptr, playback.trace());
+	EXPECT_TRUE(playback.trace()->attached());
+	EXPECT_TRUE(playback.trace()->isReplay());
+	EXPECT_EQ("fake", std::string(playback.trace()->sourceName()));
+
+	/* Two, not three: the creation happened before record was pressed. */
+	EXPECT_EQ(2u, playback.trace()->eventCount());
+	ASSERT_LT(0u, playback.trace()->eventCount());
+	EXPECT_EQ(RtosTraceEventType::TaskSwitchIn, playback.trace()->events()[0].event.type);
+	EXPECT_EQ(RtosTraceEventType::IsrEnter, playback.trace()->events()[1].event.type);
+
+	/* The names travel with the file, or the bands would be unlabelled. */
+	EXPECT_GT(playback.trace()->identity().entityCount(), 0u);
+
+	EXPECT_TRUE(playback.isPlayback());
+	EXPECT_EQ(2u, playback.playbackInfo().rounds);
+
+	std::filesystem::remove_all(directory);
 }
