@@ -45,6 +45,10 @@
 #include "queue.h"
 #include "semphr.h"
 
+#if defined(VTRACE_RTEC2) && (VTRACE_RTEC2 == 1)
+#include "vtrace_rtec2.h"
+#endif
+
 /* ---- 目标侧自报的对照数据（主机读这些全局符号） ---- */
 #define HWM_N 12
 TaskHandle_t g_probe_handles[HWM_N];
@@ -293,6 +297,15 @@ int main(void)
     /* 引用一次主频，别让它被链接期回收掉 */
     g_sysclk_hz = SystemCoreClock;
 
+#if defined(VTRACE_RTEC2) && (VTRACE_RTEC2 == 1)
+    /* 事件环要在第一个任务跑起来之前就位：第一刀切换紧跟 vTaskStartScheduler。 */
+    vtrace_rtec2_init();
+
+    /* ISR 事件得有个中断才会发生。TIM2 每 20 毫秒一次，五十对进出每秒——
+       够看出中断把谁打断了，又不至于把环塞满。 */
+    vtrace_rtec2_start_isr_source();
+#endif
+
     g_q_sensor  = xQueueCreate(4, sizeof(uint32_t));
     g_sem_stuck = xSemaphoreCreateCounting(1, 0);   /* 初值 0 */
     g_mtx_bus   = xSemaphoreCreateMutex();
@@ -338,3 +351,49 @@ int main(void)
     for (;;) {
     }
 }
+
+#if defined(VTRACE_RTEC2) && (VTRACE_RTEC2 == 1)
+
+/*
+ * The two handlers the event ring needs from the firmware itself.
+ *
+ * Neither is a kernel hook: the kernel does not offer "an interrupt is running"
+ * because it does not own the interrupts. This firmware owns one, so it says
+ * so. A fault is the same story - the kernel hands the CPU to the vector table
+ * and knows nothing about it afterwards.
+ */
+void TIM2_IRQHandler(void)
+{
+    vtrace_rtec2_isr_tick();
+}
+
+/*
+ * The fault arrives with the three numbers somebody will ask for first: CFSR,
+ * the PC that faulted, and the LR it was called from.
+ *
+ * `lr` is read before anything else, and by hand: the compiler is free to use
+ * it as a scratch register afterwards, and by then the EXC_RETURN value that
+ * says which stack the frame is on has been overwritten.
+ */
+void HardFault_Handler(void)
+{
+    uint32_t excReturn = 0;
+    uint32_t psp = 0;
+    uint32_t msp = 0;
+
+    __asm volatile ("MOV %0, lr" : "=r" (excReturn));
+    __asm volatile ("MRS %0, psp" : "=r" (psp));
+    __asm volatile ("MRS %0, msp" : "=r" (msp));
+
+    const uint32_t cfsr = *(volatile uint32_t *)0xE000ED28u;
+
+    /* The frame the hardware pushed: r0, r1, r2, r3, r12, lr, pc, xpsr. */
+    const volatile uint32_t *frame = ((excReturn & 0x4u) != 0u) ? (const volatile uint32_t *)psp : (const volatile uint32_t *)msp;
+
+    vtrace_rtec2_fault(cfsr, frame[6], frame[5]);
+
+    for (;;) {
+    }
+}
+
+#endif

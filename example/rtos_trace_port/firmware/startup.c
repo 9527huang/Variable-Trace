@@ -23,12 +23,23 @@ void vPortSVCHandler(void);
 void xPortPendSVHandler(void);
 void xPortSysTickHandler(void);
 
+/* 走 RTEC2 时，这两条异常要有自己的处理函数：HardFault 记下 CFSR 与出错地址，
+   TIM2 记下中断的进出。它们不在 default 里，因为 default 只有一个死循环，
+   而那正是「有崩溃、但什么也没留下」的样子。 */
+#if defined(VTRACE_RTEC2) && (VTRACE_RTEC2 == 1)
+void HardFault_Handler(void);
+void TIM2_IRQHandler(void);
+#define VTRACE_HARD_FAULT HardFault_Handler
+#else
+#define VTRACE_HARD_FAULT Default_Handler
+#endif
+
 __attribute__((section(".isr_vector"), used))
 void (*const g_vectors[])(void) = {
     (void (*)(void))(&_estack),
     Reset_Handler,
     Default_Handler,       /* NMI */
-    Default_Handler,       /* HardFault */
+    VTRACE_HARD_FAULT,     /* HardFault */
     Default_Handler,       /* MemManage */
     Default_Handler,       /* BusFault */
     Default_Handler,       /* UsageFault */
@@ -38,6 +49,22 @@ void (*const g_vectors[])(void) = {
     0,                     /* 保留 */
     xPortPendSVHandler,    /* PendSV：任务切换 */
     xPortSysTickHandler,   /* SysTick：系统节拍 */
+
+    /* 外设中断，IRQ0 起。这份固件只用一个：TIM2 在 IRQ28，给自己造一个
+       每 20 毫秒一次的现场，好让「中断」那条轨道有东西可画。
+       表必须写到 TIM2 那一项为止——少一项，处理器取到的就是表外的东西。 */
+    Default_Handler, Default_Handler, Default_Handler, Default_Handler, /* IRQ0..3  */
+    Default_Handler, Default_Handler, Default_Handler, Default_Handler, /* IRQ4..7  */
+    Default_Handler, Default_Handler, Default_Handler, Default_Handler, /* IRQ8..11 */
+    Default_Handler, Default_Handler, Default_Handler, Default_Handler, /* IRQ12..15 */
+    Default_Handler, Default_Handler, Default_Handler, Default_Handler, /* IRQ16..19 */
+    Default_Handler, Default_Handler, Default_Handler, Default_Handler, /* IRQ20..23 */
+    Default_Handler, Default_Handler, Default_Handler, Default_Handler, /* IRQ24..27 */
+#if defined(VTRACE_RTEC2) && (VTRACE_RTEC2 == 1)
+    TIM2_IRQHandler,                                                   /* IRQ28 TIM2 */
+#else
+    Default_Handler,
+#endif
 };
 
 void Default_Handler(void)

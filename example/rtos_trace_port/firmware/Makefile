@@ -58,6 +58,20 @@ EVENTS_SRC :=
 EVENTS_INC :=
 EVENTS_DEF :=
 
+# RTEC2 事件环：带类型与载荷的 56 字节槽，取代上面那套八字节记录。
+# 默认开——它就是「ISR / Fault / Sync / Heap 四类事件」唯一的载体。
+RTEC2_ON ?= 1
+RTEC2_DIR := ../../rtec2_port
+RTEC2_SRC :=
+RTEC2_INC :=
+RTEC2_DEF :=
+
+ifeq ($(RTEC2_ON),1)
+  RTEC2_SRC := $(RTEC2_DIR)/rtec2_writer.c $(EVENTS_DIR)/vtrace_rtec2.c
+  RTEC2_INC := -I$(RTEC2_DIR) -I$(EVENTS_DIR)
+  RTEC2_DEF := -DVTRACE_RTEC2=1
+endif
+
 # 载体：0 = 目标内存里的环（默认），1 = ITM/SWO，2 = RTT 上行缓冲。
 # 现状（2026-10-18）：0 端到端可用；1 目标侧就绪、宿主侧的解码器还没写；
 # 2 目标侧就绪，但 J-Link DLL 找得到控制块却读不出数据（见 IDebugProbe::startRtt）。
@@ -114,13 +128,13 @@ endif
 BUILD_DIR := build_$(BOARD)$(BUILD_SUFFIX)
 TARGET    := $(BUILD_DIR)/freertos_probe
 
-C_SOURCES  := main.c startup.c $(EVENTS_SRC) \
+C_SOURCES  := main.c startup.c $(EVENTS_SRC) $(RTEC2_SRC) \
               $(KERNEL)/tasks.c $(KERNEL)/list.c $(KERNEL)/queue.c \
               $(PORT_DIR)/port.c \
               $(KERNEL)/portable/MemMang/heap_4.c
-C_INCLUDES := -I. -I$(KERNEL)/include -I$(PORT_DIR) $(EVENTS_INC)
+C_INCLUDES := -I. -I$(KERNEL)/include -I$(PORT_DIR) $(EVENTS_INC) $(RTEC2_INC)
 
-CFLAGS   := $(CPUFLAGS) $(BOARD_DEFS) $(OPT_DEFS) $(EVENTS_DEF) -O1 -g3 -Wall -ffunction-sections -fdata-sections -std=c99
+CFLAGS   := $(CPUFLAGS) $(BOARD_DEFS) $(OPT_DEFS) $(EVENTS_DEF) $(RTEC2_DEF) -O1 -g3 -Wall -ffunction-sections -fdata-sections -std=c99
 LDFLAGS  := $(CPUFLAGS) -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections -Wl,-Map=$(TARGET).map
 
 # 去掉 -p：本机这份 SysGCC 的 GNU Make 3.82（mingw32 构建）在调用 shell 时会把

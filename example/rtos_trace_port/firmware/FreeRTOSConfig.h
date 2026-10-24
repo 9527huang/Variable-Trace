@@ -79,7 +79,28 @@ extern uint32_t SystemCoreClock;
 /* 通路 B：任务切换的事件环，默认不进固件——计划里那条「不给固件加约束」。
    要用时 make EVENTS=1：宏在内核切完任务后、临界区里被调用，那里只做两次 32 位写
    和一个计数。实现见 ../../event_ring/vtrace_events.c。 */
-#if defined(VTRACE_EVENTS) && (VTRACE_EVENTS == 1)
+#if defined(VTRACE_RTEC2) && (VTRACE_RTEC2 == 1)
+#include <stdint.h>
+
+/* 一个事件环，两种槽格式。RTEC2 的 56 字节槽能带类型和载荷，八字节的旧环
+   只能记「谁切进来了」；两者在同一颗片子上放不下（旧环 4 KB + 新环 3.6 KB
+   超过 20 KB 的 RAM），所以走 RTEC2 时旧环不编。 */
+void vtrace_rtec2_switch(uint32_t tcb);
+void vtrace_rtec2_sync(uint8_t type, uint32_t object, uint32_t task);
+void vtrace_rtec2_heap(uint8_t type, uint32_t address, uint32_t size);
+
+#define traceTASK_SWITCHED_IN()                  vtrace_rtec2_switch((uint32_t)pxCurrentTCB)
+
+/* 同步对象：送出是信号，收是开始等待。只报这两件，因为「等到了没有」由后一条
+   事件说明，而失败与成功的分别值得单独一个类型时再加。 */
+#define traceQUEUE_SEND(pxQueue)                 vtrace_rtec2_sync(0x24u, (uint32_t)(pxQueue), 0u)
+#define traceQUEUE_RECEIVE(pxQueue)              vtrace_rtec2_sync(0x22u, (uint32_t)(pxQueue), 0u)
+
+/* 堆：两条宏由 heap_4 在真正分配/释放之后调用，参数是地址与字节数。 */
+#define traceMALLOC(pvAddress, uiSize)           vtrace_rtec2_heap(0x50u, (uint32_t)(pvAddress), (uint32_t)(uiSize))
+#define traceFREE(pvAddress, uiSize)             vtrace_rtec2_heap(0x51u, (uint32_t)(pvAddress), (uint32_t)(uiSize))
+
+#elif defined(VTRACE_EVENTS) && (VTRACE_EVENTS == 1)
 #include <stdint.h>
 
 void vtrace_event_switch(uint32_t tcb);
