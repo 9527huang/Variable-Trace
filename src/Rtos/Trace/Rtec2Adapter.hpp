@@ -96,9 +96,31 @@ class Rtec2Adapter final : public IRtosTraceSource
 		return haveBlock ? block.capacity : 0;
 	}
 
+	/* The writer's own overwrite count, which is not how many records this
+	   reader missed: a ring that is full overwrites every record it writes, and
+	   a reader that keeps up loses none of them. Kept because it is the writer's
+	   number, not because it answers that question. */
 	uint32_t overwritten() const
 	{
 		return block.overwritten;
+	}
+
+	/*
+	 * Records written since this session began that were never decoded.
+	 *
+	 * The writer's head counts from the target's start, so it is baselined at
+	 * the first control block this adapter read. What is left over is what the
+	 * reader genuinely never saw - the number that explains a gap in the
+	 * interrupt account, where an interval needs both of its events.
+	 */
+	uint32_t missedSinceStart() const
+	{
+		if (!haveBlock || !sawBaseline)
+			return 0;
+
+		const uint32_t written = block.head - headAtStart;
+
+		return written > decodedCount ? written - decodedCount : 0;
 	}
 
 	/* The newest target time seen so far. The caller uses it once, to line the
@@ -191,6 +213,8 @@ class Rtec2Adapter final : public IRtosTraceSource
 	uint32_t decodedCount = 0;
 	mutable uint32_t requestedCount = 0;
 	mutable uint32_t windowCount = 0;
+	uint32_t headAtStart = 0;
+	bool sawBaseline = false;
 	uint32_t newest = 0;
 	bool sawTicks = false;
 	uint32_t roundCount = 0;

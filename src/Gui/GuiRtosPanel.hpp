@@ -19,6 +19,7 @@
 #include "I18n.hpp"
 #include "RtosCsvExport.hpp"
 #include "RtosFaultDecoder.hpp"
+#include "RtosGapExplainer.hpp"
 #include "RtosTrackGeometry.hpp"
 #include "RtosTraceReducer.hpp"
 #include "RtosTraceWindow.hpp"
@@ -2791,6 +2792,34 @@ class GuiRtosPanel
 			{
 				GuiHelper::drawSecondaryText("%s %.1f%%   %s %.1f%%   %s %.1f%%", I18n::tr("tasks"), budget.taskPercent(), I18n::tr("ISR"),
 				                             budget.isrPercent(), I18n::tr("unaccounted"), budget.unaccountedPercent());
+			}
+
+			/* A gap that is worth explaining gets explained. The number alone
+			   says the observation is incomplete without saying which part of it
+			   let the other down, and the four causes behind it live in four
+			   different places - which is a search nobody should have to do with
+			   the number already on screen. */
+			if (!budget.overlaps() && budget.unaccountedPercent() >= gapExplainThresholdPercent)
+			{
+				RtosGapEvidence evidence;
+
+				evidence.unaccountedPercent = budget.unaccountedPercent();
+				evidence.roundsRejected = static_cast<uint32_t>(model.stats().rejected);
+
+				if (const std::shared_ptr<const RtosSnapshot> current = model.current())
+				{
+					evidence.tasksEstimated = current->cpuLoad.tasksEstimated;
+					evidence.tasksKnown = current->cpuLoad.tasksKnown;
+				}
+
+				if (auto* adapter = dynamic_cast<Rtec2Adapter*>(model.trace()->source()))
+				{
+					evidence.eventsMissed = adapter->missedSinceStart();
+					evidence.tornBatches = adapter->tornBatches();
+				}
+
+				for (const RtosGapHint& hint : explainGap(evidence))
+					GuiHelper::drawSecondaryTextWrapped("· %s", hint.sentence.c_str());
 			}
 		}
 	}

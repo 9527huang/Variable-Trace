@@ -22,6 +22,14 @@ bool Rtec2Adapter::beginControlBlock(const uint8_t* bytes, size_t size, RtosTrac
 		restartCount++;
 	}
 
+	/* Baselined once, before anything is read: the head counts from the target's
+	   start and only the difference since now is this session's. */
+	if (!sawBaseline)
+	{
+		headAtStart = parsed.head;
+		sawBaseline = true;
+	}
+
 	block = parsed;
 	haveBlock = true;
 

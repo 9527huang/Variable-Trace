@@ -131,6 +131,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTrackGeometry.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosIsrAttribution.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTimeBudget.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosGapExplainer.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTraceReconciler.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosRecordingV3.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosPlaybackV3.cpp
@@ -241,6 +242,7 @@ add_executable(${EXECUTABLE} main.cpp
     RtosTrackGeometryTest.cpp
     RtosIsrAttributionTest.cpp
     RtosTimeBudgetTest.cpp
+    RtosGapExplainerTest.cpp
     Rtec2WriterTest.cpp
     RtosTraceReconcilerTest.cpp
     RtosRecordingV3Test.cpp
