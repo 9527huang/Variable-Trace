@@ -13,6 +13,7 @@
 #include "RtosModel.hpp"
 #include "RtosEventRing.hpp"
 #include "RtosTableModel.hpp"
+#include "RtosIsrAttribution.hpp"
 #include "RtosTimeline.hpp"
 #include "imgui.h"
 
@@ -228,6 +229,19 @@ class GuiRtosPanelTimeline
 	 * The summary counts the same four states the strip does, and a reader
 	 * comparing "4 blocked" with the amber marks in the lane beside it should
 	 * be comparing one colour, not two that were picked separately. */
+	/*
+	 * The ISR track, for drawing where interrupts landed.
+	 *
+	 * The strip and the ISR band are read side by side and neither says which
+	 * task was running when a given interrupt arrived - which is the question the
+	 * pair exists to answer. A borrowed pointer rather than a copy: the panel
+	 * owns the projection and rebuilds it every frame.
+	 */
+	static void setIsrTrack(const std::vector<RtosTrackEntry>* entries)
+	{
+		isrTrack = entries;
+	}
+
 	static ImU32 getStateColour(RtosTaskState state)
 	{
 		return markOf(state).colour;
@@ -931,6 +945,59 @@ class GuiRtosPanelTimeline
 		}
 
 		/*
+		 * Where the interrupts landed.
+		 *
+		 * One vertical line per interrupt, on the lane that was running at that
+		 * instant. The strip says what each task was doing; the ISR band below
+		 * says when interrupts happened; neither says which task a given
+		 * interrupt interrupted, and "this task keeps getting cut off" is a fact
+		 * about a task that only the two together can state.
+		 *
+		 * The line is drawn over the state colour rather than replacing it: the
+		 * colour is still the answer to "what was it doing", and the line is the
+		 * second answer on top of the first.
+		 */
+		if (isrTrack != nullptr && !isrTrack->empty())
+		{
+			std::vector<RtosTimeline::StateInterval> running;
+
+			running.reserve(bands.size());
+
+			for (const RtosTimeline::StateInterval& band : bands)
+			{
+				if (band.state == RtosTaskState::Running)
+					running.push_back(band);
+			}
+
+			/* Sorted once, because the attribution binary-searches it: the
+			   intervals come out grouped by task, not by time. */
+			std::sort(running.begin(), running.end(), [](const RtosTimeline::StateInterval& left, const RtosTimeline::StateInterval& right)
+			          {
+				return left.from < right.from;
+			});
+
+			const RtosIsrAttribution attribution = attributeIsr(running, *isrTrack);
+			const ImU32 hitColour = ImGui::GetColorU32(ImGuiCol_Text, 0.55f);
+
+			for (const RtosIsrHit& hit : attribution.hits)
+			{
+				const auto lane = std::find(lanes.begin(), lanes.end(), hit.tcbAddress);
+
+				if (lane == lanes.end())
+					continue;
+
+				const float x = timeToX(hit.seconds);
+
+				if (x < plotLeft || x > plotLeft + plotWidth)
+					continue;
+
+				const float top = origin.y + static_cast<float>(lane - lanes.begin()) * rowHeight + 1.0f * scale - scroll;
+
+				draw->AddLine(ImVec2(x, top), ImVec2(x, top + bandHeight), hitColour, 1.0f * scale);
+			}
+		}
+
+		/*
 		 * The runs, as bands.
 		 *
 		 * One per switch: the task that was switched in, from then until the
@@ -1355,6 +1422,9 @@ class GuiRtosPanelTimeline
 	 * closes onto a neighbour; the order light / bright / deep is the part
 	 * doing the work, not the hues.
 	 */
+	/* Borrowed from the panel; null until it hands one over. */
+	inline static const std::vector<RtosTrackEntry>* isrTrack = nullptr;
+
 	inline static const ImU32 runningColour = IM_COL32(160, 224, 152, 255);
 	inline static const ImU32 readyColour = IM_COL32(250, 196, 70, 255);
 	inline static const ImU32 blockedColour = IM_COL32(168, 104, 18, 255);

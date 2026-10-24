@@ -395,6 +395,16 @@ class GuiRtosPanel
 		   than measured after the fact, because the strip is drawn first. */
 		const float blocksBelow = ImGui::GetTextLineHeightWithSpacing() * (8.0f + 5.0f + 7.0f) + 12.0f * GuiHelper::contentScale;
 
+		/* The strip marks where interrupts landed, which needs the ISR track. It
+		   is handed over here rather than passed through the drawing call: the
+		   strip has seven parameters already, and one of them is a float that no
+		   reader of the call site can name. */
+		/* One frame behind, on purpose: the projection is rebuilt when the bands
+		   are drawn, which happens below the strip. A frame is a few milliseconds
+		   and the strip already lags the sampler by one round - paying to project
+		   twice to save that would be the worse trade. */
+		GuiRtosPanelTimeline::setIsrTrack(tracks.isr.empty() ? nullptr : &tracks.isr);
+
 		GuiRtosPanelTimeline::draw(*model, *snapshot, plotCursors, rows, lanes, model->rosterSize(), selection(), blocksBelow);
 
 		/*
