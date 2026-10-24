@@ -19,6 +19,7 @@
 #include "I18n.hpp"
 #include "RtosCsvExport.hpp"
 #include "RtosFaultDecoder.hpp"
+#include "RtosTrackGeometry.hpp"
 #include "RtosTraceReducer.hpp"
 #include "RtosTraceWindow.hpp"
 #include "RtosWaitGraph.hpp"
@@ -2723,7 +2724,13 @@ class GuiRtosPanel
 		};
 
 		for (const Row& row : rows)
-			drawTrackBand(row.label, *row.entries, from, to, row.incomplete, row.unit, scale, carried(row.capability));
+		{
+			/* Only the ISR track has spans. The rest are instants: a fault is a
+			   moment, a lost record is a hole, a wait is a pair of edges. */
+			const BandPaint paint = row.entries == &tracks.isr ? BandPaint::Spans : BandPaint::Columns;
+
+			drawTrackBand(row.label, *row.entries, from, to, row.incomplete, row.unit, scale, carried(row.capability), paint);
+		}
 	}
 
 	/*
@@ -2735,8 +2742,19 @@ class GuiRtosPanel
 	 * - for faults and gaps - that something happened at all: those two are never
 	 * allowed to be averaged into silence (see `RtosTraceWindow`).
 	 */
+	enum class BandPaint
+	{
+		/* One mark per pixel column, brightness by count: for the tracks whose
+		   events have no length - a fault, a record lost, a switch. */
+		Columns,
+
+		/* One span per entry, width by duration: for interrupts, which do have
+		   a length and whose length is most of what a reader wants to know. */
+		Spans,
+	};
+
 	static void drawTrackBand(const char* label, const std::vector<RtosTrackEntry>& entries, double from, double to, uint32_t incomplete,
-	                          const char* unit, float scale, bool carried)
+	                          const char* unit, float scale, bool carried, BandPaint paint = BandPaint::Columns)
 	{
 		const float bandHeight = 12.0f * scale;
 		const float rightWidth = 120.0f * scale;
@@ -2858,6 +2876,30 @@ class GuiRtosPanel
 			ImGui::SetTooltip("%s", full.c_str());
 
 		ImGui::PopID();
+
+		if (paint == BandPaint::Spans)
+		{
+			/* Spans, not columns. An interrupt every twenty milliseconds leaves
+			   a mark every twenty milliseconds, and a mark narrower than a pixel
+			   is still a mark - rounding it away is how a band reads as empty
+			   while the target was in fact interrupted fifty times a second. */
+			const RtosTrackLayout layout = layoutIntervals(entries, from, to, width, 1.0f * scale);
+
+			for (const RtosTrackMark& mark : layout.marks)
+			{
+				const ImU32 colour = mark.depth >= 2 ? ImGui::GetColorU32(GuiHelper::orangeLight()) : ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+				draw->AddRectFilled(ImVec2(origin.x + mark.left, bandTop + 1.0f * scale), ImVec2(origin.x + mark.right, bandTop + bandHeight - 1.0f * scale),
+				                    colour);
+			}
+
+			/* The count in the label column already says how many intervals the
+			   target sent; the ones the window cannot place are the difference
+			   between that and the marks drawn. */
+			ImGui::SetCursorScreenPos(ImVec2(rowLeft, rowTop + rowAdvance));
+
+			return;
+		}
 
 		const float column = width / static_cast<float>(pixels);
 
