@@ -43,6 +43,12 @@ enum class RtosTaskColumn
 	/* Last, because the panel draws its headers by casting the column index
 	   to this type: the order here is the order on screen. */
 	WaitingOn,
+
+	/* How many there are, so that the table is opened with this number instead
+	   of a literal that can stay behind when a column is added. It happened:
+	   nine `TableSetupColumn` calls against a table opened with eight, which
+	   is an assertion and then an abort the moment the table was drawn. */
+	Count,
 };
 
 /*

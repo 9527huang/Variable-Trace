@@ -2092,7 +2092,7 @@ class GuiRtosPanel
 		 * makes a column layout take effect on an existing installation, and
 		 * bumping it is what a later layout change should do.
 		 */
-		if (!ImGui::BeginTable("rtosTasks-v2", 8, flags, size))
+		if (!ImGui::BeginTable("rtosTasks-v2", static_cast<int>(RtosTaskColumn::Count), flags, size))
 			return;
 
 		ImGui::TableSetupScrollFreeze(0, 1);
@@ -2352,7 +2352,7 @@ class GuiRtosPanel
 	{
 		ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
 
-		for (int index = 0; index < 8; ++index)
+		for (int index = 0; index < static_cast<int>(RtosTaskColumn::Count); ++index)
 		{
 			ImGui::TableSetColumnIndex(index);
 
@@ -2874,7 +2874,7 @@ class GuiRtosPanel
 				}
 
 				evidence.windowSeconds = budget.windowSeconds;
-				evidence.unaccountedSeconds = -budget.unaccountedSeconds;
+				evidence.unaccountedSeconds = budget.unaccountedSeconds;
 
 				if (auto* adapter = dynamic_cast<Rtec2Adapter*>(model.trace()->source()))
 				{

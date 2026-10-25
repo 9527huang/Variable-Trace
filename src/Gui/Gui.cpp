@@ -1,5 +1,7 @@
 #include "Gui.hpp"
 
+#include <cstdlib>
+
 #include <imgui.h>
 #include <unistd.h>
 
@@ -401,6 +403,28 @@ void Gui::mainThread(std::string externalPath)
 
 			if (beside != nullptr && beside->DockId != 0)
 				ImGui::SetNextWindowDockID(beside->DockId, ImGuiCond_Always);
+		}
+
+		/* Make this tab the selected one for the first few frames, when asked.
+		 *
+		 * A panel that is docked but not selected is never drawn, and a panel
+		 * that is never drawn is a panel whose assertions never run. One of them
+		 * - nine columns set up against a table opened with eight - sat there
+		 * until a reader pressed start and the window showed. With this, an
+		 * automated run can draw it and the assertion comes out in the log
+		 * instead of in somebody's session.
+		 *
+		 * Three frames only: focus is the reader's, and a program that keeps
+		 * taking it is a program that cannot be used. */
+		if (std::getenv("VARTRACE_FORCE_TASKVIEW") != nullptr)
+		{
+			static int focusFrames;
+
+			if (focusFrames < 3)
+			{
+				focusFrames++;
+				ImGui::SetNextWindowFocus();
+			}
 		}
 
 		if (ImGui::Begin(I18n::windowTitle("Task Viewer").c_str()))
