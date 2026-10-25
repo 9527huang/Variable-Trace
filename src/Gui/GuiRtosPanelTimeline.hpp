@@ -347,10 +347,29 @@ class GuiRtosPanelTimeline
 	/* The window rule lives in the timeline, where it has tests. */
 	static RtosTimeline::Span windowOf(const std::vector<double>& plotCursors, double newest)
 	{
-		if (manualWindow)
-			return {manualFrom, manualTo};
+		const RtosTimeline::Span window =
+		    manualWindow ? RtosTimeline::Span{manualFrom, manualTo}
+		                 : RtosTimeline::windowFrom(plotCursors, static_cast<double>(windowSeconds), followPlotCursors, newest);
 
-		return RtosTimeline::windowFrom(plotCursors, static_cast<double>(windowSeconds), followPlotCursors, newest);
+		/* A window with no width draws nothing, and nothing then says "nothing
+		   was published in this window" - a statement about the target made
+		   because of a statement about the window. Measured: one click on the
+		   lanes and the window came back as a point, 0.00 s of the 5 asked, with
+		   thirty eight rounds still in the history behind it.
+		   
+		   Whichever click left it there, the answer is the same: a span that
+		   cannot hold a round is not a window. It goes back to the asked width
+		   and the reader keeps looking at something. */
+		if (!(window.to - window.from > 0.01))
+		{
+			manualWindow = false;
+
+			const double width = std::max(static_cast<double>(windowSeconds), 1.0);
+
+			return {newest - width, newest};
+		}
+
+		return window;
 	}
 
 	/*
