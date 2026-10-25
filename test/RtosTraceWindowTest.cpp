@@ -216,3 +216,22 @@ TEST(RtosTraceWindowTest, AColumnIsAsWideAsTheAxisSaysItIs)
 	EXPECT_DOUBLE_EQ(12.0, result.buckets[0].toSeconds);
 	EXPECT_DOUBLE_EQ(20.0, result.buckets[4].toSeconds);
 }
+
+TEST(RtosTraceWindowTest, AWindowWithoutWidthHasNoBucketsAtAll)
+{
+	/* Not a row of empty ones: nothing. The caller that walks the buckets it
+	   asked for - one per pixel - then walks off the end of this vector, which
+	   is how a single click on a band could end the process before the axis had
+	   been set up. The contract is written down here so the next reader of
+	   `query` knows to ask `size()` rather than trusting the count they passed. */
+	RtosTraceWindow::Options options;
+
+	options.fromSeconds = 3.0;
+	options.toSeconds = 3.0;
+	options.pixels = 400;
+
+	const RtosTraceWindow::Result result = RtosTraceWindow::query({}, options);
+
+	EXPECT_TRUE(result.buckets.empty());
+	EXPECT_EQ(0u, result.matched);
+}

@@ -3153,7 +3153,16 @@ class GuiRtosPanel
 
 		const float column = width / static_cast<float>(pixels);
 
-		for (int index = 0; index < pixels; index++)
+		/* One per column asked for - unless the window could not be built at
+		   all, which happens when the axis has no width yet: `from` equal to
+		   `to` is a strip that has not drawn once, and `query` answers it with no
+		   buckets rather than a row of empty ones. Looping over the pixels
+		   instead of over what came back walked off the end of an empty vector
+		   and took the process with it - one click on a band, before the first
+		   round had set the axis. */
+		const int drawn = std::min(pixels, static_cast<int>(window.buckets.size()));
+
+		for (int index = 0; index < drawn; index++)
 		{
 			const RtosTraceWindow::Bucket& bucket = window.buckets[static_cast<size_t>(index)];
 
