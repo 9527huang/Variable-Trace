@@ -146,6 +146,31 @@ void vtrace_rtec2_init(void)
 	   describes something; with this carrier it is simply never written. */
 	rtec2_stream_init(&vtraceStream, vtraceStreamBytes, VTRACE_STREAM_PAYLOAD, VTRACE_ITM_PORT);
 	rtec2_stream_enable_itm(VTRACE_ITM_PORT);
+
+	/* 两份主机在环上从控制块里读到的信息，这里没有控制块，只能用记录说出来：
+	   能力位在图里，tick 的单位在 ClockSync 的 arg0。没有后一条，主机拿到的
+	   是一串没有单位的数 - 面板会说"没有目标时间"，而数其实是对的。 */
+	{
+		rtec2_event epoch = {0};
+
+		epoch.type = 0x01u; /* EpochBegin */
+		epoch.arg0 = 0u;    /* 上一个 epoch 的低 32 位：没有 */
+		epoch.payloadBytes = 4u;
+		epoch.payload = (const uint8_t*)&capabilities;
+
+		(void)rtec2_stream_emit(&vtraceStream, &epoch);
+
+		rtec2_event clock = {0};
+
+		clock.type = 0x02u; /* ClockSync */
+		clock.hasTicks = 1;
+		clock.ticks = vtrace_now_us();
+		clock.arg0 = 1000000u; /* targetHz：ticks 是微秒 */
+		clock.arg1 = clock.ticks;
+
+		(void)rtec2_stream_emit(&vtraceStream, &clock);
+		rtec2_stream_flush(&vtraceStream);
+	}
 #endif
 }
 
@@ -221,12 +246,20 @@ void vtrace_rtec2_isr_tick(void)
 	enter.hasTicks = 1;
 	enter.ticks = vtrace_now_us_from_isr();
 
+#if defined(VTRACE_RTEC2_TRANSPORT_STREAM) && (VTRACE_RTEC2_TRANSPORT_STREAM == 1)
+	(void)rtec2_stream_emit(&vtraceStream, &enter);
+#else
 	(void)rtec2_writer_emit(&vtraceWriter, &enter);
+#endif
 
 	enter.type = VTRACE_TYPE_ISR_EXIT;
 	enter.ticks = vtrace_now_us_from_isr();
 
+#if defined(VTRACE_RTEC2_TRANSPORT_STREAM) && (VTRACE_RTEC2_TRANSPORT_STREAM == 1)
+	(void)rtec2_stream_emit(&vtraceStream, &enter);
+#else
 	(void)rtec2_writer_emit(&vtraceWriter, &enter);
+#endif
 
 #if defined(VTRACE_ITM_HEARTBEAT) && (VTRACE_ITM_HEARTBEAT == 1)
 	/* A wire test, not a feature: one byte on stimulus port 1 per tick. If a
@@ -238,7 +271,28 @@ void vtrace_rtec2_isr_tick(void)
 	/* Once per tick: twenty milliseconds of records in one frame. Flushing
 	   inside every emit would put a frame around single records, which is
 	   thirty bytes of payload behind eleven bytes of frame and header. */
-	rtec2_stream_flush(&vtraceStream);
+	{
+		static uint32_t ticks;
+
+		/* Once a second the clock is stated again. A host that connects after
+		   the target booted never saw the one at startup, and without it every
+		   tick it receives is a number with no unit - the view then says "no
+		   target time" about events whose times are perfectly good. */
+		if ((++ticks % 50u) == 0u)
+		{
+			rtec2_event clock = {0};
+
+			clock.type = 0x02u; /* ClockSync */
+			clock.hasTicks = 1;
+			clock.ticks = enter.ticks;
+			clock.arg0 = 1000000u; /* targetHz: the ticks are microseconds */
+			clock.arg1 = clock.ticks;
+
+			(void)rtec2_stream_emit(&vtraceStream, &clock);
+		}
+
+		rtec2_stream_flush(&vtraceStream);
+	}
 #endif
 }
 

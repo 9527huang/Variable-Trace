@@ -107,7 +107,9 @@ ifeq ($(BOARD),f103)
   PORT_DIR   := $(KERNEL)/portable/GCC/ARM_CM3
   LDSCRIPT   := linker/f103.ld
   # 事件环 512 条 = 4 KB：这颗片子只有 20 KB RAM，剩下的留给内核与栈。
-  BOARD_DEFS := -DPROBE_CPU_HZ=8000000 -DPROBE_HEAP_KB=14 -DVTRACE_EVENT_CAPACITY=512u
+  # 8 MHz 是复位后的 HSI；SWO 的天花板是主频的一半，8 MHz 上根本不够把事件
+  # 送出去。PLL 到 64 MHz（HSI/2 × 16，不依赖外部晶振），SWO 可以到 32 MHz。
+  BOARD_DEFS := -DPROBE_CPU_HZ=64000000 -DPROBE_CLOCK_PLL=1 -DPROBE_HEAP_KB=14 -DVTRACE_EVENT_CAPACITY=512u
 else ifeq ($(BOARD),f407)
   # CPU 标志与 f401 逐字相同：同为核心、同一份移植层，只有容量与堆不同。
   # 堆放到 48 KB，为「五十个任务」那一档快照场景留出空间（每个任务约

@@ -322,8 +322,49 @@ void vApplicationMallocFailedHook(void)
     }
 }
 
+#if defined(PROBE_CLOCK_PLL) && (PROBE_CLOCK_PLL == 1)
+/* PLL 到 64 MHz，源是 HSI/2。
+ *
+ * 为什么不是 72 MHz：那要外部 8 MHz 晶振（HSE），而这块板子——以及大多数
+ * 蓝色小板——的晶振是「通常有」而不是「保证有」。一个演示固件让读者先排查
+ * 晶振起不振，代价比少八兆赫兹大得多。HSI/2 × 16 = 64 MHz 是内部时钟能到的
+ * 上限，SWO 可以跟着到 32 MHz，带宽比 8 MHz 时宽三十倍。
+ *
+ * 顺序不能反：先把 Flash 的等待周期设好，再切时钟。反过来的话，切完时钟到
+ * 写等待周期之间取指会读到还没准备好的 Flash。 */
+static void probe_clock_init(void)
+{
+    /* 64 MHz 落在 48–72 MHz 档：两个等待周期，预取打开 */
+    *(volatile uint32_t*)0x40022000u = 0x00000012u; /* FLASH_ACR: PRFTBE | LATENCY 2 */
+
+    /* RCC->CFGR: PLLSRC = HSI/2 (bit16 = 0), PLLMULL = x16 (bit21:18 = 1110),
+       APB1 = /2 (bit10:8 = 100), APB2 = /1, AHB = /1 → HSI/2 x 16 = 64 MHz. */
+    *(volatile uint32_t*)0x40021004u = 0x00380400u;
+
+    *(volatile uint32_t*)0x40021000u |= 0x01000000u; /* CR: PLLON */
+
+    while ((*(volatile uint32_t*)0x40021000u & 0x02000000u) == 0u) /* PLLRDY */
+    {
+    }
+
+    *(volatile uint32_t*)0x40021004u = (*(volatile uint32_t*)0x40021004u & ~0x3u) | 0x2u; /* SW = PLL */
+
+    while ((*(volatile uint32_t*)0x40021004u & 0x0Cu) != 0x08u) /* SWS = PLL */
+    {
+    }
+
+    SystemCoreClock = PROBE_CPU_HZ;
+
+    /* 主频变了，SysTick 的重载值跟着变：内核按 configCPU_CLOCK_HZ 算，而那是
+       一个编译期常量，所以 PROBE_CPU_HZ 必须与这里真正切到的频率一致。 */
+}
+#endif
+
 int main(void)
 {
+#if defined(PROBE_CLOCK_PLL) && (PROBE_CLOCK_PLL == 1)
+    probe_clock_init();
+#endif
     /* 引用一次主频，别让它被链接期回收掉 */
     g_sysclk_hz = SystemCoreClock;
 
