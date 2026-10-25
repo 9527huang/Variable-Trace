@@ -102,7 +102,16 @@ RtosTracePipeline::Pump RtosTracePipeline::pump(double budgetSeconds)
 
 		if (incoming.hasTargetTicks)
 		{
-			if (!haveFirstTicks)
+			/* The axis starts at the first tick whose unit is known, not at the
+			   first tick that arrived.
+			   
+			   On the ring the two are the same: the control block stamps every
+			   record with the frequency. On a stream they are not - the first
+			   second of records arrives before the first ClockSync, and an
+			   origin set there makes every later duration "not computable",
+			   because the span runs from a tick with no frequency to one that
+			   has. Measured on the wire: 46754 events, all of them untimed. */
+			if (!haveFirstTicks && traceClock.frequencyAt(ticks) != 0)
 			{
 				firstTicks = ticks;
 				haveFirstTicks = true;

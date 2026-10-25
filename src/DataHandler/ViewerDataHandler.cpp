@@ -1825,6 +1825,13 @@ void ViewerDataHandler::dataHandler()
 
 				std::unique_lock<std::mutex> probeLock = lockProbe();
 
+				/* Asked immediately before the run starts, so the request cannot
+				   race the preparation: the probe starts the capture between the
+				   connect and the memory stream, and it has to have been asked
+				   by then. */
+				if (eventsTransport == "swo" && rtec2SwoSource != nullptr)
+					debugProbe->requestSwo(swoClockSymbol, swoCoreFrequency, swoTracePrescaler);
+
 				if (debugProbe->startAcqusition(probeSettings, sampleList, settings.sampleFrequencyHz))
 				{
 					lastT = 0.0;

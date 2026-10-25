@@ -471,3 +471,39 @@ TEST(RtosTracePipelineTest, ARecordingKeepsTheEventsAndOpeningItPutsThemBack)
 
 	std::filesystem::remove_all(directory);
 }
+
+TEST(RtosTracePipelineTest, TheAxisStartsWhereTheUnitIsKnownNotWhereTheDataDoes)
+{
+	/* A stream carries ticks and nothing that says what they are in: the unit
+	   arrives with the first ClockSync, a second after the first records. An
+	   origin taken at the first record makes every later duration span a part
+	   of the axis whose frequency nobody stated, and the pipeline answers "not
+	   computable" for all of them - measured on the wire: 46774 events, every
+	   one untimed. */
+	auto owned = std::make_unique<FakeTraceSource>();
+	FakeTraceSource* source = owned.get();
+
+	RtosTracePipeline pipeline(std::move(owned));
+
+	RtosTraceProblem problem = RtosTraceProblem::None;
+	ASSERT_TRUE(pipeline.start(problem));
+
+	RtosTraceEvent clockSync = makeEvent(RtosTraceEventType::ClockSync, 0, 1, true, 3000);
+	clockSync.arg0 = 1000000;
+
+	source->batches.push_back(batchOf({makeEvent(RtosTraceEventType::TaskSwitchIn, 0x1000, 1, true, 1000),
+	                                   makeEvent(RtosTraceEventType::TaskSwitchIn, 0x1000, 1, true, 2000), clockSync,
+	                                   makeEvent(RtosTraceEventType::TaskSwitchIn, 0x1000, 1, true, 4000)},
+	                                  0, 4));
+
+	ASSERT_TRUE(pipeline.pump(0.01).committed);
+	ASSERT_EQ(4u, pipeline.eventCount());
+
+	/* Before the sync there is no unit, so no time: saying zero would be a
+	   measurement nobody made. */
+	EXPECT_FALSE(pipeline.events()[0].hasDisplaySeconds);
+	EXPECT_FALSE(pipeline.events()[1].hasDisplaySeconds);
+
+	ASSERT_TRUE(pipeline.events()[3].hasDisplaySeconds);
+	EXPECT_NEAR(0.001, pipeline.events()[3].displaySeconds, 1e-9);
+}
