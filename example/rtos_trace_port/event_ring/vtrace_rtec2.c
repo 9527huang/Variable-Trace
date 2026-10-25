@@ -2,6 +2,10 @@
 
 #include "rtec2_writer.h"
 
+#if defined(VTRACE_RTEC2_TRANSPORT_STREAM) && (VTRACE_RTEC2_TRANSPORT_STREAM == 1)
+#include "rtec2_stream.h"
+#endif
+
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -22,6 +26,21 @@
 uint8_t vtrace_rtec2_blob[RTEC2_CONTROL_BYTES + VTRACE_RTEC2_CAPACITY * RTEC2_SLOT_BYTES];
 
 static rtec2_writer vtraceWriter;
+
+#if defined(VTRACE_RTEC2_TRANSPORT_STREAM) && (VTRACE_RTEC2_TRANSPORT_STREAM == 1)
+/* The staging area one frame is built in: header, payload, end marker.
+ *
+ * The size is a rate decision, not a memory one. A frame is written to the ITM
+ * in one burst, and the ITM's FIFO is a handful of bytes: a burst of five
+ * hundred bytes is five hundred bytes the wire cannot take at that speed, and
+ * what does not fit is dropped without a word. A hundred and twenty eight
+ * bytes per twenty millisecond tick is six kilobytes a second, which a one
+ * megabit wire carries with room to spare. */
+#define VTRACE_STREAM_PAYLOAD 128u
+
+static uint8_t vtraceStreamBytes[RTEC2_STREAM_HEADER_BYTES + VTRACE_STREAM_PAYLOAD + 1u];
+static rtec2_stream vtraceStream;
+#endif
 
 /*
  * The target's clock, in microseconds.
@@ -95,7 +114,14 @@ static void emit(uint8_t type, uint32_t subject, uint32_t object, uint32_t arg0,
 	event.arg0 = arg0;
 	event.arg1 = arg1;
 
+#if defined(VTRACE_RTEC2_TRANSPORT_STREAM) && (VTRACE_RTEC2_TRANSPORT_STREAM == 1)
+	/* Over the wire, not into the ring: the ring path needs a reader that keeps
+	   up between rounds, and the whole point of this carrier is not needing
+	   one. The write never waits - a full ITM FIFO drops the byte. */
+	(void)rtec2_stream_emit(&vtraceStream, &event);
+#else
 	(void)rtec2_writer_emit(&vtraceWriter, &event);
+#endif
 }
 
 void vtrace_rtec2_init(void)
@@ -114,6 +140,13 @@ void vtrace_rtec2_init(void)
 	   every event arrive with a time eight times too small - or, once the reader
 	   worked out the scale did not fit, arrive with no time at all. */
 	rtec2_writer_init(&vtraceWriter, vtrace_rtec2_blob, VTRACE_RTEC2_CAPACITY, 1u, 0u, 1000000u, capabilities);
+
+#if defined(VTRACE_RTEC2_TRANSPORT_STREAM) && (VTRACE_RTEC2_TRANSPORT_STREAM == 1)
+	/* The ring above is still initialised so that the symbol the host looks for
+	   describes something; with this carrier it is simply never written. */
+	rtec2_stream_init(&vtraceStream, vtraceStreamBytes, VTRACE_STREAM_PAYLOAD, VTRACE_ITM_PORT);
+	rtec2_stream_enable_itm(VTRACE_ITM_PORT);
+#endif
 }
 
 void vtrace_rtec2_switch(uint32_t tcb)
@@ -194,6 +227,19 @@ void vtrace_rtec2_isr_tick(void)
 	enter.ticks = vtrace_now_us_from_isr();
 
 	(void)rtec2_writer_emit(&vtraceWriter, &enter);
+
+#if defined(VTRACE_ITM_HEARTBEAT) && (VTRACE_ITM_HEARTBEAT == 1)
+	/* A wire test, not a feature: one byte on stimulus port 1 per tick. If a
+	   host reads it, the SWO pin is connected and the speed is right. */
+	*(volatile uint32_t*)(0xE0000000u + VTRACE_ITM_PORT * 4u) = 0x5Au;
+#endif
+
+#if defined(VTRACE_RTEC2_TRANSPORT_STREAM) && (VTRACE_RTEC2_TRANSPORT_STREAM == 1)
+	/* Once per tick: twenty milliseconds of records in one frame. Flushing
+	   inside every emit would put a frame around single records, which is
+	   thirty bytes of payload behind eleven bytes of frame and header. */
+	rtec2_stream_flush(&vtraceStream);
+#endif
 }
 
 void vtrace_rtec2_fault(uint32_t cfsr, uint32_t pc, uint32_t lr, uint32_t faultAddress)

@@ -124,6 +124,7 @@ set(SOURCES
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosIdentityStore.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/RtosTracePipeline.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/Rtec2Decoder.cpp
+    ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/Rtec2Frames.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/TraceAdapters.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/Rtec2RingReader.cpp
     ${CMAKE_SOURCE_DIR}/src/Rtos/Trace/Rtec2Adapter.cpp
@@ -245,6 +246,7 @@ add_executable(${EXECUTABLE} main.cpp
     RtosTimeBudgetTest.cpp
     RtosGapExplainerTest.cpp
     RtosTraceArchiveTest.cpp
+    Rtec2FramesTest.cpp
     Rtec2WriterTest.cpp
     RtosTraceReconcilerTest.cpp
     RtosRecordingV3Test.cpp

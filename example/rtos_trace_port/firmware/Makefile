@@ -66,10 +66,21 @@ RTEC2_SRC :=
 RTEC2_INC :=
 RTEC2_DEF :=
 
+# SWO 线通不通的探针：每个 TIM2 tick 往 ITM port 1 写一个字节。只用来验线。
+# 必须定义在下面那行 := 之前：变量是立即展开的，晚一行就是空值。
+ITM_HEARTBEAT ?= 0
+
+# RTEC2 的载体：ring = 目标内存的环（默认），stream = 成帧走 ITM/SWO。
+RTEC2_TRANSPORT ?= ring
+
 ifeq ($(RTEC2_ON),1)
   RTEC2_SRC := $(RTEC2_DIR)/rtec2_writer.c $(EVENTS_DIR)/vtrace_rtec2.c
   RTEC2_INC := -I$(RTEC2_DIR) -I$(EVENTS_DIR)
-  RTEC2_DEF := -DVTRACE_RTEC2=1
+  RTEC2_DEF := -DVTRACE_RTEC2=1 -DVTRACE_ITM_PORT=1 -DVTRACE_ITM_HEARTBEAT=$(ITM_HEARTBEAT)
+  ifeq ($(RTEC2_TRANSPORT),stream)
+    RTEC2_SRC += $(RTEC2_DIR)/rtec2_stream.c
+    RTEC2_DEF += -DVTRACE_RTEC2_TRANSPORT_STREAM=1
+  endif
 endif
 
 # 载体：0 = 目标内存里的环（默认），1 = ITM/SWO，2 = RTT 上行缓冲。
