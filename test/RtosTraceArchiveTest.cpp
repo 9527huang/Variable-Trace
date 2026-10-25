@@ -138,7 +138,9 @@ TEST(RtosTraceArchiveTest, AnEventSurvivesTheRoundTrip)
 	EXPECT_TRUE(event.subjectGenerationUnknown);
 	EXPECT_TRUE(event.afterGap);
 	EXPECT_TRUE(event.hasDisplaySeconds);
-	EXPECT_NEAR(3.25104, event.displaySeconds, 1e-9);
+	/* A float, not a double: the display second is written as one on purpose -
+	   four bytes an event on something a reader sees to the millisecond. */
+	EXPECT_NEAR(3.25104, event.displaySeconds, 1e-5);
 }
 
 TEST(RtosTraceArchiveTest, AnEventWithoutATimeKeepsIt)
@@ -388,15 +390,18 @@ TEST(RtosTracePipelineTest, ARecordingPutBackDrawsTheSameBandsAsTheLiveSession)
 
 	for (size_t index = 0; index < fromLive.isr.size(); index++)
 	{
-		EXPECT_EQ(fromLive.isr[index].fromSeconds, fromFile.isr[index].fromSeconds);
-		EXPECT_EQ(fromLive.isr[index].toSeconds, fromFile.isr[index].toSeconds);
+		/* Near, not equal: the display second is written as a float on purpose -
+		   four bytes an event - so the last few digits of a band's edge are the
+		   file's precision and not the session's. */
+		EXPECT_NEAR(fromLive.isr[index].fromSeconds, fromFile.isr[index].fromSeconds, 1e-5);
+		EXPECT_NEAR(fromLive.isr[index].toSeconds, fromFile.isr[index].toSeconds, 1e-5);
 		EXPECT_EQ(fromLive.isr[index].open, fromFile.isr[index].open);
 		EXPECT_EQ(fromLive.isr[index].cfsr, fromFile.isr[index].cfsr);
 	}
 
 	for (size_t index = 0; index < fromLive.task.size(); index++)
 	{
-		EXPECT_EQ(fromLive.task[index].fromSeconds, fromFile.task[index].fromSeconds);
+		EXPECT_NEAR(fromLive.task[index].fromSeconds, fromFile.task[index].fromSeconds, 1e-5);
 		EXPECT_EQ(fromLive.task[index].name, fromFile.task[index].name);
 	}
 

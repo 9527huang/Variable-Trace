@@ -57,7 +57,7 @@ bool RtosPlaybackV3::open(const std::string& path, RtosRecording::Problem& probl
 		{
 			std::vector<RtosNormalizedEvent> batch;
 
-			if (RtosTraceArchive::decodeEvents(block.payload, batch))
+			if (RtosTraceArchive::decodeEvents(block.payload, batch, block.version))
 			{
 				traceEvents.insert(traceEvents.end(), batch.begin(), batch.end());
 				haveEvents = haveEvents || !batch.empty();
