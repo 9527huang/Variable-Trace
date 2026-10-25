@@ -409,6 +409,37 @@ void Gui::mainThread(std::string externalPath)
 			drawAcqusitionSettingsWindow(activeView);
 			drawStartButton(viewerDataHandler);
 
+			/* Which carrier the target's records arrive on, beside the button
+			   that starts them arriving.
+			 *
+			 * The ring needs no wire and loses what the writer overwrote between
+			 * two reads; the trace unit needs the SWO pin and hands back every
+			 * record in order. It is a per-machine setting, so it is saved here
+			 * and not in the project - and it takes effect on the next run,
+			 * because the choice is made when the source is attached. */
+			ImGui::SameLine();
+			ImGui::TextUnformatted(I18n::tr("Events from"));
+			ImGui::SameLine();
+
+			{
+				GlobalConfig::Settings& settings = globalConfig->getSettings();
+
+				int carrier = settings.rtosEventsTransport == "swo" ? 1 : 0;
+				const char* labels[2] = {I18n::tr("memory ring"), I18n::tr("trace unit")};
+
+				ImGui::SetNextItemWidth(150.0f);
+
+				if (ImGui::Combo("##events-carrier", &carrier, labels, 2))
+				{
+					settings.rtosEventsTransport = carrier == 1 ? "swo" : "ring";
+
+					globalConfig->save();
+				}
+
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("%s", I18n::tr("The ring needs no wire and loses records the writer overwrote between two reads. The trace unit needs the SWO pin wired, and takes effect on the next run."));
+			}
+
 			/* The task view reads through the variable side's probe, so it
 			   shares that side's start button and settings. What it does not
 			   share is the plots: its rounds run inside the sampling loop that

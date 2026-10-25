@@ -717,7 +717,11 @@
   "· %u batches were abandoned mid-write and were read again on the next round": "· %u 个批次读到一半被丢弃，下一轮重读，但那一轮的时间没有账",
   "· %u of the %u tasks the window knows about were estimated rather than measured": "· 有 %u 个任务是估出来的，窗口一共见过 %u 个任务",
   "· nothing in this session's counters explains it: the rounds are probably further apart than the states last": "· 本次会话的计数解释不了它：大概是回合之间的间隔比状态持续的时间还长",
-  "This recording does not carry the events: the bands, the budget and the fault list need them.": "这份记录里没有事件，带子、时间账本和故障表都要靠它们。"
+  "This recording does not carry the events: the bands, the budget and the fault list need them.": "这份记录里没有事件，带子、时间账本和故障表都要靠它们。",
+  "Events from": "事件来源",
+  "memory ring": "目标内存环",
+  "trace unit": "跟踪单元（SWO）",
+  "The ring needs no wire and loses records the writer overwrote between two reads. The trace unit needs the SWO pin wired, and takes effect on the next run.": "内存环不需要接线，但写入方在两轮之间覆盖掉的记录就没了。跟踪单元需要接好 SWO 引脚，改动在下一次采集时生效。"
  },
  "skip": [
   "%s",

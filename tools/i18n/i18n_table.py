@@ -991,6 +991,13 @@ EXTRA = {
     # 录制：v3 才存事件。没有事件的记录要说清是「没记」，不是「没事发生」。
     "This recording does not carry the events: the bands, the budget and the fault list need them.":
         "这份记录里没有事件，带子、时间账本和故障表都要靠它们。",
+
+    # 载体选择：环 or 跟踪单元。
+    "Events from": "事件来源",
+    "memory ring": "目标内存环",
+    "trace unit": "跟踪单元（SWO）",
+    "The ring needs no wire and loses records the writer overwrote between two reads. The trace unit needs the SWO pin wired, and takes effect on the next run.":
+        "内存环不需要接线，但写入方在两轮之间覆盖掉的记录就没了。跟踪单元需要接好 SWO 引脚，改动在下一次采集时生效。",
 }
 
 
