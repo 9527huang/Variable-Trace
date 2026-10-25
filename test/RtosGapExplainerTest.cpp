@@ -138,3 +138,65 @@ TEST(RtosGapExplainerTest, EstimationOnlyMattersWhenItIsALargeShare)
 	EXPECT_EQ(RtosGapCause::TasksEstimated, hints[0].cause);
 	EXPECT_NE(std::string::npos, hints[0].sentence.find("estimated"));
 }
+
+TEST(RtosGapExplainerTest, AMissedRecordIsTurnedIntoSecondsAtTheRateTheSessionRanAt)
+{
+	/* "1374 records" does not tell a reader whether that is a tenth of the gap
+	   or all of it. The rate the session actually ran at does: 5 records a
+	   second over a 20 second window, 100 missed, so about 20 seconds - which
+	   is the whole gap, and the share is capped rather than printed as 200%. */
+	RtosGapEvidence evidence;
+
+	evidence.unaccountedPercent = 100.0;
+	evidence.windowSeconds = 20.0;
+	evidence.unaccountedSeconds = 10.0;
+	evidence.recordsDecoded = 100;
+	evidence.eventsMissed = 100;
+
+	const std::vector<RtosGapHint> hints = explainGap(evidence);
+
+	ASSERT_FALSE(hints.empty());
+	EXPECT_EQ(RtosGapCause::RecordsMissed, hints.front().cause);
+	EXPECT_NEAR(20.0, hints.front().seconds, 1e-6);
+	EXPECT_NEAR(100.0, hints.front().sharePercent, 1e-6) << "a share over the whole gap is capped, not printed as a measurement";
+}
+
+TEST(RtosGapExplainerTest, WithoutARateTheCountIsNotDressedUpAsSeconds)
+{
+	/* No records decoded means no rate, and a duration made up from no rate is
+	   a number nobody measured. The hint stays a count. */
+	RtosGapEvidence evidence;
+
+	evidence.unaccountedPercent = 40.0;
+	evidence.windowSeconds = 20.0;
+	evidence.unaccountedSeconds = 8.0;
+	evidence.recordsDecoded = 0;
+	evidence.eventsMissed = 50;
+
+	const std::vector<RtosGapHint> hints = explainGap(evidence);
+
+	ASSERT_FALSE(hints.empty());
+	EXPECT_EQ(0.0, hints.front().seconds);
+	EXPECT_EQ(0.0, hints.front().sharePercent);
+}
+
+TEST(RtosGapExplainerTest, TheCauseWithTheBiggestAccountComesFirst)
+{
+	/* Two causes, the smaller count carrying the larger account: a reader wants
+	   to know where the time went, not which counter happened to be biggest. */
+	RtosGapEvidence evidence;
+
+	evidence.unaccountedPercent = 30.0;
+	evidence.windowSeconds = 10.0;
+	evidence.unaccountedSeconds = 3.0;
+	evidence.recordsDecoded = 1000; /* 10 ms a record */
+	evidence.eventsMissed = 200;    /* 2.0 s */
+	evidence.roundsRejected = 300;  /* no rate, no seconds */
+
+	const std::vector<RtosGapHint> hints = explainGap(evidence);
+
+	ASSERT_GE(hints.size(), 2u);
+	EXPECT_EQ(RtosGapCause::RecordsMissed, hints[0].cause);
+	EXPECT_EQ(RtosGapCause::RoundsRejected, hints[1].cause);
+	EXPECT_EQ(300u, hints[1].count) << "the larger count sorts after the one that can say how much time it is";
+}

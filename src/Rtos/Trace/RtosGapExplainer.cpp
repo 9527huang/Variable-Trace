@@ -4,7 +4,8 @@
 
 namespace
 {
-	RtosGapHint hint(RtosGapCause cause, std::string sentence, uint32_t count, uint32_t total = 0)
+	RtosGapHint hint(RtosGapCause cause, std::string sentence, uint32_t count, uint32_t total = 0, double seconds = 0.0,
+	                 double sharePercent = 0.0)
 	{
 		RtosGapHint result;
 
@@ -12,8 +13,36 @@ namespace
 		result.sentence = std::move(sentence);
 		result.count = count;
 		result.total = total;
+		result.seconds = seconds;
+		result.sharePercent = sharePercent;
 
 		return result;
+	}
+
+	/* What one missed record costs, in seconds, at the rate the session was
+	   actually running at.
+	   
+	   Not the target's event rate: the records that were missed are exactly the
+	   ones that would have raised it. The decoded ones are the sample, and the
+	   window is the span they arrived over. Zero when there is no sample,
+	   because a rate made up from nothing gives a duration made up from
+	   nothing. */
+	double secondsPerMissedRecord(const RtosGapEvidence& evidence)
+	{
+		if (evidence.recordsDecoded == 0 || evidence.windowSeconds <= 0.0)
+			return 0.0;
+
+		return evidence.windowSeconds / static_cast<double>(evidence.recordsDecoded);
+	}
+
+	double shareOfGap(double seconds, const RtosGapEvidence& evidence)
+	{
+		if (seconds <= 0.0 || evidence.unaccountedSeconds <= 0.0)
+			return 0.0;
+
+		const double share = seconds / evidence.unaccountedSeconds * 100.0;
+
+		return share > 100.0 ? 100.0 : share;
 	}
 }  // namespace
 
@@ -34,10 +63,16 @@ std::vector<RtosGapHint> explainGap(const RtosGapEvidence& evidence)
 	   which is why they are named rather than guessed. */
 	if (evidence.eventsMissed > 0)
 	{
-		hints.push_back(hint(RtosGapCause::RecordsMissed,
-		                     "this many records were written and never read, so interrupt intervals are missing their other end: " +
-		                         std::to_string(evidence.eventsMissed),
-		                     evidence.eventsMissed));
+		const double spacing = secondsPerMissedRecord(evidence);
+		const double seconds = spacing * static_cast<double>(evidence.eventsMissed);
+
+		std::string sentence = "this many records were written and never read, so interrupt intervals are missing their other end: " +
+		                       std::to_string(evidence.eventsMissed);
+
+		if (seconds > 0.0)
+			sentence += ", about " + std::to_string(seconds).substr(0, 4) + " s of the gap";
+
+		hints.push_back(hint(RtosGapCause::RecordsMissed, sentence, evidence.eventsMissed, 0, seconds, shareOfGap(seconds, evidence)));
 	}
 
 	if (evidence.roundsRejected > 0)
@@ -76,10 +111,17 @@ std::vector<RtosGapHint> explainGap(const RtosGapEvidence& evidence)
 		                     "nothing in this session's counters explains it - the rounds are probably further apart than the states last", 0));
 	}
 
-	std::stable_sort(hints.begin(), hints.end(), [](const RtosGapHint& left, const RtosGapHint& right)
+	/* The biggest account first, and the ones with no number after them. A
+	   reader with an incomplete observation wants to know where to look, and
+	   "1374 records" and "0.9 s" are answers of different quality. */
+	std::stable_sort(hints.begin(), hints.end(),
+	                 [](const RtosGapHint& left, const RtosGapHint& right)
 	                 {
-		return left.count > right.count;
-	});
+		                 if (left.seconds != right.seconds)
+			                 return left.seconds > right.seconds;
+
+		                 return left.count > right.count;
+	                 });
 
 	return hints;
 }

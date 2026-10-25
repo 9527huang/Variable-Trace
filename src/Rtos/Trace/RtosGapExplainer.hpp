@@ -42,6 +42,18 @@ struct RtosGapEvidence
 	/* Tasks that had to be estimated rather than measured in the last round. */
 	uint32_t tasksEstimated = 0;
 	uint32_t tasksKnown = 0;
+
+	/* The window itself, so that a count can be turned into a share of it.
+	   Without these the list still says which counters moved, but "1374
+	   records" does not tell a reader whether that is a tenth of the gap or all
+	   of it - and the next question is always which. */
+	double windowSeconds = 0.0;
+	double unaccountedSeconds = 0.0;
+
+	/* Records the reader did decode over the session. The rate they imply is
+	   the only honest way to turn "records missed" into seconds: the missed
+	   ones would have arrived at the same average spacing. */
+	uint32_t recordsDecoded = 0;
 };
 
 /*
@@ -79,6 +91,17 @@ struct RtosGapHint
 	   tasks were estimated" needs both numbers to mean anything. Zero
 	   elsewhere. */
 	uint32_t total = 0;
+
+	/* How much of the gap this cause can account for, in seconds, when the
+	   evidence allows the conversion at all. Zero means "not computable" and
+	   is printed as a count - a number invented from a missing rate would be
+	   worse than no number. */
+	double seconds = 0.0;
+
+	/* `seconds` as a percentage of the gap, capped at a hundred: a cause that
+	   could account for more than the whole gap is a sign the two are not
+	   additive, and printing 140% would look like a measurement. */
+	double sharePercent = 0.0;
 };
 
 /* Threshold under which the gap is not worth explaining, in percent. */

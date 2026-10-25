@@ -21,6 +21,7 @@
 #include "RtosFaultDecoder.hpp"
 #include "RtosGapExplainer.hpp"
 #include "RtosTrackGeometry.hpp"
+#include "Rtec2SwoSource.hpp"
 #include "RtosTraceReducer.hpp"
 #include "RtosTraceWindow.hpp"
 #include "RtosWaitGraph.hpp"
@@ -2684,8 +2685,17 @@ class GuiRtosPanel
 		switch (hint.cause)
 		{
 			case RtosGapCause::RecordsMissed:
-				GuiHelper::drawSecondaryTextWrapped(I18n::tr("· %u records were written and never read, so interrupt intervals are missing their other end"),
-				                                    hint.count);
+
+				/* With a number when the session can support one: "1374 records"
+				   and "1374 records, about 0.9 s of the gap" are answers of
+				   different quality, and the second is the one that decides
+				   whether the rest of the gap is worth chasing. */
+				if (hint.seconds > 0.0)
+					GuiHelper::drawSecondaryTextWrapped(
+					    I18n::tr("· %u records were written and never read: about %.1f s of the gap (%.0f%%)"), hint.count, hint.seconds, hint.sharePercent);
+				else
+					GuiHelper::drawSecondaryTextWrapped(I18n::tr("· %u records were written and never read, so interrupt intervals are missing their other end"),
+					                                    hint.count);
 
 				return;
 
@@ -2863,10 +2873,18 @@ class GuiRtosPanel
 					evidence.tasksKnown = current->cpuLoad.tasksKnown;
 				}
 
+				evidence.windowSeconds = budget.windowSeconds;
+				evidence.unaccountedSeconds = -budget.unaccountedSeconds;
+
 				if (auto* adapter = dynamic_cast<Rtec2Adapter*>(model.trace()->source()))
 				{
 					evidence.eventsMissed = adapter->missedSinceStart();
 					evidence.tornBatches = adapter->tornBatches();
+					evidence.recordsDecoded = adapter->decodedRecords();
+				}
+				else if (auto* stream = dynamic_cast<Rtec2SwoSource*>(model.trace()->source()))
+				{
+					evidence.recordsDecoded = stream->stats().records;
 				}
 
 				for (const RtosGapHint& hint : explainGap(evidence))

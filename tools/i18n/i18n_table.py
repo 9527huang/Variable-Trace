@@ -993,6 +993,8 @@ EXTRA = {
         "这份记录里没有事件，带子、时间账本和故障表都要靠它们。",
 
     # 载体选择：环 or 跟踪单元。
+    "· %u records were written and never read: about %.1f s of the gap (%.0f%%)":
+        "· 有 %u 条记录写下来却没被读走：约占缺口的 %.1f 秒（%.0f%%）",
     "Events from": "事件来源",
     "memory ring": "目标内存环",
     "trace unit": "跟踪单元（SWO）",
