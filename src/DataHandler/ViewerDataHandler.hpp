@@ -29,6 +29,8 @@
 
 class RtosProbeMemory;
 
+class Rtec2SwoSource;
+
 class ViewerDataHandler : public DataHandlerBase
 {
    public:
@@ -284,6 +286,15 @@ class ViewerDataHandler : public DataHandlerBase
 	 * opens, which is the one that has been seen to carry SWO on this target. A
 	 * zero core frequency means the carrier is not wanted.
 	 */
+	/* Which carrier the target's records arrive on: "ring" (its memory) or
+	   "swo" (the trace unit). Handed over with the SWO settings, because asking
+	   for the carrier without a trace clock is a request that cannot be
+	   granted. */
+	void setEventsTransport(std::string transport)
+	{
+		eventsTransport = std::move(transport);
+	}
+
 	void setSwoSettings(const ITraceProbe::TraceProbeSettings& settings, uint32_t coreFrequency, uint32_t prescaler)
 	{
 		swoProbeSettings = settings;
@@ -382,6 +393,9 @@ class ViewerDataHandler : public DataHandlerBase
 	   the two get confused later. */
 	void readRtec2Ring(RtosProbeMemory& memory);
 
+	/* One read of the trace unit, when the records travel over SWO. */
+	void pollRtec2Swo();
+
 	/* The streams, read on the sampling tick rather than on the task view's own:
 	   a stream has to be drained at the rate it is written, and the task view's
 	   round is far too slow for that. Both are tried; whichever hands over
@@ -456,6 +470,21 @@ class ViewerDataHandler : public DataHandlerBase
 	/* Borrowed from the model, which owns it. Null when the target carries the
 	   eight byte ring or nothing at all. */
 	Rtec2Adapter* rtec2Adapter = nullptr;
+
+	/* Set when the records arrive as a stream off the trace unit. Only one of
+	   the two carriers is ever attached. */
+	Rtec2SwoSource* rtec2SwoSource = nullptr;
+
+	std::string eventsTransport = "ring";
+
+	bool swoEventsStarted = false;
+
+	/* Where the target keeps its own core clock, when the firmware exports one.
+	   Read instead of trusting a setting: the trace clock is a property of the
+	   target, and a project file that still says the frequency of another build
+	   is the normal case, not the exception. */
+	uint32_t swoClockSymbol = 0;
+	bool swoEventsRefused = false;
 
 	/* How many slots one round may take. Thirty two of sixty four: a round at
 	   a hundred hertz finds five or six waiting, and the rest is room for a

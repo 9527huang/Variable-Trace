@@ -22,6 +22,15 @@ class JlinkDebugProbe : public IDebugProbe
 
 
 	uint32_t readRtt(uint8_t* buffer, uint32_t size) override;
+
+	/* SWO on the connection the acquisition already holds.
+	 *
+	 * The alternative - a connection of its own - never works: a J-Link serves
+	 * one at a time, and the acquisition asked first. Reading SWO and reading
+	 * memory are different requests on the same link, which is why this belongs
+	 * here and not beside the trace view's reader. */
+	bool startSwo(uint32_t coreFrequency, uint32_t traceFrequency, uint32_t stimulusMask) override;
+	uint32_t readSwo(uint8_t* buffer, uint32_t size) override;
 	std::string getTargetName() override;
 
 	std::optional<IDebugProbe::varEntryType> readSingleEntry() override;
@@ -53,6 +62,10 @@ class JlinkDebugProbe : public IDebugProbe
 	/* Taken from the settings when a run starts, and read when it ends: whether
 	   the link outlives the run is the reader's choice, not the probe's. */
 	bool keepConnection = false;
+
+	/* Whether the trace unit is capturing on this connection, so that a read
+	   does not ask a unit that was never started. */
+	bool swoStarted = false;
 
 	/* Whether the link to the probe is open, and what it was opened with - the
 	   settings that shape it, written down as one string. A run that keeps the

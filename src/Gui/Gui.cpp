@@ -424,6 +424,8 @@ void Gui::mainThread(std::string externalPath)
 			viewerDataHandler->setSwoProbeFactory([this]()
 			                                      { return std::unique_ptr<ITraceProbe>(std::make_unique<JlinkTraceProbe>(logger)); });
 
+			viewerDataHandler->setEventsTransport(globalConfig->getSettings().rtosEventsTransport);
+
 			if (globalConfig->getSettings().rtosEventsTransport == "swo")
 			{
 				const TraceDataHandler::Settings swo = traceDataHandler->getSettings();

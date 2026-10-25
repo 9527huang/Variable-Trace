@@ -1,5 +1,18 @@
 #include "JlinkDebugProbe.hpp"
 
+/* Not declared in the bundled header, and needed for the same reason the trace
+   view needs it: the ITM's registers live in the System Control Space, which
+   the debug unit routes - a plain store reports success without arriving. */
+extern "C" int32_t JLINKARM_WriteU32(uint32_t address, uint32_t data);
+
+/* What JLINKARM_SWO_Control(JLINKARM_SWO_CMD_START, ...) expects. */
+struct JlinkSwoStartInfo
+{
+	uint32_t sizeOfStruct;
+	uint32_t iface;
+	uint32_t speed;
+};
+
 #include <cstdio>
 
 /* Exported by the J-Link DLL this build links against, but not declared in the
@@ -450,6 +463,76 @@ bool JlinkDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size)
 
 	invalidateLink("writing target memory");
 	return false;
+}
+
+bool JlinkDebugProbe::startSwo(uint32_t coreFrequency, uint32_t traceFrequency, uint32_t stimulusMask)
+{
+	if (coreFrequency == 0 || traceFrequency == 0 || traceFrequency > coreFrequency / 2)
+	{
+		lastErrorMsg = "The trace clock has to be at most half the core clock.";
+
+		return false;
+	}
+
+	/* A capture left running by an earlier session makes the start below fail
+	   with nothing to show for it. Stopping first costs one call and cannot
+	   fail in a way that matters. */
+	JLINKARM_SWO_Control(JLINKARM_SWO_CMD_STOP, nullptr);
+
+	/* No timestamps: the records carry their own ticks, and a timestamp beside
+	   every packet costs more wire than the payload it accompanies. */
+	JLINKARM_SWO_Config("TSEnable=0");
+
+	if (JLINKARM_SWO_EnableTarget(coreFrequency, traceFrequency, JLINKARM_SWO_IF_UART, stimulusMask) != 0)
+	{
+		lastErrorMsg = "Could not enable SWO on the target!";
+
+		return false;
+	}
+
+	/* The ITM belongs to the target, and a connect clears what the firmware set
+	   up. Program what it would: unlock, enable, open the stimulus ports. */
+	JLINKARM_WriteU32(0xE0000FB0u, 0xC5ACCE55u); /* ITM->LAR */
+	JLINKARM_WriteU32(0xE0000E80u, 0x00010003u); /* ITM->TCR: bus id 1 | TSENA | ITMENA */
+	JLINKARM_WriteU32(0xE0000E00u, stimulusMask); /* ITM->TER */
+	JLINKARM_WriteU32(0xE0000E40u, 0x0000000Fu); /* ITM->TPR */
+
+	JlinkSwoStartInfo start{};
+
+	start.sizeOfStruct = sizeof(start);
+	start.iface = JLINKARM_SWO_IF_UART;
+	start.speed = traceFrequency;
+
+	if (JLINKARM_SWO_Control(JLINKARM_SWO_CMD_START, &start) < 0)
+	{
+		lastErrorMsg = "Could not start the SWO capture!";
+
+		return false;
+	}
+
+	swoStarted = true;
+
+	return true;
+}
+
+uint32_t JlinkDebugProbe::readSwo(uint8_t* buffer, uint32_t size)
+{
+	if (!swoStarted || buffer == nullptr || size == 0)
+		return 0;
+
+	/* The read returns nothing; the size is both what came back and what has to
+	   be flushed out of the probe's buffer. Passing anything else leaves the
+	   buffer untouched and hands the same bytes over again. */
+	JLINKARM_SWO_Read(buffer, 0, &size);
+
+	if (size == 0 || size > 0x100000u)
+		return 0;
+
+	uint32_t consumed = size;
+
+	JLINKARM_SWO_Control(JLINKARM_SWO_CMD_FLUSH, &consumed);
+
+	return size;
 }
 
 bool JlinkDebugProbe::startRtt(uint32_t controlBlock)

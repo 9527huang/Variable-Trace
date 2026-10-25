@@ -2,6 +2,7 @@
 
 #include "GdbRtosLayout.hpp"
 #include "RtosFactory.hpp"
+#include "Rtec2SwoSource.hpp"
 #include "TraceAdapters.hpp"
 #include "RtosItmDecoder.hpp"
 #include "RtosProbeMemory.hpp"
@@ -380,11 +381,24 @@ bool ViewerDataHandler::prepareRtos()
 	rtosEventRingAddress = 0;
 	rtosRtec2Address = 0;
 	rtec2Adapter = nullptr;
+	rtec2SwoSource = nullptr;
+
+	/* A new run gets a new attempt at the carrier: a probe that was busy last
+	   time is not a probe that is busy now. */
+	swoEventsStarted = false;
+	swoEventsRefused = false;
 
 	resetEventSources();
 
 	rtosEventsRead = 0;
 	rtec2OriginSet = false;
+
+	swoClockSymbol = 0;
+
+	if (const auto clock = symbols.find("g_sysclk_hz"); clock != symbols.end())
+		swoClockSymbol = clock->second.address;
+	else if (const auto clock = symbols.find("SystemCoreClock"); clock != symbols.end())
+		swoClockSymbol = clock->second.address;
 
 	if (const auto ring = symbols.find("vtrace_rtec2_blob"); ring != symbols.end())
 	{
@@ -408,7 +422,18 @@ bool ViewerDataHandler::prepareRtos()
 		   something to show without a second reader on the probe. Neither
 		   source reads the target itself, so starting them cannot fail for
 		   probe reasons. */
-		if (rtosRtec2Address != 0)
+		if (rtosRtec2Address != 0 && eventsTransport == "swo")
+		{
+			/* The same records, the other carrier: what the ring cannot promise
+			   (nothing overwritten between two reads) a stream can, at the cost
+			   of the trace pins being wired. */
+			auto source = std::make_unique<Rtec2SwoSource>();
+
+			rtec2SwoSource = source.get();
+
+			rtosModel->attachTraceSource(std::move(source));
+		}
+		else if (rtosRtec2Address != 0)
 		{
 			auto adapter = std::make_unique<Rtec2Adapter>();
 
@@ -810,6 +835,14 @@ void ViewerDataHandler::pollEventStream(double nowSeconds)
  */
 void ViewerDataHandler::pollSwoStream(double nowSeconds)
 {
+	/* Two carriers, one probe. When the RTEC2 records travel over SWO they do
+	   it on the acquisition's own connection (see pollRtec2Swo); this path is
+	   the old eight-byte one, which wants a connection of its own and cannot
+	   have one while the acquisition holds the probe. Running it as well only
+	   produces a failed connect and a warning every session. */
+	if (rtec2SwoSource != nullptr)
+		return;
+
 	if (swoActive || swoUnavailable)
 		return;
 
@@ -949,6 +982,78 @@ void ViewerDataHandler::appendStreamRecords(const std::vector<RtosEventRing::Rec
  * hertz finds five or six waiting; asking for thirty two leaves room for a
  * round that ran late without ever taking more than one read per round.
  */
+/*
+ * One read of the trace unit, handed to the stream source.
+ *
+ * The capture is started on the connection the acquisition already holds: a
+ * second connection never wins against the one that is already reading memory,
+ * and a J-Link serves one at a time. Everything the trace unit needs - core
+ * clock, SWO clock, the stimulus port the records go out on - comes from the
+ * settings the interface handed over, not from anything guessed here.
+ */
+void ViewerDataHandler::pollRtec2Swo()
+{
+	if (rtec2SwoSource == nullptr || swoEventsRefused || debugProbe == nullptr)
+		return;
+
+	if (!swoEventsStarted)
+	{
+		/* The target's own number first: a project file that says 8 MHz about a
+		   64 MHz build is not an error anyone would notice, and every record
+		   would arrive with a time three times too short. */
+		uint32_t coreFrequency = swoCoreFrequency;
+
+		if (swoClockSymbol != 0)
+		{
+			uint32_t readback = 0;
+
+			if (debugProbe->readMemory(swoClockSymbol, reinterpret_cast<uint8_t*>(&readback), sizeof(readback)) && readback >= 100000u)
+				coreFrequency = readback;
+		}
+
+		if (coreFrequency == 0)
+		{
+			/* Asked for but not configured: one line, not one per round. */
+			static bool said = false;
+
+			if (!said)
+			{
+				logger->warn("The trace unit was asked for as the carrier, but the trace clock was never handed over.");
+
+				said = true;
+			}
+
+			return;
+		}
+
+		swoCoreFrequency = coreFrequency;
+
+		const uint32_t swoFrequency = swoCoreFrequency / (swoTracePrescaler + 1);
+
+		/* One port: the one the records go out on. Enabling the trace view's
+		   channels here would put another protocol's packets in the stream. */
+		if (!debugProbe->startSwo(swoCoreFrequency, swoFrequency, 1u << 1))
+		{
+			swoEventsRefused = true;
+
+			logger->warn("The trace unit could not be started: {}. The task view keeps to the ring.", debugProbe->getLastErrorMsg());
+
+			return;
+		}
+
+		swoEventsStarted = true;
+
+		logger->info("The target's records are on the trace unit: core {} Hz, SWO {} Hz.", swoCoreFrequency, swoFrequency);
+	}
+
+	std::array<uint8_t, 4096> buffer{};
+
+	const uint32_t bytes = debugProbe->readSwo(buffer.data(), static_cast<uint32_t>(buffer.size()));
+
+	if (bytes > 0)
+		rtec2SwoSource->feed(buffer.data(), bytes);
+}
+
 void ViewerDataHandler::readRtec2Ring(RtosProbeMemory& memory)
 {
 	if (rtosRtec2Address == 0 || rtec2Adapter == nullptr)
@@ -1643,7 +1748,10 @@ void ViewerDataHandler::dataHandler()
 					   a second threw away ninety six percent of what was written.
 					   Measured before the move: fourteen thousand records arrived
 					   and one thousand three hundred became events. */
-					if (rtosRtec2Address != 0 && debugProbe != nullptr)
+					if (rtec2SwoSource != nullptr)
+						pollRtec2Swo();
+
+					if (rtosRtec2Address != 0 && rtec2Adapter != nullptr && debugProbe != nullptr)
 					{
 						RtosProbeMemory eventMemory(*debugProbe);
 
