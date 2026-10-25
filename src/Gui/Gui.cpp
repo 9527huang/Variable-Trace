@@ -287,6 +287,8 @@ void Gui::mainThread(std::string externalPath)
 			rebuildFonts();
 		}
 
+		driveSweepIfAsked();
+
 		ImGui::NewFrame();
 		ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 		ensureDockLayout(dockspaceId);
@@ -618,6 +620,69 @@ void Gui::mainThread(std::string externalPath)
 	glfwDestroyWindow(window);
 	glfwTerminate();
 	fileHandler->deinit();
+}
+
+/*
+ * A hand that is not a hand: the task view driven from inside.
+ *
+ * Three faults in this panel - a table set up with nine columns against eight,
+ * a band walking off the end of an empty bucket vector, a wheel notch that
+ * quietly stopped following - were all in code that only runs when somebody
+ * points at it. An automated run could not touch them, so they went out in
+ * three releases and came back as three reports.
+ *
+ * This walks a grid of gestures over the Task Viewer window: hover, click,
+ * wheel. Positions come from the window's own rectangle, so a layout change
+ * moves the sweep with it, and every step is logged before it happens - a crash
+ * then names the gesture instead of leaving a faulting offset to be mapped by
+ * hand.
+ *
+ * Off unless VARTRACE_GUI_SWEEP is set: a program that clicks itself is a
+ * program nobody can use while it lasts.
+ */
+void Gui::driveSweepIfAsked()
+{
+	static const bool asked = std::getenv("VARTRACE_GUI_SWEEP") != nullptr;
+
+	if (!asked)
+		return;
+
+	static int step = -1;
+	static int held;
+
+	if (++held < 8)
+		return;
+
+	held = 0;
+
+	const ImGuiWindow* window = ImGui::FindWindowByName(I18n::windowTitle("Task Viewer").c_str());
+
+	if (window == nullptr)
+		return;
+
+	const ImVec2 topLeft = window->Pos;
+	const ImVec2 size = window->Size;
+
+	if (size.x < 40.0f || size.y < 40.0f)
+		return;
+
+	const int columns = 6;
+	const int rows = 8;
+	const int index = step < 0 ? 0 : (step + 1) % (columns * rows);
+
+	step = index;
+
+	const float x = topLeft.x + size.x * (0.05f + 0.9f * static_cast<float>(index % columns) / static_cast<float>(columns - 1));
+	const float y = topLeft.y + size.y * (0.05f + 0.9f * static_cast<float>(index / columns) / static_cast<float>(rows - 1));
+
+	ImGuiIO& io = ImGui::GetIO();
+
+	io.MousePos = ImVec2(x, y);
+	io.MouseDown[0] = (index % 3) != 0;
+	io.MouseWheel = (index % 5) == 0 ? 1.0f : ((index % 7) == 0 ? -1.0f : 0.0f);
+
+	if (logger)
+		logger->info("GUI sweep: step {} at ({:.0f}, {:.0f}) click={} wheel={}.", index, x, y, io.MouseDown[0] ? 1 : 0, io.MouseWheel);
 }
 
 void Gui::drawMenu()
