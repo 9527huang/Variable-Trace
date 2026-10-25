@@ -400,6 +400,15 @@ bool ViewerDataHandler::prepareRtos()
 	else if (const auto clock = symbols.find("SystemCoreClock"); clock != symbols.end())
 		swoClockSymbol = clock->second.address;
 
+	if (eventsTransport == "swo" && debugProbe != nullptr)
+	{
+		/* Requested here, started by the probe at the only moment it can be:
+		   between "connected" and "streaming memory". The clock symbol travels
+		   with the request so the trace clock comes from the target rather than
+		   from a project file written for another build. */
+		debugProbe->requestSwo(swoClockSymbol, swoCoreFrequency, swoTracePrescaler);
+	}
+
 	if (const auto ring = symbols.find("vtrace_rtec2_blob"); ring != symbols.end())
 	{
 		rtosRtec2Address = ring->second.address;
@@ -998,52 +1007,19 @@ void ViewerDataHandler::pollRtec2Swo()
 
 	if (!swoEventsStarted)
 	{
-		/* The target's own number first: a project file that says 8 MHz about a
-		   64 MHz build is not an error anyone would notice, and every record
-		   would arrive with a time three times too short. */
-		uint32_t coreFrequency = swoCoreFrequency;
-
-		if (swoClockSymbol != 0)
-		{
-			uint32_t readback = 0;
-
-			if (debugProbe->readMemory(swoClockSymbol, reinterpret_cast<uint8_t*>(&readback), sizeof(readback)) && readback >= 100000u)
-				coreFrequency = readback;
-		}
-
-		if (coreFrequency == 0)
-		{
-			/* Asked for but not configured: one line, not one per round. */
-			static bool said = false;
-
-			if (!said)
-			{
-				logger->warn("The trace unit was asked for as the carrier, but the trace clock was never handed over.");
-
-				said = true;
-			}
-
-			return;
-		}
-
-		swoCoreFrequency = coreFrequency;
-
-		const uint32_t swoFrequency = swoCoreFrequency / (swoTracePrescaler + 1);
-
-		/* One port: the one the records go out on. Enabling the trace view's
-		   channels here would put another protocol's packets in the stream. */
-		if (!debugProbe->startSwo(swoCoreFrequency, swoFrequency, 1u << 1))
+		/* The probe starts the capture itself, between the connect and the
+		   memory stream; asking here would be refused, which is what the first
+		   attempt did before the start moved. */
+		if (!debugProbe->isSwoRunning())
 		{
 			swoEventsRefused = true;
 
-			logger->warn("The trace unit could not be started: {}. The task view keeps to the ring.", debugProbe->getLastErrorMsg());
+			logger->warn("The trace unit is not running, so the task view keeps to the ring.");
 
 			return;
 		}
 
 		swoEventsStarted = true;
-
-		logger->info("The target's records are on the trace unit: core {} Hz, SWO {} Hz.", swoCoreFrequency, swoFrequency);
 	}
 
 	std::array<uint8_t, 4096> buffer{};
@@ -1052,6 +1028,23 @@ void ViewerDataHandler::pollRtec2Swo()
 
 	if (bytes > 0)
 		rtec2SwoSource->feed(buffer.data(), bytes);
+
+	/* Drained here and not by the ring path: that one pumps the pipeline on its
+	   way out, and this path never goes through it. Without this the source
+	   fills up and the view stays empty while the counters climb - which is
+	   exactly what the first working capture did. */
+	if (rtosModel != nullptr && rtosModel->trace() != nullptr)
+		rtosModel->trace()->pump(0.0);
+
+	/* One line when the first frame arrives: "the capture started" and "events
+	   are coming out of it" are two different claims, and only the second one
+	   explains an empty view. */
+	if (!swoFramesSeen && rtec2SwoSource->stats().frames > 0)
+	{
+		swoFramesSeen = true;
+
+		logger->info("SWO: {} frames, {} records so far.", rtec2SwoSource->stats().frames, rtec2SwoSource->stats().records);
+	}
 }
 
 void ViewerDataHandler::readRtec2Ring(RtosProbeMemory& memory)

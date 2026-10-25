@@ -134,6 +134,7 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 		   turned out to be. Whatever the last run left behind, this one begins
 		   with the target running. */
 		JLINKARM_Go();
+
 	}
 	else
 	{
@@ -255,6 +256,33 @@ bool JlinkDebugProbe::startAcqusition(const DebugProbeSettings& probeSettings, s
 		logger->info("J-Link: running the target.");
 
 		JLINKARM_Go();
+
+		if (swoWanted)
+		{
+			/* Here and not a round later: the memory stream is about to take the
+			   link, and after that the capture request is refused. */
+			uint32_t core = swoFallbackCoreHz;
+
+			if (swoClockAddress != 0)
+			{
+				uint32_t readback = 0;
+
+				/* The target's own number, read straight off the link: a project
+				   file that still says 8 MHz about a 64 MHz build is the normal
+				   case, and every record would carry a time three times too
+				   short. */
+				if (JLINKARM_ReadMemEx(swoClockAddress, static_cast<uint32_t>(sizeof(readback)), &readback, 0) >= 0 && readback >= 100000u &&
+				    readback <= 1000000000u)
+					core = readback;
+			}
+
+			if (core == 0)
+				logger->warn("SWO was asked for, but no core clock was available to program the trace unit with.");
+			else if (startSwo(core, core / (swoPrescaler + 1u), 1u << 1))
+				logger->info("SWO: capture started before the memory stream (core {} Hz, SWO {} Hz).", core, core / (swoPrescaler + 1u));
+			else
+				logger->warn("SWO: the capture could not be started: {}", lastErrorMsg);
+		}
 	}
 
 	if (probeSettings.mode == IDebugProbe::Mode::NORMAL)
@@ -465,6 +493,14 @@ bool JlinkDebugProbe::writeMemory(uint32_t address, uint8_t* buf, uint32_t size)
 	return false;
 }
 
+void JlinkDebugProbe::requestSwo(uint32_t clockAddress, uint32_t fallbackCoreHz, uint32_t prescaler)
+{
+	swoWanted = true;
+	swoClockAddress = clockAddress;
+	swoFallbackCoreHz = fallbackCoreHz;
+	swoPrescaler = prescaler;
+}
+
 bool JlinkDebugProbe::startSwo(uint32_t coreFrequency, uint32_t traceFrequency, uint32_t stimulusMask)
 {
 	if (coreFrequency == 0 || traceFrequency == 0 || traceFrequency > coreFrequency / 2)
@@ -474,16 +510,28 @@ bool JlinkDebugProbe::startSwo(uint32_t coreFrequency, uint32_t traceFrequency, 
 		return false;
 	}
 
-	/* A capture left running by an earlier session makes the start below fail
-	   with nothing to show for it. Stopping first costs one call and cannot
-	   fail in a way that matters. */
-	JLINKARM_SWO_Control(JLINKARM_SWO_CMD_STOP, nullptr);
+	/* Whole megahertz, and at most 7.5 of them.
+	 *
+	 * Measured: 5 818 181 Hz is refused by the DLL and 4 000 000 is accepted,
+	 * so the divider has to land on a round number. Rounding down costs a
+	 * little bandwidth and saves the session. */
+	traceFrequency = (traceFrequency / 1000000u) * 1000000u;
+
+	if (traceFrequency == 0)
+		traceFrequency = 1000000u;
+
+	if (traceFrequency > 7000000u)
+		traceFrequency = 7000000u;
 
 	/* No timestamps: the records carry their own ticks, and a timestamp beside
 	   every packet costs more wire than the payload it accompanies. */
 	JLINKARM_SWO_Config("TSEnable=0");
 
-	if (JLINKARM_SWO_EnableTarget(coreFrequency, traceFrequency, JLINKARM_SWO_IF_UART, stimulusMask) != 0)
+	const int32_t enabled = JLINKARM_SWO_EnableTarget(coreFrequency, traceFrequency, JLINKARM_SWO_IF_UART, stimulusMask);
+
+	logger->info("SWO: enable(core {} Hz, swo {} Hz, mask 0x{:X}) = {}", coreFrequency, traceFrequency, stimulusMask, enabled);
+
+	if (enabled != 0)
 	{
 		lastErrorMsg = "Could not enable SWO on the target!";
 
@@ -503,7 +551,11 @@ bool JlinkDebugProbe::startSwo(uint32_t coreFrequency, uint32_t traceFrequency, 
 	start.iface = JLINKARM_SWO_IF_UART;
 	start.speed = traceFrequency;
 
-	if (JLINKARM_SWO_Control(JLINKARM_SWO_CMD_START, &start) < 0)
+	const int32_t started = JLINKARM_SWO_Control(JLINKARM_SWO_CMD_START, &start);
+
+	logger->info("SWO: start(struct {} bytes, speed {}) = {}", start.sizeOfStruct, start.speed, started);
+
+	if (started < 0)
 	{
 		lastErrorMsg = "Could not start the SWO capture!";
 

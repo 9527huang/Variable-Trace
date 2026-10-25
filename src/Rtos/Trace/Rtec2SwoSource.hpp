@@ -83,6 +83,25 @@ class Rtec2SwoSource final : public IRtosTraceSource
 	}
 
    private:
+	/*
+	 * The ITM's packet layer, between the wire and the frames.
+	 *
+	 * The probe hands over the trace stream as it is: a header byte per packet,
+	 * a payload of one to four bytes, and timestamps in between. The frames
+	 * inside it are made from the *payload* bytes only - feeding the headers to
+	 * the frame reader as well makes every sync byte fall one place off and
+	 * every frame fail its checks, which is exactly what the first in-app
+	 * attempt did.
+	 */
+	void consumeItm();
+
+	/* Raw bytes, and the payload bytes collected for the record port. */
+	std::vector<uint8_t> itmBytes;
+	std::vector<uint8_t> recordBytes;
+
+	/* The stimulus port the records travel on. */
+	static constexpr uint8_t recordPort = 1;
+
 	Rtec2FrameReader frames;
 
 	std::deque<Rtec2DecodedRecord> pending;

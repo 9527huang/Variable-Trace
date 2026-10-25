@@ -189,6 +189,28 @@ class IDebugProbe
 		return false;
 	}
 
+	/*
+	 * Asks the probe to start the trace unit when it next connects - not when
+	 * it is asked to.
+	 *
+	 * The order is the whole point: once the memory stream (HSS) has taken the
+	 * link, a capture request is refused, and the last moment it is not refused
+	 * is between "connected" and "streaming". `clockAddress` is where the target
+	 * keeps its core frequency, so the trace clock does not have to be typed
+	 * into a project file that was written for another build.
+	 */
+	virtual void requestSwo(uint32_t clockAddress, uint32_t fallbackCoreHz, uint32_t prescaler)
+	{
+		(void)clockAddress;
+		(void)fallbackCoreHz;
+		(void)prescaler;
+	}
+
+	virtual bool isSwoRunning() const
+	{
+		return false;
+	}
+
 	virtual uint32_t readSwo(uint8_t* buffer, uint32_t size)
 	{
 		(void)buffer;

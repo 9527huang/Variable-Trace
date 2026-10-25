@@ -43,7 +43,21 @@ namespace
 		out.insert(out.end(), payload.begin(), payload.end());
 		out.push_back(0x0A);
 
-		return out;
+		/* What the probe actually hands over: the frame, wrapped in ITM packets
+		   on the record port, four payload bytes each. The source unframes those
+		   before it looks for 'R','T' - a test that fed bare frames would pass
+		   while the real stream did not. */
+		std::vector<uint8_t> wire;
+
+		for (size_t at = 0; at < out.size(); at += 4)
+		{
+			wire.push_back(0x0B); /* port 1, four byte payload */
+
+			for (size_t byte = 0; byte < 4; byte++)
+				wire.push_back(at + byte < out.size() ? out[at + byte] : 0u);
+		}
+
+		return wire;
 	}
 }  // namespace
 

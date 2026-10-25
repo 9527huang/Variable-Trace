@@ -48,12 +48,70 @@ namespace
 	}
 }  // namespace
 
+void Rtec2SwoSource::consumeItm()
+{
+	size_t at = 0;
+
+	while (at < itmBytes.size())
+	{
+		const uint8_t header = itmBytes[at];
+
+		/* 0x00 is a sync or an overflow: no port, no payload. */
+		if (header == 0)
+		{
+			at++;
+			continue;
+		}
+
+		const uint8_t sizeCode = header & 0x03;
+
+		if (sizeCode == 0)
+		{
+			/* A timestamp, or a packet this reader does not use. Its bytes
+			   continue while the top bit is set, and the last one is not a
+			   continuation. */
+			size_t next = at + 1;
+
+			while (next < itmBytes.size() && (itmBytes[next] & 0x80) != 0)
+				next++;
+
+			if (next >= itmBytes.size())
+				break; /* the packet continues past this read */
+
+			at = next + 1;
+			continue;
+		}
+
+		const size_t payload = sizeCode == 3 ? 4 : sizeCode;
+
+		if (at + 1 + payload > itmBytes.size())
+			break; /* a packet split across two reads */
+
+		if ((header >> 3) == recordPort)
+			recordBytes.insert(recordBytes.end(), itmBytes.begin() + static_cast<std::ptrdiff_t>(at + 1),
+			                   itmBytes.begin() + static_cast<std::ptrdiff_t>(at + 1 + payload));
+
+		at += 1 + payload;
+	}
+
+	itmBytes.erase(itmBytes.begin(), itmBytes.begin() + static_cast<std::ptrdiff_t>(at));
+}
+
 void Rtec2SwoSource::feed(const uint8_t* bytes, size_t size)
 {
 	if (sourceState != RtosTraceSourceState::Running)
 		return;
 
-	frames.feed(bytes, size);
+	itmBytes.insert(itmBytes.end(), bytes, bytes + size);
+
+	consumeItm();
+
+	if (recordBytes.empty())
+		return;
+
+	frames.feed(recordBytes.data(), recordBytes.size());
+
+	recordBytes.clear();
 
 	for (Rtec2Frame& frame : frames.take())
 	{

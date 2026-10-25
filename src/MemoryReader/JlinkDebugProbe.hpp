@@ -29,6 +29,12 @@ class JlinkDebugProbe : public IDebugProbe
 	 * one at a time, and the acquisition asked first. Reading SWO and reading
 	 * memory are different requests on the same link, which is why this belongs
 	 * here and not beside the trace view's reader. */
+	void requestSwo(uint32_t clockAddress, uint32_t fallbackCoreHz, uint32_t prescaler) override;
+	bool isSwoRunning() const override
+	{
+		return swoStarted;
+	}
+
 	bool startSwo(uint32_t coreFrequency, uint32_t traceFrequency, uint32_t stimulusMask) override;
 	uint32_t readSwo(uint8_t* buffer, uint32_t size) override;
 	std::string getTargetName() override;
@@ -66,6 +72,13 @@ class JlinkDebugProbe : public IDebugProbe
 	/* Whether the trace unit is capturing on this connection, so that a read
 	   does not ask a unit that was never started. */
 	bool swoStarted = false;
+
+	/* Asked for by the caller, started at the one moment it can be: after the
+	   connect, before the memory stream. */
+	bool swoWanted = false;
+	uint32_t swoClockAddress = 0;
+	uint32_t swoFallbackCoreHz = 0;
+	uint32_t swoPrescaler = 0;
 
 	/* Whether the link to the probe is open, and what it was opened with - the
 	   settings that shape it, written down as one string. A run that keeps the

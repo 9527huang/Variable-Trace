@@ -478,6 +478,7 @@ class ViewerDataHandler : public DataHandlerBase
 	std::string eventsTransport = "ring";
 
 	bool swoEventsStarted = false;
+	bool swoFramesSeen = false;
 
 	/* Where the target keeps its own core clock, when the firmware exports one.
 	   Read instead of trusting a setting: the trace clock is a property of the
