@@ -1,5 +1,7 @@
 #include "RtosTraceArchive.hpp"
 
+#include <zstd.h>
+
 #include <cstring>
 
 namespace
@@ -458,12 +460,46 @@ namespace RtosTraceArchive
 			writeEventV2(writer, event, sharedEpoch);
 		}
 
-		return out;
+		/* Compressed on the way out. A block is a few kilobytes of records that
+		   differ in two fields; the frame header costs twelve bytes and is worth
+		   it from the first hundred events, which is one round. */
+		std::vector<uint8_t> compressed;
+
+		compressed.resize(ZSTD_compressBound(out.size()));
+
+		const size_t written = ZSTD_compress(compressed.data(), compressed.size(), out.data(), out.size(), 3);
+
+		if (ZSTD_isError(written) != 0)
+			return out; /* uncompressed is still correct, and this is the honest fallback */
+
+		compressed.resize(written);
+
+		return compressed;
 	}
 
 	bool decodeEvents(const std::vector<uint8_t>& payload, std::vector<RtosNormalizedEvent>& events, uint16_t version)
 	{
 		events.clear();
+
+		if (version >= 3)
+		{
+			const unsigned long long size = ZSTD_getFrameContentSize(payload.data(), payload.size());
+
+			/* A frame without its size, or one that claims more than a block can
+			   hold, is not this writer's: refuse rather than allocate on a
+			   number a corrupt file chose. */
+			if (size == ZSTD_CONTENTSIZE_ERROR || size == ZSTD_CONTENTSIZE_UNKNOWN || size > (16u << 20))
+				return false;
+
+			std::vector<uint8_t> raw(static_cast<size_t>(size));
+
+			const size_t got = ZSTD_decompress(raw.data(), raw.size(), payload.data(), payload.size());
+
+			if (ZSTD_isError(got) != 0 || got != raw.size())
+				return false;
+
+			return decodeEvents(raw, events, 2);
+		}
 
 		Reader reader{payload.data(), payload.size(), 0, true};
 

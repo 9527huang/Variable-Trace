@@ -176,6 +176,23 @@ void vtrace_rtec2_init(void)
 
 void vtrace_rtec2_switch(uint32_t tcb)
 {
+#if defined(VTRACE_RTEC2_TRANSPORT_STREAM) && (VTRACE_RTEC2_TRANSPORT_STREAM == 1) && defined(VTRACE_STREAM_SWITCH_EVERY) && \
+    (VTRACE_STREAM_SWITCH_EVERY > 1)
+	/* A board whose wire cannot carry every switch: send one in N, keep every
+	   interrupt, fault and clock sync. What the view loses is the order of
+	   switches inside a band; what it keeps is where the bands are - which is
+	   the part a reader acts on. The band edges then come from sample times
+	   rather than switch times, and the panel says so. */
+	static uint32_t seen;
+
+	if ((++seen % VTRACE_STREAM_SWITCH_EVERY) != 0u)
+	{
+		vtraceStream.dropped++;
+
+		return;
+	}
+#endif
+
 	emit(VTRACE_TYPE_TASK_SWITCH_IN, tcb, 0u, 0u, 0u);
 }
 

@@ -1829,7 +1829,12 @@ void ViewerDataHandler::dataHandler()
 				   race the preparation: the probe starts the capture between the
 				   connect and the memory stream, and it has to have been asked
 				   by then. */
-				if (eventsTransport == "swo" && rtec2SwoSource != nullptr)
+				/* Gated on the setting and not on the source: the preparation
+				   that makes the source runs in the same loop, and which of the
+				   two goes first is a race. A capture started with no source
+				   attached reads nothing, which is harmless; a source attached
+				   with no capture is an empty view. */
+				if (eventsTransport == "swo")
 					debugProbe->requestSwo(swoClockSymbol, swoCoreFrequency, swoTracePrescaler);
 
 				if (debugProbe->startAcqusition(probeSettings, sampleList, settings.sampleFrequencyHz))

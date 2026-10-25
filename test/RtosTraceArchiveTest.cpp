@@ -416,3 +416,69 @@ TEST(RtosTracePipelineTest, ARecordingPutBackDrawsTheSameBandsAsTheLiveSession)
 	   would be reading nothing - the count above is the guard. */
 	EXPECT_GT(pipeline.eventCount(), 0u);
 }
+
+TEST(RtosTraceArchiveTest, ABlockOfTheSameHandleCompressesHard)
+{
+	/* What a real session looks like: forty thousand switches among four
+	   handles. The layout already stopped writing what repeats; the rest is
+	   repetition the compressor can see and the writer cannot. */
+	std::vector<RtosNormalizedEvent> events;
+
+	for (uint32_t index = 0; index < 200; index++)
+	{
+		RtosNormalizedEvent normalized;
+
+		normalized.event.type = RtosTraceEventType::TaskSwitchIn;
+		normalized.event.epoch = 9;
+		normalized.event.sequence = index + 1;
+		normalized.event.hasTargetTicks = true;
+		normalized.event.targetTicks = 1000 + index * 37;
+		normalized.event.targetHz = 1000000;
+		normalized.event.subject.kind = RtosEntityKind::Task;
+		normalized.event.subject.rawHandle = 0x20002B10;
+		normalized.event.subject.generation = 1;
+		normalized.event.subject.quality = RtosIdentityQuality::Exact;
+		normalized.event.coreId = 0;
+		normalized.event.quality = RtosEvidenceQuality::Good;
+
+		normalized.subject.kind = RtosEntityKind::Task;
+		normalized.subject.rawHandle = 0x20002B10;
+		normalized.subject.generation = 1;
+		normalized.subject.epoch = 9;
+		normalized.hasDisplaySeconds = true;
+		normalized.displaySeconds = index * 0.01;
+
+		events.push_back(normalized);
+	}
+
+	const std::vector<uint8_t> payload = RtosTraceArchive::encodeEvents(events);
+
+	/* Forty a record before compression. Anything close to that means the
+	   compressor was not reached. */
+	EXPECT_LT(payload.size(), events.size() * 20u);
+
+	std::vector<RtosNormalizedEvent> back;
+
+	ASSERT_TRUE(RtosTraceArchive::decodeEvents(payload, back, RtosTraceArchive::formatVersion));
+	ASSERT_EQ(events.size(), back.size());
+	EXPECT_EQ(0x20002B10u, back[7].event.subject.rawHandle);
+	EXPECT_EQ(events[7].event.targetTicks, back[7].event.targetTicks);
+}
+
+TEST(RtosTraceArchiveTest, BytesThatAreNotAFrameAreRefusedNotRead)
+{
+	/* A block whose payload was cut or overwritten must fail here rather than
+	   hand the view forty thousand events made of bits of another. */
+	std::vector<RtosNormalizedEvent> events;
+	std::vector<RtosNormalizedEvent> back;
+
+	events.push_back(RtosNormalizedEvent{});
+
+	const std::vector<uint8_t> payload = RtosTraceArchive::encodeEvents(events);
+	std::vector<uint8_t> broken = payload;
+
+	broken[0] ^= 0xFF;
+
+	EXPECT_FALSE(RtosTraceArchive::decodeEvents(broken, back, RtosTraceArchive::formatVersion));
+	EXPECT_TRUE(back.empty());
+}

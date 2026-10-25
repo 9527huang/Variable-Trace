@@ -73,13 +73,17 @@ ITM_HEARTBEAT ?= 0
 # RTEC2 的载体：ring = 目标内存的环（默认），stream = 成帧走 ITM/SWO。
 RTEC2_TRANSPORT ?= ring
 
+# 带宽不够的板子用：只把每第 N 条切换送出去（1 = 全送）。中断、故障、时钟同步
+# 永远送，它们决定带子的边缘。
+STREAM_SWITCH_EVERY ?= 1
+
 ifeq ($(RTEC2_ON),1)
   RTEC2_SRC := $(RTEC2_DIR)/rtec2_writer.c $(EVENTS_DIR)/vtrace_rtec2.c
   RTEC2_INC := -I$(RTEC2_DIR) -I$(EVENTS_DIR)
   RTEC2_DEF := -DVTRACE_RTEC2=1 -DVTRACE_ITM_PORT=1 -DVTRACE_ITM_HEARTBEAT=$(ITM_HEARTBEAT)
   ifeq ($(RTEC2_TRANSPORT),stream)
     RTEC2_SRC += $(RTEC2_DIR)/rtec2_stream.c
-    RTEC2_DEF += -DVTRACE_RTEC2_TRANSPORT_STREAM=1
+    RTEC2_DEF += -DVTRACE_RTEC2_TRANSPORT_STREAM=1 -DVTRACE_STREAM_SWITCH_EVERY=$(STREAM_SWITCH_EVERY)
   endif
 endif
 

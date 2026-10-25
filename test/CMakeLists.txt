@@ -275,7 +275,8 @@ target_compile_definitions(${EXECUTABLE} PRIVATE
 
 target_link_libraries(${EXECUTABLE}
     PRIVATE
-    GTest::GTest)
+    GTest::GTest
+    zstd)
 
 # The HTTP library is header only, but it does use the socket calls.
 if(WIN32)
