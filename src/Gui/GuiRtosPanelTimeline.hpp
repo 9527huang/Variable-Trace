@@ -809,8 +809,19 @@ class GuiRtosPanelTimeline
 		{
 			const double secondsPerPixel = span / static_cast<double>(plotWidth);
 
-			manualFrom = oldest - ImGui::GetIO().MouseDelta.x * secondsPerPixel;
-			manualTo = newest - ImGui::GetIO().MouseDelta.x * secondsPerPixel;
+			/* Moving the window, not resizing it: the width it came in with is
+			   the width it leaves with.
+			   
+			   It was computed from the window's own `span`, and when that span
+			   was one round wide the drag turned both ends into nearly the same
+			   number - a window with no width, which draws nothing and then says
+			   "nothing was published". Measured: one drag on the lanes and the
+			   bands vanished while thirty eight rounds sat behind them. */
+			const double moved = ImGui::GetIO().MouseDelta.x * secondsPerPixel;
+			const double width = newest - oldest;
+
+			manualFrom = oldest - moved;
+			manualTo = manualFrom + width;
 			manualWindow = true;
 		}
 
