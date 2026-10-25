@@ -789,19 +789,35 @@ class GuiRtosPanelTimeline
 		}
 		else if (hovered && ImGui::GetIO().MouseWheel != 0.0f)
 		{
-			const double at = timeAtX(ImGui::GetIO().MousePos.x);
 			const double factor = ImGui::GetIO().MouseWheel > 0.0f ? 0.8 : 1.25;
 
-			double from = oldest - (at - oldest) * (factor - 1.0);
-			double to = newest + (newest - at) * (factor - 1.0);
-
-			/* A window narrower than one round shows a single mark and no
-			   gaps, and one wider than the ring shows what is not there. */
-			if (to - from >= 0.5 && to - from <= 3600.0)
+			/* Wheel over the chart while the window is still following the target
+			   changes how much time is shown, not which stretch: the reader wants
+			   more or less of the same live view.
+			   
+			   It used to build a manual window on every notch, which quietly
+			   stopped the follow - the bands stayed where they were and the
+			   window kept no longer covering the newest rounds. From the outside
+			   that is "the lanes are stuck", with nothing on screen saying why. */
+			if (!manualWindow)
 			{
-				manualFrom = from;
-				manualTo = to;
-				manualWindow = true;
+				windowSeconds = std::clamp(windowSeconds * static_cast<float>(factor), 1.0f, 600.0f);
+			}
+			else
+			{
+				const double at = timeAtX(ImGui::GetIO().MousePos.x);
+
+				double from = oldest - (at - oldest) * (factor - 1.0);
+				double to = newest + (newest - at) * (factor - 1.0);
+
+				/* A window narrower than one round shows a single mark and no
+				   gaps, and one wider than the ring shows what is not there. */
+				if (to - from >= 0.5 && to - from <= 3600.0)
+				{
+					manualFrom = from;
+					manualTo = to;
+					manualWindow = true;
+				}
 			}
 		}
 
