@@ -682,6 +682,12 @@ bool RtosRecording::open(const std::string& path, Problem& problem)
 		reading = true;
 		fileVersion = 3;
 
+		/* The panel shows this beside the round counter and the export names the
+		   CSV after it; without it a version 3 playback reads as a file with no
+		   name. The v2 path below sets it under the lock, and this branch used to
+		   return before doing the same. */
+		filePath = path;
+
 		return true;
 	}
 

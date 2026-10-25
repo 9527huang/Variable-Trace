@@ -464,5 +464,10 @@ TEST(RtosTracePipelineTest, ARecordingKeepsTheEventsAndOpeningItPutsThemBack)
 	EXPECT_TRUE(playback.isPlayback());
 	EXPECT_EQ(2u, playback.playbackInfo().rounds);
 
+	/* The panel prints this beside the round counter and the export names its
+	   CSV after it. A v3 playback used to come back with an empty path, which
+	   read as a file with no name. */
+	EXPECT_EQ(path, playback.playbackInfo().path);
+
 	std::filesystem::remove_all(directory);
 }
